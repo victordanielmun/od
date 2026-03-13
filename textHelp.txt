@@ -1,0 +1,695 @@
+rea el frontend base del RPG multijugador con React, Vite y Phaser, incluyendo sistema de personajes 2D, lobby de misiones y organización de UI.
+
+PREREQUISITO:
+Fases 1-4 del backend completadas.
+
+OBJETIVO DE LA FASE:
+- Sistema completo de personajes 2D con sprites animados
+- Lobby visual donde seleccionar misiones
+- 3 misiones de prueba (salas) con mapas diferentes
+- Layout organizado: canvas del juego, chat, lista de usuarios, video grid
+- Integración WebSocket para movimiento en tiempo real
+
+STACK FRONTEND:
+- React 18 + Vite
+- Phaser 3 (rendering 2D y físicas)
+- Zustand (estado global)
+- Tailwind CSS (UI)
+- WebSocket nativo
+
+ESTRUCTURA DEL PROYECTO:
+gather-rpg-frontend/
+├── src/
+│   ├── assets/
+│   │   ├── characters/           # Spritesheets de personajes
+│   │   │   ├── warrior/
+│   │   │   │   ├── idle.png
+│   │   │   │   ├── walk.png
+│   │   │   │   └── attack.png
+│   │   │   ├── mage/
+│   │   │   └── archer/
+│   │   ├── maps/                 # Tilemaps
+│   │   │   ├── lobby.json
+│   │   │   ├── forest_mission.json
+│   │   │   ├── dungeon_mission.json
+│   │   │   └── castle_mission.json
+│   │   ├── tilesets/            # Tilesets para mapas
+│   │   │   ├── ground.png
+│   │   │   ├── walls.png
+│   │   │   └── objects.png
+│   │   ├── enemies/             # Sprites de enemigos
+│   │   │   ├── slime.png
+│   │   │   └── goblin.png
+│   │   └── ui/                  # Iconos UI
+│   │       ├── health-bar.png
+│   │       └── minimap-bg.png
+│   ├── components/
+│   │   ├── Auth/
+│   │   │   ├── Login.jsx
+│   │   │   └── Register.jsx
+│   │   ├── Lobby/
+│   │   │   ├── LobbyScreen.jsx      # Pantalla principal lobby
+│   │   │   ├── MissionCard.jsx      # Card de cada misión
+│   │   │   ├── MissionSelector.jsx  # Grid de misiones
+│   │   │   └── CharacterSelector.jsx # Selector de personaje
+│   │   ├── Game/
+│   │   │   ├── GameContainer.jsx    # Container principal del juego
+│   │   │   ├── PhaserGame.jsx       # Componente Phaser
+│   │   │   └── GameHUD.jsx          # HUD sobre el canvas
+│   │   ├── Chat/
+│   │   │   ├── ChatBox.jsx
+│   │   │   ├── ChatMessage.jsx
+│   │   │   └── ChatInput.jsx
+│   │   ├── Players/
+│   │   │   ├── PlayerList.jsx
+│   │   │   └── PlayerCard.jsx
+│   │   ├── Video/
+│   │   │   ├── VideoGrid.jsx
+│   │   │   ├── VideoTile.jsx
+│   │   │   └── VideoControls.jsx
+│   │   └── UI/
+│   │       ├── HealthBar.jsx
+│   │       ├── MiniMap.jsx
+│   │       └── SkillBar.jsx
+│   ├── game/
+│   │   ├── config.js                # Configuración Phaser
+│   │   ├── scenes/
+│   │   │   ├── BootScene.js         # Carga inicial
+│   │   │   ├── PreloadScene.js      # Carga de assets
+│   │   │   ├── LobbyScene.js        # Escena del lobby
+│   │   │   ├── ForestScene.js       # Misión 1: Bosque
+│   │   │   ├── DungeonScene.js      # Misión 2: Mazmorra
+│   │   │   └── CastleScene.js       # Misión 3: Castillo
+│   │   ├── entities/
+│   │   │   ├── Player.js            # Clase del jugador
+│   │   │   ├── RemotePlayer.js      # Otros jugadores
+│   │   │   ├── Enemy.js             # Enemigos base
+│   │   │   └── NPC.js               # NPCs del lobby
+│   │   ├── systems/
+│   │   │   ├── InputManager.js      # Manejo de input
+│   │   │   ├── AnimationManager.js  # Animaciones
+│   │   │   └── CombatSystem.js      # Sistema de combate básico
+│   │   └── utils/
+│   │       ├── AssetLoader.js
+│   │       └── MapParser.js
+│   ├── services/
+│   │   ├── websocket.js
+│   │   ├── api.js
+│   │   └── auth.js
+│   ├── stores/
+│   │   ├── useAuthStore.js
+│   │   ├── useGameStore.js
+│   │   ├── usePlayerStore.js
+│   │   ├── useChatStore.js
+│   │   └── useRoomStore.js
+│   ├── hooks/
+│   │   ├── useWebSocket.js
+│   │   ├── usePhaser.js
+│   │   └── useKeyboard.js
+│   ├── styles/
+│   │   └── game.css
+│   ├── App.jsx
+│   └── main.jsx
+├── public/
+├── index.html
+├── vite.config.js
+├── tailwind.config.js
+└── package.json
+
+FEATURES DETALLADOS:
+
+=== 1. SISTEMA DE PERSONAJES 2D ===
+
+A. Clases de Personajes (3 para validar):
+   
+   Warrior (Guerrero):
+   - Health: 150
+   - Speed: 100
+   - Attack: 20
+   - Range: 50 (melee)
+   - Habilidad: "Slash" (ataque en área)
+   
+   Mage (Mago):
+   - Health: 80
+   - Speed: 90
+   - Attack: 30
+   - Range: 200 (ranged)
+   - Habilidad: "Fireball" (proyectil)
+   
+   Archer (Arquero):
+   - Health: 100
+   - Speed: 120
+   - Attack: 25
+   - Range: 300 (ranged)
+   - Habilidad: "Arrow Rain" (múltiples flechas)
+
+B. Sprites y Animaciones:
+   
+   Cada personaje necesita spritesheets con:
+   - idle: 4 frames (respiración estática)
+   - walk: 6 frames por dirección (up, down, left, right)
+   - attack: 8 frames
+   - hit: 3 frames (recibir daño)
+   - death: 5 frames
+   
+   Formato recomendado:
+   - Tamaño: 32x32 o 48x48 píxeles por frame
+   - Spritesheet horizontal o grid
+   - PNG con transparencia
+   
+   Fuentes de sprites gratuitos:
+   - itch.io (buscar "2D character sprite")
+   - OpenGameArt.org
+   - Craftpix.net (free section)
+
+C. Clase Player en Phaser:
+   
+   Propiedades:
+   - sprite: Phaser.GameObjects.Sprite
+   - username: string
+   - characterClass: "warrior" | "mage" | "archer"
+   - health: number
+   - maxHealth: number
+   - speed: number
+   - direction: string
+   - isMoving: boolean
+   - isAttacking: boolean
+   - body: Phaser.Physics.Arcade.Body
+   
+   Métodos:
+   - update(time, delta): actualizar estado cada frame
+   - move(direction): mover en dirección
+   - attack(): ejecutar ataque
+   - takeDamage(amount): recibir daño
+   - playAnimation(name): reproducir animación
+   - setPosition(x, y): actualizar posición
+   - destroy(): limpiar recursos
+
+D. Clase RemotePlayer:
+   
+   Similar a Player pero:
+   - Sin control de input (controlado por red)
+   - Interpolación suave de movimiento
+   - Buffer de posiciones para smooth movement
+   - Solo reproducir animaciones basadas en datos recibidos
+
+=== 2. LOBBY Y SISTEMA DE MISIONES ===
+
+A. Lobby Scene (LobbyScene.js):
+   
+   Mapa del Lobby:
+   - Área de 2000x1500 píxeles
+   - Zona central con NPCs (maestros de misión)
+   - 3 portales/puertas para misiones
+   - Área de spawn para jugadores
+   - Decoración: árboles, edificios, bancos
+   
+   NPCs en Lobby:
+   - NPC 1: "Mission Master" → abre UI de selección de misiones
+   - NPC 2: "Character Trainer" → permite cambiar clase
+   - NPC 3: "Shop Keeper" → placeholder para futuro
+   
+   Interacción con NPCs:
+   - Mostrar indicador "E para interactuar" al acercarse
+   - Presionar E abre diálogo/UI
+
+B. Misiones (3 para validar):
+   
+   Misión 1: "Forest Patrol" (Patrulla del Bosque)
+   - Mapa: Bosque de 3000x2000 píxeles
+   - Objetivo: Eliminar 5 slimes
+   - Enemigos: Slimes (lentos, bajo daño)
+   - Recompensa: 50 XP
+   - Tiempo límite: 5 minutos
+   
+   Misión 2: "Dungeon Raid" (Asalto a Mazmorra)
+   - Mapa: Mazmorra de 2500x2500 píxeles
+   - Objetivo: Derrotar al jefe (Goblin King)
+   - Enemigos: Goblins + 1 Jefe
+   - Recompensa: 100 XP
+   - Requiere: 2+ jugadores
+   
+   Misión 3: "Castle Defense" (Defensa del Castillo)
+   - Mapa: Castillo de 3500x2000 píxeles
+   - Objetivo: Sobrevivir 3 oleadas de enemigos
+   - Enemigos: Oleadas progresivas
+   - Recompensa: 150 XP
+   - Requiere: 3+ jugadores
+
+C. Mission Selector UI (React):
+   
+   Componente MissionCard:
+   - Imagen/preview de la misión
+   - Nombre de la misión
+   - Descripción breve
+   - Nivel recomendado
+   - Jugadores requeridos (min-max)
+   - Jugadores actuales en lobby de esa misión
+   - Botón "Join Mission"
+   
+   Lógica:
+   - Al hacer click en "Join Mission":
+     * Enviar WebSocket: {"type": "join_room", "payload": {"room_id": "mission_forest"}}
+     * Transición de LobbyScene a ForestScene
+     * Cargar mapa de la misión
+     * Spawnear jugador en punto de inicio
+
+=== 3. MAPAS Y GENERACIÓN ===
+
+A. Usar Tiled Map Editor (https://www.mapeditor.org/):
+   
+   Instalación:
+   - Descargar e instalar Tiled
+   - Crear nuevo mapa: Orthogonal, 32x32 tile size
+   
+   Capas del mapa:
+   1. Ground: suelo base (pasto, tierra, piedra)
+   2. Walls: paredes y colisiones
+   3. Objects: decoración (árboles, rocas, cofres)
+   4. Collision: capa invisible para colisiones
+   5. Spawn Points: capa de objetos para puntos de spawn
+   
+   Exportar:
+   - File → Export As → JSON
+   - Guardar en /src/assets/maps/
+
+B. Tilesets gratuitos recomendados:
+   - LPC (Liberated Pixel Cup): sprites de 32x32
+   - Kenney.nl: tilesets variados
+   - itch.io: buscar "tileset rpg"
+
+C. Cargar Mapas en Phaser:
+```javascript
+   // En PreloadScene
+   this.load.tilemapTiledJSON('lobby', '/assets/maps/lobby.json');
+   this.load.image('ground_tiles', '/assets/tilesets/ground.png');
+   this.load.image('walls_tiles', '/assets/tilesets/walls.png');
+   
+   // En LobbyScene
+   const map = this.make.tilemap({ key: 'lobby' });
+   const groundTileset = map.addTilesetImage('ground', 'ground_tiles');
+   const wallsTileset = map.addTilesetImage('walls', 'walls_tiles');
+   
+   const groundLayer = map.createLayer('Ground', groundTileset, 0, 0);
+   const wallsLayer = map.createLayer('Walls', wallsTileset, 0, 0);
+   
+   // Configurar colisiones
+   wallsLayer.setCollisionByProperty({ collides: true });
+   this.physics.add.collider(this.player, wallsLayer);
+```
+
+=== 4. LAYOUT Y ORGANIZACIÓN DE UI ===
+
+A. GameContainer Layout (React):
+   
+   Estructura visual:
+┌─────────────────────────────────────────────────┐
+│  Header: Username, Health, Level     [⚙️]      │
+├──────────────────────┬──────────────────────────┤
+│                      │                          │
+│                      │   Video Grid             │
+│                      │   (si hay video activo)  │
+│   Canvas Phaser      │   ┌────┬────┬────┐       │
+│   (Juego principal)  │   │ 👤 │ 👤 │ 👤 │       │
+│                      │   └────┴────┴────┘       │
+│   1200x800px         │                          │
+│                      │   Player List            │
+│                      │   • Player 1 🎤          │
+│                      │   • Player 2             │
+│                      │   • Player 3 🎤          │
+│                      │                          │
+├──────────────────────┴──────────────────────────┤
+│  Chat Box                                       │
+│  ┌──────────────────────────────────────────┐  │
+│  │ Player1: Hola!                           │  │
+│  │ Player2: Vamos al bosque                 │  │
+│  └──────────────────────────────────────────┘  │
+│  [Escribe mensaje...]              [Enviar]    │
+└─────────────────────────────────────────────────┘
+
+B. Responsividad:
+   
+   Desktop (>1280px):
+   - Canvas: 1200x800px
+   - Sidebar derecho: 300px
+   - Chat: altura 200px
+   
+   Tablet (768-1280px):
+   - Canvas: 800x600px
+   - Sidebar colapsa a tabs
+   - Chat overlay
+   
+   Mobile (< 768px):
+   - Canvas: fullscreen
+   - UI en overlay flotante
+   - Controles táctiles (joystick virtual)
+
+C. Componentes React + Phaser:
+   
+   GameContainer.jsx:
+   - Contiene el canvas de Phaser
+   - Maneja resize del canvas
+   - Pasa eventos de React a Phaser
+   
+   PhaserGame.jsx:
+   - Inicializa Phaser.Game
+   - Configura escenas
+   - Maneja cleanup en unmount
+   
+   Comunicación React ↔ Phaser:
+   - Usar EventBus personalizado
+   - Phaser emite eventos: game.events.emit('player-hit', data)
+   - React escucha: game.events.on('player-hit', handleHit)
+
+=== 5. INTEGRACIÓN WEBSOCKET ===
+
+A. Mensajes de Personaje:
+   
+   Cliente → Servidor:
+   - "select_character": {"character_class": "warrior"}
+   - "update_position": {"x": 100, "y": 200, "direction": "right", "is_moving": true, "animation": "walk"}
+   - "attack": {"target_id": "enemy_uuid", "skill": "slash"}
+   
+   Servidor → Cliente:
+   - "character_selected": {"user_id": "...", "character_class": "mage"}
+   - "position_update": {... "animation": "walk"}
+   - "player_attacked": {"attacker_id": "...", "target_id": "...", "damage": 20}
+   - "enemy_spawned": {"enemy_id": "...", "type": "slime", "x": 500, "y": 300}
+   - "enemy_died": {"enemy_id": "..."}
+
+B. Sincronización:
+   
+   En RemotePlayer.update():
+   - Interpolar posición entre updates del servidor
+   - Reproducir animación según "animation" recibida
+   - Mostrar efectos visuales de ataque
+
+=== 6. SISTEMA DE COMBATE BÁSICO ===
+
+A. Ataque Melee (Warrior):
+   - Presionar Espacio o Click
+   - Crear hitbox temporal frente al jugador
+   - Verificar overlap con enemigos
+   - Aplicar daño
+   - Mostrar animación de slash
+
+B. Ataque Ranged (Mage, Archer):
+   - Presionar Espacio o Click
+   - Crear proyectil (sprite con physics)
+   - Mover proyectil hacia cursor/dirección
+   - Al colisionar con enemigo: aplicar daño y destruir proyectil
+
+C. Enemigos (IA básica):
+   - Patrullar en área definida
+   - Detectar jugador en rango (300px)
+   - Perseguir jugador
+   - Atacar si está en rango de ataque (50px)
+   - Regresar a patrulla si jugador se aleja
+
+D. Muerte:
+   - Jugador: reproducir animación death, respawn después de 5 seg
+   - Enemigo: reproducir animación death, drop loot (placeholder), destruir
+
+OPTIMIZACIONES:
+- Object pooling para proyectiles y efectos
+- Culling: no actualizar entidades fuera de cámara
+- Limitar enemigos simultáneos (max 20 por escena)
+- Usar Phaser groups para colisiones eficientes
+
+ASSETS NECESARIOS (mínimo para validar):
+- 3 spritesheets de personajes (warrior, mage, archer)
+- 2 spritesheets de enemigos (slime, goblin)
+- 3 tilemaps JSON (lobby, forest, dungeon)
+- 2-3 tilesets PNG
+- Iconos UI básicos
+
+LIBRERÍAS RECOMENDADAS:
+- Phaser 3.60+
+- Zustand 4.x
+- Tailwind CSS 3.x
+- Vite 5.x
+- (Opcional) phaser3-rex-plugins para UI avanzada
+Tests de Validación Fase 5
+bash# Setup
+npm install
+npm run dev
+
+# Test 1: Iniciar aplicación
+# Abrir http://localhost:5173
+# ✅ Debe mostrar pantalla de Login/Register
+
+# Test 2: Registro e inicio de sesión
+# Completar registro con nuevo usuario
+# ✅ Debe redirigir a Character Selector
+
+# Test 3: Seleccionar personaje
+# Elegir "Warrior"
+# ✅ Debe cargar LobbyScene con sprite de warrior
+
+# Test 4: Movimiento en Lobby
+# Usar WASD o flechas para mover
+# ✅ Personaje debe moverse suavemente
+# ✅ Animación "walk" debe reproducirse
+# ✅ Al soltar teclas, animación "idle"
+
+# Test 5: Colisiones en Lobby
+# Intentar atravesar una pared
+# ✅ Personaje debe detenerse (colisión funciona)
+
+# Test 6: Ver otros jugadores
+# Abrir segunda ventana/usuario
+# Ambos en lobby
+# ✅ Debe ver al otro jugador moviéndose en tiempo real
+# ✅ Username debe aparecer sobre el sprite
+
+# Test 7: Interactuar con NPC
+# Acercarse al "Mission Master"
+# ✅ Debe aparecer texto "E para interactuar"
+# Presionar E
+# ✅ Debe abrir UI de Mission Selector
+
+# Test 8: Mission Selector UI
+# ✅ Debe mostrar 3 mission cards
+# ✅ Cada card muestra: nombre, descripción, jugadores requeridos
+# ✅ Click en "Join Mission" de Forest Patrol
+
+# Test 9: Transición a misión
+# ✅ Debe cambiar de LobbyScene a ForestScene
+# ✅ Mapa del bosque debe cargar
+# ✅ Jugador debe aparecer en spawn point
+
+# Test 10: Enemigos en misión
+# ✅ Deben aparecer 5 slimes en el mapa
+# ✅ Slimes deben moverse/patrullar
+
+# Test 11: Ataque melee (Warrior)
+# Presionar Espacio cerca de un slime
+# ✅ Animación de ataque debe reproducirse
+# ✅ Slime debe recibir daño (mostrar número o efecto)
+# ✅ Después de ~5 ataques, slime debe morir
+
+# Test 12: Animación de muerte de enemigo
+# ✅ Slime debe reproducir animación death
+# ✅ Slime debe desaparecer después de animación
+
+# Test 13: Completar objetivo
+# Eliminar los 5 slimes
+# ✅ Debe mostrar mensaje "Mission Complete!"
+# ✅ Opción de regresar al lobby
+
+# Test 14: Chat en juego
+# Escribir mensaje en chat box
+# ✅ Mensaje debe enviarse
+# ✅ Aparecer en chat box con username
+
+# Test 15: Chat entre jugadores
+# Con 2 jugadores en misma sala
+# Jugador 1 escribe mensaje
+# ✅ Jugador 2 debe verlo en su chat
+
+# Test 16: Player List
+# ✅ Debe mostrar lista de jugadores en sala actual
+# ✅ Actualizar al entrar/salir jugadores
+
+# Test 17: Health bar
+# Recibir daño de un slime
+# ✅ Barra de vida debe reducirse visualmente
+# ✅ Número de HP debe actualizarse
+
+# Test 18: Muerte del jugador
+# Dejar que un slime mate al jugador (HP = 0)
+# ✅ Animación de muerte debe reproducirse
+# ✅ Pantalla con "You died" y countdown
+# ✅ Después de 5 seg, respawn en spawn point
+
+# Test 19: Cambiar de misión
+# Regresar al lobby
+# Unirse a "Dungeon Raid"
+# ✅ Debe cargar DungeonScene
+# ✅ Mapa diferente (mazmorra)
+
+# Test 20: Múltiples jugadores en misión
+# 3 jugadores en "Castle Defense"
+# ✅ Todos deben ver a los demás
+# ✅ Ataques de cada jugador visibles para todos
+# ✅ Enemigos sincronizados entre clientes
+
+# Test 21: Ataque ranged (Mage)
+# Seleccionar personaje Mage
+# Unirse a misión
+# Presionar Espacio
+# ✅ Debe crear proyectil (fireball)
+# ✅ Proyectil debe volar hacia cursor/dirección
+# ✅ Al impactar enemigo, aplicar daño y destruirse
+
+# Test 22: Layout responsive
+# Redimensionar ventana a 1024px ancho
+# ✅ UI debe ajustarse
+# ✅ Canvas debe mantener aspect ratio
+
+# Test 23: Video grid (placeholder)
+# Con 2 jugadores conectados
+# ✅ Video grid debe reservar espacio
+# ✅ Mostrar placeholder si video no activo
+
+# Test 24: Minimap
+# ✅ Minimap debe mostrar posición del jugador
+# ✅ Mostrar posiciones de otros jugadores
+# ✅ Actualizar en tiempo real
+
+# Test 25: Skill bar (UI placeholder)
+# ✅ Mostrar iconos de habilidades del personaje
+# ✅ Click en habilidad ejecuta ataque especial (placeholder)
+
+# Test 26: Cambiar de personaje
+# Salir a lobby
+# Interactuar con "Character Trainer"
+# Cambiar a Archer
+# ✅ Sprite debe cambiar
+# ✅ Stats deben actualizarse
+
+# Test 27: Performance con 10 jugadores
+# Simular o invitar 10 usuarios a una misión
+# ✅ FPS debe mantenerse >50
+# ✅ Sin lag notable en movimiento
+
+# Test 28: Desconexión y reconexión
+# Desconectar internet/WiFi
+# ✅ Debe mostrar mensaje de desconexión
+# Reconectar
+# ✅ Debe reconectar automáticamente
+# ✅ Volver a estado anterior
+
+# Test 29: Assets cargando
+# Limpiar caché del navegador
+# Recargar aplicación
+# ✅ Debe mostrar loading screen durante carga de assets
+# ✅ Progress bar debe actualizarse
+
+# Test 30: Salir de misión
+# En misión, click en botón "Leave Mission"
+# ✅ Debe regresar a LobbyScene
+# ✅ Otros jugadores no deben verse afectados
+```
+
+## Checklist de Validación Fase 5
+```
+SISTEMA DE PERSONAJES:
+□ 3 clases disponibles (Warrior, Mage, Archer)
+□ Cada clase tiene stats diferentes
+□ Sprites con animaciones (idle, walk, attack, death)
+□ Animaciones se reproducen correctamente
+□ Cambio de dirección actualiza sprite
+□ Interpolación suave de movimiento
+
+LOBBY:
+□ Lobby scene carga correctamente
+□ Mapa del lobby renderiza
+□ NPCs visibles e interactuables
+□ Indicador "E para interactuar" funciona
+□ Mission Selector UI abre correctamente
+□ Character Selector funciona
+
+MISIONES:
+□ 3 misiones disponibles
+□ Cada misión tiene mapa único
+□ Objetivos de misión se muestran
+□ Spawn points funcionan
+□ Transición lobby → misión sin errores
+□ Opción de regresar al lobby
+
+MAPAS:
+□ Mapas de Tiled cargan correctamente
+□ Capas de tiles se renderizan
+□ Colisiones con paredes funcionan
+□ Decoración visible
+□ Tamaño de mapa apropiado
+
+COMBATE:
+□ Ataque melee funciona (Warrior)
+□ Ataque ranged funciona (Mage/Archer)
+□ Enemigos spawnen correctamente
+□ Enemigos patrullan
+□ Enemigos detectan y persiguen jugador
+□ Daño se aplica correctamente
+□ Animaciones de ataque se reproducen
+□ Muerte de enemigos funciona
+□ Muerte del jugador funciona
+□ Respawn después de morir
+
+MULTIJUGADOR:
+□ Múltiples jugadores visibles
+□ Movimiento sincronizado
+□ Animaciones sincronizadas
+□ Ataques visibles para todos
+□ Chat funciona entre jugadores
+□ Player list actualiza en tiempo real
+
+UI/LAYOUT:
+□ Layout organizado y claro
+□ Canvas Phaser renderiza correctamente
+□ Chat box visible y funcional
+□ Player list visible
+□ Video grid reserva espacio
+□ Health bar se muestra y actualiza
+□ Minimap funciona
+□ Responsive en diferentes tamaños
+
+WEBSOCKET:
+□ Conexión establece correctamente
+□ Mensajes de movimiento se envían
+□ Mensajes de ataque se envían
+□ Posiciones de otros jugadores se reciben
+□ Reconexión automática funciona
+□ Desconexión se maneja gracefully
+
+PERFORMANCE:
+□ FPS > 50 con 10 jugadores
+□ Sin memory leaks
+□ Assets se cargan eficientemente
+□ Object pooling implementado
+□ Culling de entidades funciona
+```
+
+## Assets Mínimos Requeridos
+```
+PRIORIDAD ALTA (para validar funcionalidad):
+□ 1 spritesheet de Warrior (idle, walk, attack)
+□ 1 spritesheet de enemigo básico (slime)
+□ 1 tileset básico (ground + walls)
+□ 1 mapa de lobby (JSON)
+□ 1 mapa de misión (JSON)
+
+PRIORIDAD MEDIA (para experiencia completa):
+□ Spritesheets de Mage y Archer
+□ Spritesheet de segundo enemigo
+□ 2 mapas adicionales de misiones
+□ Iconos UI (health, skills)
+□ Efectos de partículas básicos
+
+PRIORIDAD BAJA (polish):
+□ Animaciones de muerte elaboradas
+□ Múltiples tilesets
+□ NPCs con animaciones
+□ Background music y SFX
+□ Efectos visuales avanzados

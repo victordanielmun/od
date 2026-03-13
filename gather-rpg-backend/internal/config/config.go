@@ -1,0 +1,62 @@
+package config
+
+import (
+	"log"
+	"os"
+
+	"github.com/joho/godotenv"
+)
+
+type Config struct {
+	ServerPort string
+	Env        string
+
+	DBHost     string
+	DBPort     string
+	DBUser     string
+	DBPassword string
+	DBName     string
+
+	RedisHost     string
+	RedisPort     string
+	RedisPassword string
+
+	JWTSecret     string
+	JWTExpiration string
+}
+
+func LoadConfig() *Config {
+	// Load .env file if it exists
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, relying on environment variables")
+	}
+
+	return &Config{
+		ServerPort: getEnv("SERVER_PORT", "3000"),
+		Env:        getEnv("ENV", "development"),
+
+		DBHost:     getEnv("DB_HOST", "localhost"),
+		DBPort:     getEnv("DB_PORT", "5432"),
+		DBUser:     getEnv("DB_USER", "postgres"),
+		DBPassword: getEnv("DB_PASSWORD", "postgres"),
+		DBName:     getEnv("DB_NAME", "gather_rpg"),
+
+		RedisHost:     getEnv("REDIS_HOST", "localhost"),
+		RedisPort:     getEnv("REDIS_PORT", "6379"),
+		RedisPassword: getEnv("REDIS_PASSWORD", ""),
+
+		JWTSecret:     getEnv("JWT_SECRET", "secret"),
+		JWTExpiration: getEnv("JWT_EXPIRATION", "24h"),
+	}
+}
+
+func getEnv(key, fallback string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return fallback
+}
+
+func (c *Config) GetDBDSN() string {
+	return "host=" + c.DBHost + " user=" + c.DBUser + " password=" + c.DBPassword + " dbname=" + c.DBName + " port=" + c.DBPort + " sslmode=disable TimeZone=UTC"
+}

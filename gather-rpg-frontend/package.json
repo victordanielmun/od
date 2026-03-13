@@ -1,0 +1,46 @@
+{
+  "name": "battle-night-ai-challenge",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview",
+    "test": "vitest run --pool=forks"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "buffer": "^6.0.3",
+    "events": "^3.3.0",
+    "lucide-react": "^0.556.0",
+    "phaser": "^3.90.0",
+    "process": "^0.11.10",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^7.10.1",
+    "simple-peer": "^9.11.1",
+    "util": "^0.12.5",
+    "wavesurfer.js": "^7.12.1",
+    "zustand": "^5.0.9"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^18.2.55",
+    "@types/react-dom": "^18.2.19",
+    "@vitejs/plugin-basic-ssl": "^1.2.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.22",
+    "eslint": "^8.56.0",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "jsdom": "^27.2.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.16",
+    "vite": "^5.1.0",
+    "vitest": "^4.0.15"
+  }
+}

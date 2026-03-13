@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+alembic
+gTTS
+python-multipart
+pydantic
+pydantic-settings
+python-dotenv
+httpx
+aiofiles
+jinja2
+numpy
+passlib[bcrypt]
+python-jose[cryptography]
+metaphone

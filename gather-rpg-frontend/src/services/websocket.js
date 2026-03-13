@@ -1,0 +1,124 @@
+class WebSocketClient {
+    constructor() {
+        this.ws = null;
+        this.url = import.meta.env.VITE_WS_URL || 'ws://localhost:3000/ws';
+        this.listeners = new Map();
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.isConnected = false;
+    }
+
+    connect(token) {
+        if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+            return;
+        }
+
+        let wsUrl = this.url;
+        
+        // Handle relative URL for WebSocket if starting with /
+        if (wsUrl.startsWith('/')) {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            wsUrl = `${protocol}//${window.location.host}${wsUrl}`;
+        }
+        
+        wsUrl = `${wsUrl}?token=${token}`;
+        this.ws = new WebSocket(wsUrl);
+
+        this.ws.onopen = () => {
+            console.log('WebSocket connected');
+            this.isConnected = true;
+            this.reconnectAttempts = 0;
+            this.emit('connection_status', { status: 'connected' });
+        };
+
+        this.ws.onmessage = (event) => {
+            try {
+                // Backend might send multiple newline-separated JSON objects in one frame
+                const messages = event.data.split('\n');
+                messages.forEach(msgStr => {
+                    if (!msgStr.trim()) return;
+                    try {
+                        const message = JSON.parse(msgStr);
+                        this.emit(message.type, message.payload);
+                    } catch (e) {
+                         console.error('Failed to parse individual message:', e, msgStr);
+                    }
+                });
+            } catch (error) {
+                console.error('Failed to process WebSocket event data:', error);
+            }
+        };
+
+        this.ws.onclose = () => {
+            console.log('WebSocket disconnected');
+            this.isConnected = false;
+            this.emit('connection_status', { status: 'disconnected' });
+            this.attemptReconnect(token);
+        };
+
+        this.ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+    }
+
+    attemptReconnect(token) {
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+            console.log(`Attempting reconnect ${this.reconnectAttempts} in ${delay}ms`);
+            setTimeout(() => this.connect(token), delay);
+        }
+    }
+
+    send(type, payload) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ type, payload }));
+        } else {
+            console.warn('WebSocket is not connected. Cannot send message:', type);
+        }
+    }
+
+    on(type, callback) {
+        if (!this.listeners.has(type)) {
+            this.listeners.set(type, new Set());
+        }
+        this.listeners.get(type).add(callback);
+        return () => this.off(type, callback);
+    }
+
+    off(type, callback) {
+        if (this.listeners.has(type)) {
+            this.listeners.get(type).delete(callback);
+        }
+    }
+
+    removeAllListeners() {
+        this.listeners.clear();
+    }
+
+    emit(type, payload) {
+        if (this.listeners.has(type)) {
+            this.listeners.get(type).forEach(callback => callback(payload));
+        }
+    }
+
+    disconnect() {
+        if (this.ws) {
+            this.ws.onclose = null; // Prevent reconnect trigger
+            this.ws.onerror = null; // Prevent error logging if closing while connecting
+            this.ws.close();
+            this.ws = null;
+            this.isConnected = false;
+        }
+    }
+
+    __reset() {
+        this.disconnect();
+        this.removeAllListeners();
+        this.reconnectAttempts = 0;
+        this.isConnected = false;
+    }
+}
+
+export const wsClient = new WebSocketClient();
+export default wsClient;
