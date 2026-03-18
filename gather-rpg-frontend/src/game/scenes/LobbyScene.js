@@ -52,8 +52,13 @@ export class LobbyScene extends Phaser.Scene {
     // Default metadata for newly-placed builds — must match the UI's default (portalType: 'map')
     this.editorBuildMetadata = { portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '' };
 
+    // State management unsubscribers
+    this.unsubscribe = null;
+    this.audioUnsubscribe = null;
+
     // Data passed via scene.restart({ map, spawnX, spawnY })
     this.initData = null;
+    this.isMapLoading = true;
   }
 
   init(data) {
@@ -198,8 +203,9 @@ export class LobbyScene extends Phaser.Scene {
     window.addEventListener('keydown', this._onInteractKeyDown);
 
     // Register proper cleanup for when scene stops or restarts
-    this.events.once('shutdown', this.shutdown, this);
+    this.events.once('shutdown', () => this.shutdown());
     this.events.once('destroy', () => {
+        this.shutdown();
         window.removeEventListener('keydown', this._onInteractKeyDown);
         window.removeEventListener('phaser-camera-zoom', this.onZoomEvent);
         window.removeEventListener('chat-message-received', this.onChatMsg);
@@ -1001,8 +1007,8 @@ export class LobbyScene extends Phaser.Scene {
 
   _setupForestSprite(sprite) {
     // 1. Depth Sorting: Base of the tree
-    // Origin is 0.5, 0.5. Bottom is y + height/2.
-    sprite.setDepth(sprite.y + (sprite.height * 0.5));
+    // Use the mathematical base of the object for depth (accounts for scale/displayHeight)
+    sprite.setDepth(sprite.y + (sprite.displayHeight * 0.5));
 
     // 2. Physics Body: Trunk only
     // We want the collision to be at the bottom center, roughly 40% width and 20% height.
@@ -1036,7 +1042,8 @@ export class LobbyScene extends Phaser.Scene {
 
   _setupBuildSprite(sprite) {
     // ---- 1. Depth sorting ----
-    sprite.setDepth(sprite.y + sprite.displayHeight * 0.5);
+    // Use the mathematical base of the object for depth
+    sprite.setDepth(sprite.y + (sprite.displayHeight * 0.5));
 
     // ---- 2. Physics body ----
     // refreshBody() syncs the StaticBody position to the sprite's current world pos
@@ -1238,6 +1245,7 @@ export class LobbyScene extends Phaser.Scene {
         const frame = w.frame || 'sprite1';
         const s = this.add.image(w.x, w.y, 'terrain', frame);
         s.setDisplaySize(this.GRID_SIZE, this.GRID_SIZE);
+        s.setDepth(-10); // Ensure floor is always below players and objects
         this.floors.add(s);
       });
       (data.forest || []).forEach(w => {
@@ -1430,11 +1438,13 @@ export class LobbyScene extends Phaser.Scene {
       })
       .finally(() => {
         // Create player AFTER map config is resolved so mapDefaultSpawnX/Y are set.
-        // This eliminates the race condition where the player spawned at (1000,750)
-        // because mapDefaultSpawnX/Y weren't populated yet.
+        this.isMapLoading = false;
         if (!this.player) {
+          console.log(`[LobbyScene] Map config resolved. Creating self player at ${this.mapDefaultSpawnX || 'default'}, ${this.mapDefaultSpawnY || 'default'}`);
           this.createMyPlayer();
         }
+        // Force a re-sync of other players now that bounds are correct
+        this.handlePlayersUpdate(useGameStore.getState().players);
       });
   }
 
@@ -1473,7 +1483,8 @@ export class LobbyScene extends Phaser.Scene {
 
   createMyPlayer() {
     const user = useAuthStore.getState().user;
-    this.myPlayerId = user?.id;
+    if (!user?.id) return;
+    this.myPlayerId = String(user.id);
 
     // Spawn point priority:
     //  1. initData (portal teleport with explicit coords)
@@ -1487,7 +1498,7 @@ export class LobbyScene extends Phaser.Scene {
     // Fall back to map default spawn (set by loadMapConfig from map_data.defaultSpawnX/Y)
     if (startX == null || startY == null || isNaN(startX) || isNaN(startY)) {
       startX = this.mapDefaultSpawnX ?? 1000;
-      startY = this.mapDefaultSpawnY ?? 750;
+      startY = this.mapDefaultSpawnY ?? 350;
     }
 
     // Reject spawn if it lands on a void tile or any static collider body
@@ -1521,6 +1532,7 @@ export class LobbyScene extends Phaser.Scene {
       true
     );
 
+    console.log(`[LobbyScene] Created self PlayerSprite (ID: ${this.myPlayerId}) at (${startX}, ${startY})`);
     this.add.existing(this.player);
 
     // Add collision with walls and forest
@@ -1541,6 +1553,10 @@ export class LobbyScene extends Phaser.Scene {
 
     // Camera follow (Round pixels = true, lerp = 0.1 for smooth)
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+
+    // Initial network sync: Broadcast our exact starting position immediately
+    console.log(`[LobbyScene] Broadcasting initial spawn position: (${startX}, ${startY})`);
+    useGameStore.getState().movePlayer(startX, startY, 'right', 'idle');
   }
 
   getRandomClass() {
@@ -1549,7 +1565,7 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   handlePlayersUpdate(players) {
-    if (!players) return;
+    if (!players || this.isMapLoading) return;
 
     // Ensure myPlayerId is set, always as a string
     const currentUser = useAuthStore.getState().user;
@@ -1559,6 +1575,16 @@ export class LobbyScene extends Phaser.Scene {
     const myIdStr = this.myPlayerId ? String(this.myPlayerId) : null;
     const currentUserIdStr = currentUser?.id ? String(currentUser.id) : null;
 
+    // CRITICAL FIX: Ensure NO sprite exists for the current user in the 'remote' characters map.
+    // This handles cases where login state might have been delayed or changed.
+    if (myIdStr && this.playerSprites.has(myIdStr)) {
+      console.log(`[LobbyScene] Cleaning up accidental duplicate of self (${myIdStr})`);
+      this.removeOtherPlayer(myIdStr);
+    }
+    if (currentUserIdStr && currentUserIdStr !== myIdStr && this.playerSprites.has(currentUserIdStr)) {
+      this.removeOtherPlayer(currentUserIdStr);
+    }
+
     // Add new / update existing remote players
     players.forEach((player, id) => {
       const strId = String(id);
@@ -1566,12 +1592,8 @@ export class LobbyScene extends Phaser.Scene {
       // CANVAS-LEVEL guard: never create a sprite for ourselves
       const isMe = (myIdStr && strId === myIdStr) || (currentUserIdStr && strId === currentUserIdStr);
       if (isMe) {
-        // Only teleport self if significantly off (portal jump)
-        if (this.player && (Math.abs(this.player.x - player.x) > 50 || Math.abs(this.player.y - player.y) > 50)) {
-          console.log("[LobbyScene] Teleporting self to match store:", player.x, player.y);
-          this.player.setPosition(player.x, player.y);
-        }
-        return;
+          // REMOVED: self-teleport logic that fighting with local physics body position
+          return;
       }
 
       if (!this.playerSprites.has(strId)) {
@@ -1596,9 +1618,9 @@ export class LobbyScene extends Phaser.Scene {
     let y = Number(player.y);
 
     if (isNaN(x)) x = 1000;
-    if (isNaN(y)) y = 1300;
+    if (isNaN(y)) y = 350;
 
-    console.log(`[LobbyScene] Creating sprite for ${id} (${player.username}) at ${x}, ${y}`);
+    console.log(`[LobbyScene] Adding remote player sprite: ${player.username} (ID: ${id}) at (${x}, ${y})`);
 
     const newPlayer = new PlayerSprite(
       this,
@@ -1619,6 +1641,7 @@ export class LobbyScene extends Phaser.Scene {
   updateOtherPlayer(id, player) {
     const sprite = this.playerSprites.get(id); // This is now a PlayerSprite instance
     if (sprite) {
+      // console.log(`[LobbyScene] Updating player ${id}:`, player);
 
       if (typeof player.x !== 'number' || typeof player.y !== 'number' || isNaN(player.x) || isNaN(player.y)) {
         return;
@@ -1632,21 +1655,26 @@ export class LobbyScene extends Phaser.Scene {
       sprite.targetX = player.x;
       sprite.targetY = player.y;
 
+      console.log(`[LobbyScene] Updating remote player ${sprite.username} (ID: ${id}) to (${player.x.toFixed(1)}, ${player.y.toFixed(1)}) | Anim: ${player.anim || 'default'} | Visible: ${sprite.visible} | Depth: ${sprite.depth.toFixed(1)}`);
+
+      if (sprite.alpha < 0.1 || !sprite.visible) {
+          console.warn(`[LobbyScene] WARNING: Player ${sprite.username} (ID: ${id}) is not fully visible! Alpha: ${sprite.alpha}, Visible: ${sprite.visible}`);
+          sprite.setAlpha(1);
+          sprite.setVisible(true);
+      }
+
       // Calculate velocity for animation
       const dx = player.x - sprite.x;
       const dy = player.y - sprite.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
-      // Update animation state: Prefer network 'anim' if provided, otherwise infer from velocity
-      if (player.anim) {
-        sprite.playAnimation(player.anim);
+      // Update animation state: 
+      // Robust Animation Logic: Only use 'idle' if we are actually close to the target.
+      // Reduced threshold from 10 to 2 for better accuracy.
+      if (player.anim === 'walk' || dist > 2) {
+          sprite.playAnimation('walk');
       } else {
-        const velocity = new Phaser.Math.Vector2(dx, dy);
-        if (dist > 2) {
-          sprite.updateMovement(velocity);
-        } else {
-          sprite.updateMovement(new Phaser.Math.Vector2(0, 0));
-        }
+          sprite.playAnimation('idle');
       }
 
       // Apply direction (flip) received from network
@@ -1656,9 +1684,42 @@ export class LobbyScene extends Phaser.Scene {
         sprite.sprite.setFlipX(false);
       }
 
+      // Check if character_id has changed
+      if (player.character_id && sprite.characterId !== player.character_id) {
+          console.log(`[LobbyScene] Player ${id} changed character to ${player.character_id}. Updating sprite...`);
+          sprite.characterId = player.character_id;
+          sprite.updateSpriteTexture(player.character_id);
+      }
+
+      // Adaptive Timing: Calculate duration based on the actual time between packets
+      let duration = 150; // Default fallback
+      const pTime = Number(player.timestamp);
+      const sTime = Number(sprite.lastTimestamp);
+
+      if (!isNaN(pTime) && !isNaN(sTime)) {
+          duration = pTime - sTime;
+          // Clamp duration to avoid weird jumps (min 50ms for performance, max 500ms for responsiveness)
+          duration = Math.max(50, Math.min(500, duration));
+      }
+      
+      // Safety Backstop: If duration is STILL NaN, use fallback
+      if (isNaN(duration)) {
+          duration = 150;
+      }
+      sprite.lastTimestamp = !isNaN(pTime) ? pTime : Date.now();
+
+      // Panic Recovery: If sprite position has somehow become NaN, teleport immediately
+      if (isNaN(sprite.x) || isNaN(sprite.y)) {
+          console.error(`[LobbyScene] Player ${sprite.username} had NaN position! Recovering to (${player.x}, ${player.y})`);
+          sprite.setPosition(player.x, player.y);
+          this.tweens.killTweensOf(sprite);
+          return;
+      }
+
       // Distance check for teleport vs tween
-      if (dist > 200) {
+      if (dist > 300) {
         // Teleport if too far
+        console.log(`[LobbyScene] Teleporting player ${id} to (${player.x}, ${player.y}) - Distance: ${dist.toFixed(2)}`);
         sprite.setPosition(player.x, player.y);
         this.tweens.killTweensOf(sprite); // Stop any existing tweens
       } else {
@@ -1669,17 +1730,24 @@ export class LobbyScene extends Phaser.Scene {
           targets: sprite,
           x: player.x,
           y: player.y,
-          duration: 100
+          duration: duration,
+          onComplete: () => {
+              // Once target is reached, if the network says idle, ensure we stop walking
+              if (player.anim === 'idle') {
+                  sprite.playAnimation('idle');
+              }
+          }
         });
       }
     } else {
-      console.warn(`[LobbyScene] updateOtherPlayer called for missing sprite: ${id}`);
+      // console.warn(`[LobbyScene] updateOtherPlayer called for missing sprite: ${id}`);
     }
   }
 
   removeOtherPlayer(id) {
     const sprite = this.playerSprites.get(id);
     if (sprite) {
+      console.log(`[LobbyScene] Removing player sprite: ${sprite.username} (ID: ${id})`);
       sprite.destroy();
       this.playerSprites.delete(id);
     }
@@ -1768,6 +1836,20 @@ export class LobbyScene extends Phaser.Scene {
       // Proactively reconcile sprites without assuming 'self' is always in the store initially
       this.handlePlayersUpdate(storePlayers);
       this.lastSyncUpdate = time;
+    }
+
+    // Diagnostic Watchdog for Admin (ID: 080d7054-0a5b-42c9-b68c-f4f716a48b48)
+    if (!this._watchdogCounter) this._watchdogCounter = 0;
+    this._watchdogCounter++;
+    if (this._watchdogCounter % 60 === 0) { // Every ~1 second at 60fps
+        const adminId = '080d7054-0a5b-42c9-b68c-f4f716a48b48';
+        const admin = this.playerSprites.get(adminId);
+        if (admin) {
+            const cam = this.cameras.main;
+            const isInsideCam = (admin.x > cam.worldView.x && admin.x < cam.worldView.right && 
+                               admin.y > cam.worldView.y && admin.y < cam.worldView.bottom);
+            console.log(`[Watchdog] Admin: Pos(${admin.x.toFixed(1)}, ${admin.y.toFixed(1)}), Visible=${admin.visible}, Alpha=${admin.alpha.toFixed(1)}, Depth=${admin.depth.toFixed(1)}, InView=${isInsideCam}`);
+        }
     }
 
 
@@ -1866,43 +1948,7 @@ export class LobbyScene extends Phaser.Scene {
     this.updateCameraBounds();
   }
 
-  shutdown() {
-    if (this.unsubscribe) {
-      this.unsubscribe();
-    }
-    if (this._onInteractKeyDown) {
-      window.removeEventListener('keydown', this._onInteractKeyDown);
-      this._onInteractKeyDown = null;
-    }
-    if (this.onChatMsg) {
-      window.removeEventListener('chat-message-received', this.onChatMsg);
-    }
-    if (this.onResize) {
-      this.scale.off('resize', this.onResize);
-      this.onResize = null;
-    }
-    if (this.onZoomEvent) {
-      window.removeEventListener('phaser-camera-zoom', this.onZoomEvent);
-      this.onZoomEvent = null;
-    }
-    if (this.onEditorEvent) {
-      window.removeEventListener('editor-command', this.onEditorEvent);
-      this.onEditorEvent = null;
-    }
-    if (this.player) {
-      this.player.destroy();
-      this.player = null;
-    }
-
-    // Explicitly destroy all remote player sprites
-    if (this.playerSprites) {
-      this.playerSprites.forEach((sprite, id) => {
-        console.log(`[LobbyScene] Destroying ghost sprite for ${id} on shutdown`);
-        sprite.destroy();
-      });
-      this.playerSprites.clear();
-    }
-  }
+  // DELETED DUPLICATE shutdown() here to consolidate at end of file
 
   processSyncInteractions() {
     if (!this._readyInteractions) return;
@@ -2151,6 +2197,64 @@ export class LobbyScene extends Phaser.Scene {
       window.dispatchEvent(new CustomEvent('lobby-change-map', {
         detail: { targetMap, targetX, targetY, pin: '' },
       }));
+    }
+  }
+
+  shutdown() {
+    console.log('[LobbyScene] Shutting down scene...');
+    
+    if (this.unsubscribe) {
+      this.unsubscribe();
+      this.unsubscribe = null;
+    }
+    if (this.audioUnsubscribe) {
+      this.audioUnsubscribe();
+      this.audioUnsubscribe = null;
+    }
+    
+    // Clean up window listeners
+    if (this._onInteractKeyDown) {
+      window.removeEventListener('keydown', this._onInteractKeyDown);
+      this._onInteractKeyDown = null;
+    }
+    if (this.onChatMsg) {
+      window.removeEventListener('chat-message-received', this.onChatMsg);
+      this.onChatMsg = null;
+    }
+    if (this.onEmojiMsg) {
+      window.removeEventListener('player-emoji-received', this.onEmojiMsg);
+      this.onEmojiMsg = null;
+    }
+    if (this.onResize) {
+      this.scale.off('resize', this.onResize);
+      this.onResize = null;
+    }
+    if (this.onZoomEvent) {
+      window.removeEventListener('phaser-camera-zoom', this.onZoomEvent);
+      this.onZoomEvent = null;
+    }
+    if (this.onEditorEvent) {
+      window.removeEventListener('editor-command', this.onEditorEvent);
+      this.onEditorEvent = null;
+    }
+
+    // Clean up BGM 
+    if (this.currentBgm) {
+      this.currentBgm.stop();
+      this.currentBgm = null;
+    }
+
+    // Clear sprites
+    if (this.player) {
+      this.player.destroy();
+      this.player = null;
+    }
+    if (this.playerSprites) {
+      this.playerSprites.forEach((sprite, id) => {
+        console.log(`[LobbyScene] Destroying ghost sprite for ${id} on shutdown`);
+        sprite.destroy();
+      });
+      this.playerSprites.clear();
     }
   }
 

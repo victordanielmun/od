@@ -223,7 +223,7 @@ func (h *Hub) HandleMessage(client *Client, message []byte) {
 		h.handlePlayerMove(client, payload)
 
 	case MsgReqPositions:
-		h.handleRequestPositions(client)
+		h.handleRequestPositions(client, nil, nil)
 
 	case MsgRequestMapJoin: // New event
 		var payload struct {
@@ -790,9 +790,18 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 	client.RoomID = roomID
 	room.AddClient(client)
 
-	// Set Initial Position
+	// Fetch CharacterID from DB if not already set
+	if client.CharacterID == "" {
+		dbUser, err := h.PresenceService.GetByID(client.ID)
+		if err == nil && dbUser != nil {
+			client.CharacterID = dbUser.CharacterID
+		} else {
+			client.CharacterID = "1" // Fallback
+		}
+	}
+
 	// Priority: 1) explicit portal coordinates, 2) last known Redis position, 3) hardcoded default
-	x, y := 1000.0, 1300.0
+	x, y := 1000.0, 350.0
 	if payload.X != nil && payload.Y != nil {
 		x = *payload.X
 		y = *payload.Y
@@ -813,7 +822,7 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 
 	// Update Redis with current position
 	redisPos := models.RedisPosition{
-		X: x, Y: y, Direction: "down", IsMoving: false, Anim: "idle", Username: client.Username,
+		X: x, Y: y, Direction: "down", IsMoving: false, Anim: "idle", Username: client.Username, CharacterID: client.CharacterID,
 	}
 	if err := h.MovementService.UpdateRedisPosition(context.Background(), roomID, client.ID.String(), redisPos); err != nil {
 		log.Printf("Failed to update initial redis position: %v", err)
@@ -827,13 +836,25 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 		},
 	})
 
-	log.Printf("User %s joined room %s at (%.0f, %.0f).", client.ID, roomID, x, y)
+	log.Printf("User %s joined room %s at (%.0f, %.0f) with character %s.", client.ID, roomID, x, y, client.CharacterID)
 
-	// Send Initial Snapshot
-	h.handleRequestPositions(client)
+	// Send Initial Snapshot - we can now accurately tell where we are
+	h.handleRequestPositions(client, &x, &y)
 
-	// Notify nearby peers of this player's position
-	h.broadcastPositionUpdate(room, client.ID.String(), x, y, "down", "idle", false, client.Username)
+	// Notify nearby peers of this player's presence with full details immediately
+	msg := &models.WSMessage{
+		Type: MsgPlayerJoined,
+		Payload: map[string]interface{}{
+			"id":           client.ID,
+			"username":     client.Username,
+			"character_id": client.CharacterID,
+			"x":            x,
+			"y":            y,
+			"direction":    "down",
+			"anim":         "idle",
+		},
+	}
+	h.broadcastToRoomSimple(room, msg)
 }
 
 func (h *Hub) handlePlayerMove(client *Client, payload models.PlayerMovePayload) {
@@ -868,13 +889,19 @@ func (h *Hub) handlePlayerMove(client *Client, payload models.PlayerMovePayload)
 	room.Grid.UpdateUserPosition(client.ID.String(), payload.X, payload.Y)
 
 	// Update Redis
+	ts := payload.Timestamp
+	if ts == 0 {
+		ts = time.Now().UnixMilli()
+	}
 	redisPos := models.RedisPosition{
-		X:         payload.X,
-		Y:         payload.Y,
-		Direction: payload.Direction,
-		IsMoving:  payload.IsMoving,
-		Anim:      payload.Anim,
-		Username:  client.Username,
+		X:           payload.X,
+		Y:           payload.Y,
+		Direction:   payload.Direction,
+		IsMoving:    payload.IsMoving,
+		Anim:        payload.Anim,
+		Username:    client.Username,
+		CharacterID: client.CharacterID,
+		Timestamp:   ts,
 	}
 	go h.MovementService.UpdateRedisPosition(context.Background(), roomID, client.ID.String(), redisPos)
 
@@ -887,12 +914,7 @@ func (h *Hub) handlePlayerMove(client *Client, payload models.PlayerMovePayload)
 	h.updatesMu.Unlock()
 
 	// Trigger immediate proximity check if cell changed (or simply every move for now)
-	// Optimization: Only if moved enough?
-	// Spec: "Si cambió de celda en spatial grid -> Trigger verificación inmediata"
-	// We can check Grid change.
-	// But we don't have return from Grid update telling us if cell changed.
-	// We can assume moving users need check.
-	// Let's run a check for this user specifically.
+	log.Printf("[Hub] User %s moving in room %s to (%.0f, %.0f)", client.ID, roomID, payload.X, payload.Y)
 	go h.checkUserProximity(roomID, client.ID.String(), payload.X, payload.Y)
 }
 
@@ -919,14 +941,37 @@ func (h *Hub) broadcastLoop() {
 				continue
 			}
 
+			batch := make([]models.PlayerMovedBroadcast, 0, len(userUpdates))
 			for userID, pos := range userUpdates {
-				h.broadcastPositionUpdate(room, userID, pos.X, pos.Y, pos.Direction, pos.Anim, pos.IsMoving, pos.Username)
+				batch = append(batch, models.PlayerMovedBroadcast{
+					UserID:    uuid.MustParse(userID),
+					RoomID:    roomID,
+					X:         pos.X,
+					Y:         pos.Y,
+					Direction: pos.Direction,
+					Anim:        pos.Anim,
+					IsMoving:    pos.IsMoving,
+					Username:    pos.Username,
+					CharacterID: pos.CharacterID,
+					Timestamp:   pos.Timestamp,
+				})
 			}
+
+				if len(batch) > 0 {
+					log.Printf("[Hub] Broadcasting update for %d players in room %s", len(batch), roomID)
+					msg := &models.WSMessage{
+						Type: MsgPositionsUpdate,
+						Payload: map[string]interface{}{
+							"positions": batch,
+						},
+					}
+					h.broadcastToRoomSimple(room, msg)
+				}
 		}
 	}
 }
 
-func (h *Hub) handleRequestPositions(client *Client) {
+func (h *Hub) handleRequestPositions(client *Client, forceX, forceY *float64) {
 	roomID := client.RoomID
 	if roomID == "" {
 		log.Printf("handleRequestPositions ignored: client %s has no room", client.ID)
@@ -940,24 +985,21 @@ func (h *Hub) handleRequestPositions(client *Client) {
 		return
 	}
 
-	// We need client's current pos to find nearby.
-	// Redis might have it, or Grid doesn't store coords, just keys.
-	// Wait, Grid stores cells, but doesn't store X/Y.
-	// We need to fetch X/Y from Redis for the client first?
-	// Or client sends X/Y in request?
-	// Spec says "request_positions Payload: {}".
-	// So we rely on Redis.
-
-	// 1. Get user's position from Redis
-	positions, err := h.MovementService.GetPositionsBatch(context.Background(), roomID, []string{client.ID.String()})
-	if err != nil || len(positions) == 0 {
-		log.Printf("handleRequestPositions: failed to get position for user %s: %v", client.ID, err)
-		return
+	var x, y float64
+	if forceX != nil && forceY != nil {
+		x, y = *forceX, *forceY
+	} else {
+		// 1. Get user's position from Redis
+		positions, err := h.MovementService.GetPositionsBatch(context.Background(), roomID, []string{client.ID.String()})
+		if err != nil || len(positions) == 0 {
+			log.Printf("handleRequestPositions: failed to get position for user %s: %v", client.ID, err)
+			return
+		}
+		x, y = positions[0].X, positions[0].Y
 	}
-	userPos := positions[0]
 
 	// 2. Find nearby users from Grid, then EXCLUDE self to prevent self-ghost
-	allNearbyIDs := room.Grid.GetNearbyUsers(userPos.X, userPos.Y)
+	allNearbyIDs := room.Grid.GetNearbyUsers(x, y)
 	nearbyIDs := make([]string, 0, len(allNearbyIDs))
 	for _, id := range allNearbyIDs {
 		if id != client.ID.String() {
@@ -965,7 +1007,7 @@ func (h *Hub) handleRequestPositions(client *Client) {
 		}
 	}
 	log.Printf("handleRequestPositions: user %s at (%.0f, %.0f) has %d nearby peers (excl. self)",
-		client.ID, userPos.X, userPos.Y, len(nearbyIDs))
+		client.ID, x, y, len(nearbyIDs))
 
 	// 3. Fetch their positions from Redis
 	nearbyPositions, err := h.MovementService.GetPositionsBatch(context.Background(), roomID, nearbyIDs)
@@ -985,7 +1027,7 @@ func (h *Hub) handleRequestPositions(client *Client) {
 	})
 }
 
-func (h *Hub) broadcastPositionUpdate(room *Room, userID string, x, y float64, dir string, anim string, moving bool, username string) {
+func (h *Hub) broadcastPositionUpdate(room *Room, userID string, x, y float64, dir string, anim string, moving bool, username string, characterID string) {
 	broadcastsTotal.Inc()
 	// 1. Find who needs to know (neighbors)
 	nearbyIDs := room.Grid.GetNearbyUsers(x, y)
@@ -999,9 +1041,10 @@ func (h *Hub) broadcastPositionUpdate(room *Room, userID string, x, y float64, d
 			X:         x,
 			Y:         y,
 			Direction: dir,
-			Anim:      anim,
-			IsMoving:  moving,
-			Username:  username,
+			Anim:        anim,
+			IsMoving:    moving,
+			Username:    username,
+			CharacterID: characterID,
 		},
 	}
 
@@ -1098,7 +1141,25 @@ func (h *Hub) checkRoomExpiration(room *Room, users []string) {
 
 	for _, uid := range users {
 		if !found[uid] {
-			// Expired from Redis -> Remove from Grid
+			// Redis position expired. 
+			// Check if the user is still connected to the room.
+			// If they are connected, we keep them in the grid (stationary).
+			room.mu.RLock()
+			isConnected := false
+			for client := range room.Clients {
+				if client.ID.String() == uid {
+					isConnected = true
+					break
+				}
+			}
+			room.mu.RUnlock()
+
+			if isConnected {
+				// User is still here, just stationary. Do not remove.
+				continue
+			}
+
+			// Expired from Redis AND not connected -> Remove from Grid
 			room.Grid.RemoveUser(uid)
 
 			uUUID, err := uuid.Parse(uid)
@@ -1481,9 +1542,11 @@ func generatePIN() string {
 func (h *Hub) handleRequestMapJoin(client *Client, sceneKey, roomType, inviteCode string) {
 	log.Printf("[Hub] handleRequestMapJoin: User %s requesting %s (hint=%s, pin=%q)",
 		client.ID, sceneKey, roomType, inviteCode)
-
-	// 1. Fetch map metadata from DB to get authoritative is_public + max_users
-	mapCfg, err := h.RoomService.GetMapConfig(sceneKey)
+	var mapCfg *models.MapConfig
+	var err error
+	if h.RoomService != nil {
+		mapCfg, err = h.RoomService.GetMapConfig(sceneKey)
+	}
 	isPublic := true // Default: treat unknown maps as public
 	maxUsers := 50   // Default instance size
 

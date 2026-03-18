@@ -34,20 +34,39 @@ export const useGameStore = create((set, get) => ({
 
                 wsClient.on('init_state', (state) => {
                     // Handle initial state (players, etc.)
-                    console.log("Init state:", state);
+                    console.log("[gameStore] Received init_state:", state);
                     const playersMap = new Map();
                     if (state.players) {
-                        state.players.forEach(p => playersMap.set(p.id, { ...p, id: String(p.id) }));
+                        state.players.forEach(p => {
+                            const id = String(p.id);
+                            console.log(`[gameStore] Initial player: ${p.username} (ID: ${id}) at (${p.x}, ${p.y})`);
+                            playersMap.set(id, { ...p, id });
+                        });
                     }
                     set({ players: playersMap });
                 });
 
                 wsClient.on('player_joined', (player) => {
-                    console.log("Player joined event:", player);
+                    // Notify other users
+                    const myId = String(useAuthStore.getState().user?.id || '');
+                    const id = String(player.id);
+                    
+                    if (myId && id === myId) {
+                        return; // Ignore self-join in players map
+                    }
+
+                    console.log(`[gameStore] Remote player joined: ${player.username} (ID: ${id}) at (${player.x}, ${player.y})`);
+
+                    // Notify only about OTHER users
+                    useNotificationStore.getState().addNotification('info', `¡${player.username} se ha unido!`);
+
                     set(state => {
                         const newPlayers = new Map(state.players);
-                        const id = String(player.id); // Ensure string ID
-                        newPlayers.set(id, { ...player, id });
+                        newPlayers.set(id, { 
+                            ...player, 
+                            id,
+                            character_id: player.character_id || '1'
+                        });
                         return { players: newPlayers };
                     });
                 });
@@ -74,6 +93,8 @@ export const useGameStore = create((set, get) => ({
 
                 wsClient.on('positions_snapshot', ({ positions }) => {
                     const myId = String(useAuthStore.getState().user?.id || '');
+                    console.log(`[gameStore] Received positions_snapshot for ${positions?.length || 0} players`);
+                    
                     set(state => {
                         const newPlayers = new Map(state.players);
                         if (positions && Array.isArray(positions)) {
@@ -89,15 +110,25 @@ export const useGameStore = create((set, get) => ({
 
                                 const existing = newPlayers.get(id);
                                 if (existing) {
-                                    newPlayers.set(id, { ...existing, x, y, anim: pos.anim || 'idle', direction: pos.direction || existing.direction });
+                                    newPlayers.set(id, { 
+                                        ...existing, 
+                                        x, 
+                                        y, 
+                                        anim: pos.anim || 'idle', 
+                                        direction: pos.direction || existing.direction,
+                                        character_id: pos.character_id || existing.character_id || '1'
+                                    });
                                 } else {
+                                    console.log(`[gameStore] Adding new player from snapshot: ${pos.username} (ID: ${id}) at (${x}, ${y})`);
                                     newPlayers.set(id, {
                                         id,
                                         username: pos.username || 'Unknown',
                                         x,
                                         y,
                                         anim: pos.anim || 'idle',
-                                        direction: pos.direction || 'right'
+                                        direction: pos.direction || 'right',
+                                        character_id: pos.character_id || '1',
+                                        timestamp: pos.timestamp || Date.now()
                                     });
                                 }
                             });
@@ -110,6 +141,7 @@ export const useGameStore = create((set, get) => ({
                     // Backend sends: { user_id: UUID, room_id: string }
                     const targetId = String(payload?.user_id || payload?.id || '');
                     if (!targetId) return;
+                    console.log(`[gameStore] User left: ID ${targetId}`);
                     set(state => {
                         const newPlayers = new Map(state.players);
                         newPlayers.delete(targetId);
@@ -119,39 +151,94 @@ export const useGameStore = create((set, get) => ({
 
                 // Updated event name to match backend "position_update"
                 wsClient.on('position_update', (payload) => {
-                    // Backend sends: user_id, x, y, username, direction, anim, is_moving
                     const { user_id, x, y, username } = payload;
-                    const id = String(user_id); // Normalize to string id
-
-                    // CRITICAL: never update own player from network (ghost guard)
+                    const id = String(user_id);
                     const myId = String(useAuthStore.getState().user?.id || '');
                     if (myId && id === myId) return;
-
-                    const numX = Number(x);
-                    const numY = Number(y);
 
                     set(state => {
                         const newPlayers = new Map(state.players);
                         const player = newPlayers.get(id);
                         if (player) {
+                            console.log(`[gameStore] Position update for ${player.username} (ID: ${id}): (${Number(x).toFixed(1)}, ${Number(y).toFixed(1)}) | State: ${payload.anim || player.anim} | Dir: ${payload.direction || player.direction}`);
                             newPlayers.set(id, { 
                                 ...player, 
-                                x: numX, 
-                                y: numY, 
+                                x: Number(x), 
+                                y: Number(y), 
                                 anim: payload.anim || player.anim,
-                                direction: payload.direction || player.direction
+                                direction: payload.direction || player.direction,
+                                character_id: payload.character_id || player.character_id || '1'
                             });
                         } else {
+                            console.log(`[gameStore] Position update for NEW player ${username || payload.username || 'Unknown'} (ID: ${id}): (${Number(x).toFixed(1)}, ${Number(y).toFixed(1)})`);
                             newPlayers.set(id, {
                                 id,
-                                username: username || 'Unknown',
-                                x: numX,
-                                y: numY,
+                                username: username || payload.username || 'Unknown',
+                                x: Number(x),
+                                y: Number(y),
                                 anim: payload.anim || 'idle',
-                                direction: payload.direction || 'right'
+                                direction: payload.direction || 'right',
+                                character_id: payload.character_id || '1'
                             });
                         }
                         return { players: newPlayers };
+                    });
+                });
+
+                wsClient.on('positions_update', (payload) => {
+                    // payload is { positions: [ {user_id, x, y, ...}, ... ] }
+                    const updates = payload.positions;
+                    if (!updates || !Array.isArray(updates)) return;
+                    
+                    console.log(`[gameStore] Received batched update for ${updates.length} players`);
+
+                    const myId = String(useAuthStore.getState().user?.id || '');
+
+                    set(state => {
+                        const newPlayers = new Map(state.players);
+                        let changed = false;
+
+                        updates.forEach(pos => {
+                            const id = String(pos.user_id);
+                            if (myId && id === myId) {
+                                return;
+                            }
+
+                            const existing = newPlayers.get(id);
+                            const name = existing ? existing.username : (pos.username || 'Unknown');
+                            // Log only every 5th update for each player to reduce spam while moving
+                            if (!existing || (existing.__logCounter || 0) % 5 === 0) {
+                                console.log(`[gameStore] Batched update for ${name} (ID: ${id}): (${Number(pos.x).toFixed(1)}, ${Number(pos.y).toFixed(1)}) | State: ${pos.anim || (existing ? existing.anim : 'idle')} | Dir: ${pos.direction || (existing ? existing.direction : 'right')}`);
+                            }
+                            const logCounter = ((existing ? existing.__logCounter : 0) || 0) + 1;
+
+                            if (existing) {
+                                newPlayers.set(id, {
+                                    ...existing,
+                                    x: Number(pos.x),
+                                    y: Number(pos.y),
+                                    anim: pos.anim || existing.anim,
+                                    direction: pos.direction || existing.direction,
+                                    character_id: pos.character_id || existing.character_id,
+                                    timestamp: Number(pos.timestamp || Date.now()),
+                                    __logCounter: logCounter
+                                });
+                            } else {
+                                newPlayers.set(id, {
+                                    id,
+                                    username: pos.username || 'Unknown',
+                                    x: Number(pos.x),
+                                    y: Number(pos.y),
+                                    anim: pos.anim || 'idle',
+                                    direction: pos.direction || 'right',
+                                    character_id: pos.character_id || '1',
+                                    timestamp: pos.timestamp || Date.now()
+                                });
+                            }
+                            changed = true;
+                        });
+
+                        return changed ? { players: newPlayers } : state;
                     });
                 });
 
@@ -237,6 +324,7 @@ export const useGameStore = create((set, get) => ({
                 });
 
                 wsClient.on('challenge_chat_broadcast', (payload) => {
+                    console.log(`[gameStore] Challenge chat from ${payload.username}: ${payload.message}`);
                     set(state => ({
                         challengeMessages: [
                             ...state.challengeMessages,
@@ -370,7 +458,9 @@ export const useGameStore = create((set, get) => ({
     },
 
     movePlayer: (x, y, direction = 'right', anim = 'idle') => {
-        wsClient.send('update_position', { x, y, direction, anim, is_moving: anim !== 'idle' });
+        const timestamp = Date.now();
+        console.log(`[gameStore] Sending update_position (self): (${x.toFixed(1)}, ${y.toFixed(1)}) | State: ${anim} | Dir: ${direction}`);
+        wsClient.send('update_position', { x, y, direction, anim, is_moving: anim !== 'idle', timestamp });
 
         // Optimistic update for self
         set(state => {
@@ -386,7 +476,7 @@ export const useGameStore = create((set, get) => ({
             const myPlayer = newPlayers.get(userId);
 
             if (myPlayer) {
-                newPlayers.set(userId, { ...myPlayer, x, y, direction, anim });
+                newPlayers.set(userId, { ...myPlayer, x, y, direction, anim, timestamp });
                 return { players: newPlayers };
             } else {
                 newPlayers.set(userId, {
@@ -395,7 +485,8 @@ export const useGameStore = create((set, get) => ({
                     x,
                     y,
                     anim,
-                    direction
+                    direction,
+                    timestamp
                 });
                 return { players: newPlayers };
             }

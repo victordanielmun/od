@@ -33,6 +33,7 @@ type PlayerMovePayload struct {
 	Direction string  `json:"direction"` // "up", "down", "left", "right"
 	Anim      string  `json:"anim"`      // "idle", "walk"
 	IsMoving  bool    `json:"is_moving"`
+	Timestamp int64   `json:"timestamp,omitempty"`
 }
 
 type ChatRequestPayload struct {
@@ -59,12 +60,14 @@ type RoomJoinedPayload struct {
 
 // UserPosition is used in snapshots/participants list
 type UserPosition struct {
-	UserID    string  `json:"user_id"`
-	X         float64 `json:"x"`
-	Y         float64 `json:"y"`
-	Direction string  `json:"direction"`
-	Anim      string  `json:"anim"`
-	Username  string  `json:"username"`
+	UserID      string  `json:"user_id"`
+	X           float64 `json:"x"`
+	Y           float64 `json:"y"`
+	Direction   string  `json:"direction"`
+	Anim        string  `json:"anim"`
+	Username    string  `json:"username"`
+	CharacterID string  `json:"character_id"`
+	Timestamp   int64   `json:"timestamp,omitempty"`
 }
 
 type ChatMessageBroadcast struct {
@@ -89,14 +92,16 @@ type UserLeftBroadcast struct {
 }
 
 type PlayerMovedBroadcast struct {
-	UserID    uuid.UUID `json:"user_id"`
-	RoomID    string    `json:"room_id"`
-	X         float64   `json:"x"`
-	Y         float64   `json:"y"`
-	Direction string    `json:"direction"`
-	Anim      string    `json:"anim"`
-	IsMoving  bool      `json:"is_moving"`
-	Username  string    `json:"username"`
+	UserID      uuid.UUID `json:"user_id"`
+	RoomID      string    `json:"room_id"`
+	X           float64   `json:"x"`
+	Y           float64   `json:"y"`
+	Direction   string    `json:"direction"`
+	Anim        string    `json:"anim"`
+	IsMoving    bool      `json:"is_moving"`
+	Username    string    `json:"username"`
+	CharacterID string    `json:"character_id"`
+	Timestamp   int64     `json:"timestamp,omitempty"`
 }
 
 type JoinChallengePayload struct {

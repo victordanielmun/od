@@ -77,7 +77,7 @@ func TestHandleRequestPositions(t *testing.T) {
 	assert.NoError(t, err2)
 
 	// Test: Client 1 requests positions
-	hub.handleRequestPositions(client1)
+	hub.handleRequestPositions(client1, nil, nil)
 
 	// Verify response
 	select {
@@ -95,7 +95,7 @@ func TestHandleRequestPositions(t *testing.T) {
 		positionsList, ok := positionsRaw.([]interface{})
 		assert.True(t, ok)
 
-		assert.Equal(t, 2, len(positionsList), "Should receive 2 positions")
+		assert.Equal(t, 1, len(positionsList), "Should receive 1 position (excluding self)")
 
 		// Optional: Print positions to debug
 		// for _, p := range positionsList {

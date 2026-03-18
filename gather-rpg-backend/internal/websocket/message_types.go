@@ -11,10 +11,11 @@ const (
 	MsgMapJoinApproved = "map_join_approved" // New
 
 	MsgRoomJoined        = "room_joined"
-	MsgUserJoined        = "user_joined"
+	MsgPlayerJoined      = "player_joined"
 	MsgUserLeft          = "user_left"
 	MsgChatBroadcast     = "chat_broadcast"
 	MsgPlayerMoved       = "position_update" // Changed from "player_moved"
+	MsgPositionsUpdate   = "positions_update" // Plural for batching
 	MsgPositionsSnap     = "positions_snapshot"
 	MsgUserOutOfRange    = "user_out_of_range"
 	MsgCharacterSelected = "character_selected" // New

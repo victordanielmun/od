@@ -19,8 +19,11 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
     // We import config to check scale if needed, or assume caller handled texture key
     // For now keeping hardcoded fallback or read from config if we imported it.
     // Ideally pass scale in constructor or read global config.
-    this.sprite.setScale(1.0);
     this.sprite.setOrigin(0.5, 0.85); // Anchor at feet (adjusted for larger sprite)
+    
+    // Safety guard: ensure scale is never 0 or NaN
+    const s = 1.0;
+    this.sprite.setScale(Number.isFinite(s) && s > 0 ? s : 1.0);
 
     // Add name tag
     this.nameTag = scene.add.text(0, -110, username, {
@@ -33,10 +36,13 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
 
     this.add([this.sprite, this.nameTag]);
 
-    // Physics
-    scene.physics.add.existing(this);
-    this.body.setCircle(40, -40, -40); // Larger hitbox
-    this.body.setCollideWorldBounds(true);
+    // Physics: Only add bodies for ourselves to prevent remote players 
+    // from colliding with each other or pushing the local player.
+    if (this.isSelf) {
+      scene.physics.add.existing(this);
+      this.body.setCircle(40, -40, -40); // Larger hitbox
+      this.body.setCollideWorldBounds(true);
+    }
 
     this.currentAnim = `char-${this.characterId}-idle`;
     this.playAnimation(this.currentAnim);
@@ -54,6 +60,10 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
       return;
     }
     if (this.currentAnim === key && this.sprite.anims.isPlaying) return;
+    
+    // Low-level animation log (disabled by default to avoid spam)
+    // console.log(`[PlayerSprite] ${this.username} (ID: ${this.characterId}) playing animation: ${key}`);
+    
     this.sprite.play(key, true);
     this.currentAnim = key;
   }
@@ -70,12 +80,28 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
     const suffix = (velocity.length() > 0) ? 'walk' : 'idle';
     this.playAnimation(suffix); // Will become char-{id}-walk
 
-    // 3. Depth sorting
-    this.setDepth(this.y);
+    // 3. Depth sorting: add small bias (+0.1) to ensure players 
+    // are drawn over map objects at the exact same Y-level.
+    this.setDepth(this.y + 0.1);
   }
 
   setDisplayName(name) {
     this.nameTag.setText(name);
+  }
+
+  updateSpriteTexture(newCharacterId) {
+    if (!newCharacterId || this.characterId === newCharacterId) return;
+
+    this.characterId = newCharacterId;
+    const newTexture = `char-${newCharacterId}-base`;
+    
+    if (this.scene.textures.exists(newTexture)) {
+        console.log(`[PlayerSprite] ${this.username} updating texture to ${newTexture}`);
+        this.sprite.setTexture(newTexture);
+        this.playAnimation('idle'); // Force restart animation with new ID
+    } else {
+        console.warn(`[PlayerSprite] Texture ${newTexture} not found when updating character sync.`);
+    }
   }
 
   showEmojiBubble(emojiId) {
@@ -173,6 +199,6 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
         // The y position is slightly offset to follow but keep it above
         // The tween handles the relative y movement.
     }
-    this.setDepth(this.y);
+    this.setDepth(this.y + 0.1);
   }
 }

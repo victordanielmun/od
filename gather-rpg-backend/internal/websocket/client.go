@@ -24,6 +24,7 @@ type Client struct {
 	Conn        *websocket.Conn
 	ID          uuid.UUID
 	Username    string
+	CharacterID string
 	RoomID      string
 	ChallengeID string
 

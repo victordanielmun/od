@@ -59,7 +59,7 @@ func main() {
 
 	roomRepo := repository.NewRoomRepository()
 	roomService := services.NewRoomService(roomRepo)
-	presenceService := services.NewPresenceService()
+	presenceService := services.NewPresenceService(userRepo)
 	movementService := services.NewMovementService()
 	peerService := services.NewPeerService(movementService)
 	combatService := services.NewCombatService(database.DB, database.RedisClient)
@@ -129,10 +129,9 @@ func main() {
 	learning.Get("/challenges/random", learningHandler.GetRandomChallenge)
 	learning.Get("/challenges/metadata", learningHandler.GetChallengeMetadata)
 	
-	// Protected Learning Routes
-	learningProtected := app.Group("/learning", middleware.Protected(cfg))
-	learningProtected.Post("/attempts", learningHandler.RecordAttempt)
-	learningProtected.Get("/profile", learningHandler.GetMyProfile)
+	// Protected Learning Routes within the same group if possible, or just register individually
+	learning.Post("/attempts", middleware.Protected(cfg), learningHandler.RecordAttempt)
+	learning.Get("/profile", middleware.Protected(cfg), learningHandler.GetMyProfile)
 
 	// WS Route
 	app.Use("/ws", func(c *fiber.Ctx) error {

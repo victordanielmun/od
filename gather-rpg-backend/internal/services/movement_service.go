@@ -23,14 +23,13 @@ type MovementService struct {
 func NewMovementService() *MovementService {
 	ttlSecondsRaw := os.Getenv("POSITION_TTL_SECONDS")
 	if ttlSecondsRaw == "" {
-		// Default: 30 seconds. Short enough that ghost positions expire quickly
-		// after a disconnect, but long enough to survive brief reconnects.
-		return &MovementService{positionTTL: 30 * time.Second}
+		// Default: 5 minutes. Stationary players are kept in Grid as long as connected anyway.
+		return &MovementService{positionTTL: 300 * time.Second}
 	}
 
 	ttlSeconds, err := strconv.Atoi(ttlSecondsRaw)
 	if err != nil || ttlSeconds <= 0 {
-		return &MovementService{positionTTL: 30 * time.Second}
+		return &MovementService{positionTTL: 300 * time.Second}
 	}
 
 	return &MovementService{positionTTL: time.Duration(ttlSeconds) * time.Second}
@@ -97,13 +96,15 @@ func (s *MovementService) GetPositionsBatch(ctx context.Context, roomID string, 
 		if str, ok := res.(string); ok {
 			if err := json.Unmarshal([]byte(str), &redisPos); err == nil {
 				positions = append(positions, models.Position{
-					UserID:    userIDs[i],
-					X:         redisPos.X,
-					Y:         redisPos.Y,
-					Direction: redisPos.Direction,
-					IsMoving:  redisPos.IsMoving,
-					Anim:      redisPos.Anim,
-					Username:  redisPos.Username,
+					UserID:      userIDs[i],
+					X:           redisPos.X,
+					Y:           redisPos.Y,
+					Direction:   redisPos.Direction,
+					IsMoving:    redisPos.IsMoving,
+					Anim:        redisPos.Anim,
+					Username:    redisPos.Username,
+					CharacterID: redisPos.CharacterID,
+					Timestamp:   redisPos.Timestamp,
 				})
 			} else {
 				log.Printf("GetPositionsBatch: Unmarshal failed for key %s: %v", keys[i], err)
