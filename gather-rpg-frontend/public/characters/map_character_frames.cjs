@@ -12,8 +12,42 @@ const fs = require('fs');
 const path = require('path');
 
 // ── Configuración ──────────────────────────────────────────────────────────
-// Como el script está en la misma carpeta que los JSONs, usamos __dirname
 const CHARACTERS_DIR = __dirname;
+
+// Configuración de Normalización
+const GLOBAL_BASELINE = 91; 
+
+/**
+ * Normaliza verticalmente los frames de un atlas JSON para evitar jitter
+ * y asegurar que todos los personajes tengan el mismo "suelo".
+ */
+function normalizeAtlas(filePath) {
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    let modified = false;
+
+    data.frames.forEach(f => {
+        if (f.frame.w > 1 && f.frame.h > 1) {
+            const rowNumber = Math.round(f.frame.y / 82);
+            const rowStart = rowNumber * 82;
+            const currentBottomInRow = (f.frame.y + f.frame.h) - rowStart;
+            
+            const targetBottomInRow = 81; 
+            const diff = targetBottomInRow - currentBottomInRow;
+
+            if (diff !== 0) {
+                f.spriteSourceSize.y = (f.spriteSourceSize.y || 0) + diff;
+                f.sourceSize.h = Math.max(f.sourceSize.h, f.frame.h + f.spriteSourceSize.y);
+                modified = true;
+            }
+        }
+    });
+
+    if (modified) {
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+        return true;
+    }
+    return false;
+}
 
 // Animaciones en ORDEN de aparición en cada sheet (de arriba a abajo)
 const BASE_ANIM_NAMES = ['walk', 'idle', 'hurt', 'die', 'stun', 'poison'];
@@ -149,6 +183,8 @@ function animsToString(charId, anims, indent = '    ') {
 
 // ── Main ───────────────────────────────────────────────────────────────────
 function main() {
+    console.log('🚀 Iniciando mapeo de personajes...');
+    
     // Detectar automáticamente todos los personajes (archivos Xa.json y Xb.json)
     const files = fs.readdirSync(CHARACTERS_DIR);
     const charIds = [...new Set(
@@ -167,38 +203,56 @@ function main() {
     const blocks = [];
 
     for (const id of charIds) {
-        const basePath = path.join(CHARACTERS_DIR, `${id}a.json`);
-        const combatPath = path.join(CHARACTERS_DIR, `${id}b.json`);
-        const avatarPath = path.join(CHARACTERS_DIR, `${id}c.json`);
+        try {
+            const basePath = path.join(CHARACTERS_DIR, `${id}a.json`);
+            const combatPath = path.join(CHARACTERS_DIR, `${id}b.json`);
+            const avatarPath = path.join(CHARACTERS_DIR, `${id}c.json`);
 
-        if (!fs.existsSync(basePath) || !fs.existsSync(combatPath)) {
-            console.warn(`  ⚠  Personaje ${id}: falta ${basePath} o ${combatPath}, saltando.`);
-            continue;
+            if (!fs.existsSync(basePath) || !fs.existsSync(combatPath)) {
+                console.warn(`  🛑 Personaje ${id}: falta ${basePath} o ${combatPath}, saltando.`);
+                continue;
+            }
+
+            console.log(`\n📦 Procesando Personaje ${id}...`);
+            
+            // Paso 1: Normalización de Alineación
+            const normBase = normalizeAtlas(basePath);
+            const normCombat = normalizeAtlas(combatPath);
+            if (normBase || normCombat) {
+                console.log(`  ⚖️  Alineación vertical normalizada.`);
+            }
+
+            // Paso 2: Mapeo de Animaciones
+            const baseAtlas = loadAtlas(basePath);
+            const combatAtlas = loadAtlas(combatPath);
+            const avatarAtlas = fs.existsSync(avatarPath) ? loadAtlas(avatarPath) : null;
+            
+            const anims = buildAnimBlock(id, baseAtlas, combatAtlas, avatarAtlas);
+            blocks.push(animsToString(id, anims));
+            console.log(`  ✨ Mapeo completado.`);
+
+        } catch (error) {
+            console.error(`  ❌ Error procesando Personaje ${id}:`, error.message);
         }
-
-        const baseAtlas = loadAtlas(basePath);
-        const combatAtlas = loadAtlas(combatPath);
-        const avatarAtlas = fs.existsSync(avatarPath) ? loadAtlas(avatarPath) : null;
-        
-        const anims = buildAnimBlock(id, baseAtlas, combatAtlas, avatarAtlas);
-        blocks.push(animsToString(id, anims));
     }
 
     const output = [
-        '  // ⚙️  AUTO-GENERADO por map_character_frames.cjs',
-        '  // Para regenerar: node map_character_frames.cjs',
-        '  animationsByCharacter: {',
+        '// ⚙️  AUTO-GENERADO por map_character_frames.cjs',
+        '// Para regenerar: node map_character_frames.cjs',
+        'export const animationsByCharacter = {',
         blocks.join('\n\n'),
-        '  }'
+        '};'
     ].join('\n');
 
-    const outFile = path.join(CHARACTERS_DIR, '_animationsByCharacter_generated.js');
-    fs.writeFileSync(outFile, output, 'utf8');
-
-    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('RESULTADO (también guardado en _animationsByCharacter_generated.js):\n');
-    console.log(output);
-    console.log('\n✅ Listo. Copia el bloque generado en CharacterConfig.js');
+    try {
+        const outFile = path.join(CHARACTERS_DIR, '_animationsByCharacter_generated.js');
+        fs.writeFileSync(outFile, output, 'utf8');
+        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(`✅ ¡Éxito! Archivo generado en: ${outFile}`);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    } catch (error) {
+        console.error('❌ Error al escribir el archivo de salida:', error.message);
+    }
 }
 
 main();

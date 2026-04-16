@@ -23,15 +23,18 @@ type Config struct {
 
 	JWTSecret     string
 	JWTExpiration string
+
+	DeepSeekAPIKey string
+	DeepSeekModel  string
 }
 
 func LoadConfig() *Config {
 	// Load .env file if it exists
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, relying on environment variables")
+	if err := godotenv.Load(".env"); err != nil {
+		log.Printf("Warning: Error loading .env file: %v. Working directory might be: %s", err, getWorkingDir())
 	}
 
-	return &Config{
+	cfg := &Config{
 		ServerPort: getEnv("SERVER_PORT", "3000"),
 		Env:        getEnv("ENV", "development"),
 
@@ -47,7 +50,13 @@ func LoadConfig() *Config {
 
 		JWTSecret:     getEnv("JWT_SECRET", "secret"),
 		JWTExpiration: getEnv("JWT_EXPIRATION", "24h"),
+
+		DeepSeekAPIKey: getEnv("DEEPSEEK_API_KEY", ""),
+		DeepSeekModel:  getEnv("DEEPSEEK_MODEL", "deepseek-chat"),
 	}
+
+	log.Printf("Config Loaded: DB_HOST=%s, DB_PORT=%s, DB_NAME=%s", cfg.DBHost, cfg.DBPort, cfg.DBName)
+	return cfg
 }
 
 func getEnv(key, fallback string) string {
@@ -59,4 +68,12 @@ func getEnv(key, fallback string) string {
 
 func (c *Config) GetDBDSN() string {
 	return "host=" + c.DBHost + " user=" + c.DBUser + " password=" + c.DBPassword + " dbname=" + c.DBName + " port=" + c.DBPort + " sslmode=disable TimeZone=UTC"
+}
+
+func getWorkingDir() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "unknown"
+	}
+	return dir
 }

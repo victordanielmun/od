@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
 import { useGameStore } from '../../store/gameStore';
 import { useNotificationStore } from '../../store/notificationStore';
@@ -8,6 +9,7 @@ import api from '../../services/api';
 import SettingsMenu from '../common/SettingsMenu';
 
 export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle }) => {
+    const { t } = useTranslation();
     const { user, logout } = useAuthStore();
     const navigate = useNavigate();
 
@@ -155,8 +157,8 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle }) => {
 
 
     // Sidebar is always rendered but translated off-screen if closed
-    const sidebarClass = `fixed top-0 left-0 h-full w-80 bg-gray-900 border-r border-orange-900/50 flex flex-col shadow-2xl transition-transform duration-300 z-40 ${isOpen ? 'translate-x-0' : '-translate-x-full'
-        }`;
+    const sidebarClass = `fixed top-0 left-0 h-full w-80 bg-[var(--color-base-dark)] border-r-4 border-[var(--color-gold)] flex flex-col shadow-[10px_0_40px_rgba(0,0,0,0.8)] transition-transform duration-300 z-40 ${isOpen ? 'translate-x-0' : '-translate-x-full'
+        } relative overflow-y-auto overflow-x-hidden custom-scrollbar`;
 
     // Toggle Button (Visible when closed)
     // We put a transparent trigger zone on the left edge to hover-open?
@@ -176,11 +178,11 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle }) => {
             {!isOpen && (
                 <button
                     onClick={() => setIsPinned(true)}
-                    className="fixed top-4 left-4 z-40 bg-gray-900 border border-gray-600 text-white p-2 rounded hover:bg-gray-800 transition shadow-lg flex items-center gap-2"
+                    className="fixed top-4 left-4 z-40 bg-[var(--color-base-dark)] border-2 border-[var(--color-gold-dark)] text-[var(--color-gold)] p-2 rounded-sm hover:bg-[var(--color-accent-blue)] transition shadow-lg flex items-center gap-2"
                 >
                     <ChevronRight size={20} />
                     {unreadCount > 0 && (
-                        <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 rounded-full animate-pulse">
+                        <span className="bg-[var(--color-orange-vibrant)] text-white text-[10px] font-bold px-1.5 rounded-full animate-pulse">
                             {unreadCount}
                         </span>
                     )}
@@ -195,96 +197,99 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle }) => {
                 onMouseLeave={() => setIsHovered(false)}
             >
                 {/* Header / Pin Control */}
-                <div className="p-4 border-b border-gray-700 bg-gray-800/50 flex justify-between items-start">
-                    <div className="flex items-center gap-3">
-                        <div className="w-14 h-14 bg-gray-800 rounded-lg border-2 border-orange-500/50 flex items-center justify-center overflow-hidden">
+                <div className="p-5 border-b-4 border-[var(--color-gold)] bg-[var(--color-accent-blue)] flex justify-between items-start relative z-10 shrink-0">
+                    <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 bg-[var(--color-base-dark)] border-4 border-[var(--color-gold)] shadow-xl flex items-center justify-center overflow-hidden relative">
                             {user ? (
                                 <div 
-                                    className="w-full h-full"
+                                    className="w-full h-full pixelated"
                                     style={{
                                         backgroundImage: `url(${getAvatarUrl(user.character_id)})`,
-                                        backgroundSize: '400% 300%', // 4 columns, 3 rows as per grid mapping
-                                        backgroundPosition: '0 0', // IDLE is ROW 0, COL 0 (index 0)
+                                        backgroundSize: '400% 300%', 
+                                        backgroundPosition: '0 0', 
                                         backgroundRepeat: 'no-repeat',
-                                        imageRendering: 'pixelated'
+                                        filter: 'drop-shadow(2px 2px 2px rgba(0,0,0,0.5))'
                                     }}
                                 />
-                            ) : null}
-                            {!user && <User size={24} className="text-blue-300" />}
+                            ) : (
+                                <User size={28} className="text-yellow-700" />
+                            )}
                         </div>
                         <div>
-                            <p className="text-gray-400 text-xs uppercase tracking-wider">
-                                {isGuest ? 'Guest Mode' : 'User Logged In'}
+                            <p className="text-yellow-700 text-[10px] uppercase font-medieval tracking-[0.2em] mb-0.5">
+                                {isGuest ? t('lobby.sidebar.guest') : t('lobby.sidebar.traveler')}
                             </p>
-                            <p className="text-white font-bold text-lg truncate max-w-[120px]">
-                                {user?.username || 'Guest'}
+                            <p className="text-yellow-500 font-medieval text-xl truncate max-w-[140px] drop-shadow-md">
+                                {user?.username || t('lobby.sidebar.guest')}
                             </p>
                             <div className="flex flex-col">
-                                <p className="text-blue-400 text-xs capitalize">
-                                    {user?.characterClass || 'Adventurer'}
+                                <p className="text-[#8d6e63] text-xs font-medieval tracking-wide capitalize">
+                                    {user?.characterClass || t('lobby.sidebar.adventurer')}
                                 </p>
-                                {profile && (
-                                    <p className="text-orange-400 text-[10px] font-bold">
-                                        XP: {profile.total_xp}
-                                    </p>
+                                 {profile && (
+                                    <div className="flex items-center gap-1 mt-1">
+                                        <div className="bg-[var(--color-orange-vibrant)] px-2 py-0.5 border border-[var(--color-gold)] shadow-sm">
+                                            <span className="text-white text-[10px] font-medieval">XP: {profile.total_xp}</span>
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         </div>
                     </div>
 
-                    {/* Pin Toggle */}
+                     {/* Pin Toggle */}
                     <button
                         onClick={() => setIsPinned(!isPinned)}
-                        className={`p-1.5 rounded transition ${isPinned ? 'text-green-400 bg-green-900/20' : 'text-gray-500 hover:text-white'}`}
-                        title={isPinned ? "Unpin Sidebar (Auto-hide)" : "Pin Sidebar"}
+                        className={`p-1.5 border-2 transition ${isPinned ? 'text-white bg-[var(--color-orange-vibrant)] border-[var(--color-gold)]' : 'text-[var(--color-gold-dark)] border-[var(--color-gold-dark)]/30 hover:border-[var(--color-gold)] hover:text-[var(--color-gold)]'}`}
+                        title={isPinned ? t('lobby.sidebar.unpin') : t('lobby.sidebar.pin')}
                     >
                         {isPinned ? <Pin size={16} /> : <PinOff size={16} />}
                     </button>
                 </div>
 
                 {/* Chat Section */}
-                <div className="flex-1 flex flex-col min-h-0 border-b border-gray-700">
-                    <div className="p-4 pb-2 flex items-center gap-2 border-b border-gray-800">
-                        <MessageSquare size={16} className="text-green-400" />
-                        <h3 className="text-gray-400 text-xs uppercase tracking-widest">Chat</h3>
+                <div className="flex-1 flex flex-col min-h-[300px] border-b-4 border-[#8b6d1b] relative z-10">
+                    <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/wood-pattern.png")' }}></div>
+                    <div className="p-4 pb-2 flex items-center gap-3 border-b-2 border-[var(--color-gold-dark)]/30 bg-[var(--color-sidebar-content-bg)]">
+                        <MessageSquare size={16} className="text-[var(--color-gold)]" />
+                        <h3 className="text-[var(--color-gold)] text-xs uppercase font-bold tracking-widest">{t('lobby.sidebar.logs')}</h3>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto bg-black/20 p-4 custom-scrollbar">
-                        {/* Chat Requests */}
-                        {chatRequests.length > 0 && (
-                            <div className="mb-4 space-y-2">
+                    <div className="flex-1 overflow-y-auto bg-[var(--color-sidebar-content-bg)] p-4 custom-scrollbar relative">
+                        {/* Chat Requests */}                         {chatRequests.length > 0 && (
+                            <div className="mb-4 space-y-3">
                                 {chatRequests.map((req, idx) => (
-                                    <div key={idx} className="bg-gray-800 border border-blue-500/50 p-2 rounded text-sm">
-                                        <p className="text-white mb-2"><span className="text-blue-400 font-bold">{req.requester_name}</span> wants to chat.</p>
+                                    <div key={idx} className="bg-[var(--color-base-dark)] border-2 border-[var(--color-gold)] p-3 shadow-lg">
+                                        <p className="text-[var(--color-parchment)] text-xs mb-3 font-serif italic"><span className="text-[var(--color-gold)] font-medieval">{req.requester_name}</span> {t('lobby.sidebar.chat_request')}</p>
                                         <div className="flex gap-2">
-                                            <button onClick={() => acceptChatRequest(req.requester_id)} className="flex-1 bg-green-600 text-white text-xs py-1 rounded">Accept</button>
-                                            <button onClick={() => rejectChatRequest(req.requester_id)} className="flex-1 bg-gray-700 text-white text-xs py-1 rounded">Decline</button>
+                                            <button onClick={() => acceptChatRequest(req.requester_id)} className="flex-1 bg-[var(--color-green-primary)] text-white text-[10px] font-medieval py-1.5 uppercase border border-white/20 hover:brightness-110">{t('lobby.sidebar.accept')}</button>
+                                            <button onClick={() => rejectChatRequest(req.requester_id)} className="flex-1 bg-[var(--color-orange-vibrant)] text-white text-[10px] font-medieval py-1.5 uppercase border border-white/20 hover:brightness-110">{t('lobby.sidebar.decline')}</button>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         )}
 
-                        {activeChat ? (
+                         {activeChat ? (
                             <div className="flex flex-col h-full">
-                                <div className="flex justify-between items-center mb-2 pb-2 border-b border-gray-800">
-                                    <span className="text-white text-sm font-bold flex items-center gap-2">
-                                        <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                                <div className="flex justify-between items-center mb-3 pb-2 border-b-2 border-[var(--color-gold-dark)]/20">
+                                    <span className="text-[var(--color-gold)] text-sm font-medieval flex items-center gap-2">
+                                        <span className="w-2 h-2 bg-[var(--color-gold)] animate-pulse"></span>
                                         {activeChat.partner_name}
                                     </span>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-3">
                                         {!isGuest && (
-                                            <button onClick={handleAddFriendFromChat} className="text-gray-400 hover:text-green-400" title="Add Friend"><UserPlus size={14} /></button>
+                                            <button onClick={handleAddFriendFromChat} className="text-[var(--color-gold-dark)] hover:text-[var(--color-gold)] transition-colors" title={t('lobby.sidebar.add_to_guild')}><UserPlus size={16} /></button>
                                         )}
-                                        <button onClick={closeChat} className="text-gray-500 hover:text-white"><X size={14} /></button>
+                                        <button onClick={closeChat} className="text-[var(--color-parchment-dark)] hover:text-white transition-colors"><X size={16} /></button>
                                     </div>
                                 </div>
 
-                                <div className="flex-1 space-y-3 overflow-y-auto pr-1">
-                                    {activeChat.messages.length === 0 && <p className="text-gray-600 text-xs text-center italic mt-4">Start conversation...</p>}
+                                 <div className="flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
+                                    {activeChat.messages.length === 0 && <p className="text-[var(--color-gold-dark)] text-[10px] text-center uppercase tracking-widest font-medieval mt-6 opacity-30">{t('lobby.sidebar.start_chat')}</p>}
                                     {activeChat.messages.map((msg, idx) => (
                                         <div key={idx} className={`flex flex-col ${msg.sender === 'Me' ? 'items-end' : 'items-start'}`}>
-                                            <div className={`px-2 py-1 rounded max-w-[90%] text-xs ${msg.sender === 'Me' ? 'bg-blue-900/50 text-blue-100 border border-blue-800' : 'bg-gray-800 text-gray-300 border border-gray-700'
+                                            <div className={`px-3 py-2 border-2 max-w-[90%] text-xs shadow-md ${msg.sender === 'Me' ? 'bg-[var(--color-orange-vibrant)]/30 text-white border-[var(--color-orange-vibrant)] shadow-[inset_0_2px_10px_rgba(0,0,0,0.3)]' : 'bg-[var(--color-parchment)] text-[var(--color-base-dark)] border-[var(--color-gold-dark)]/40 shadow-sm'
                                                 }`}>
                                                 {msg.text}
                                             </div>
@@ -293,76 +298,77 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle }) => {
                                     <div ref={messagesEndRef} />
                                 </div>
 
-                                <form onSubmit={handleSendChat} className="mt-2 flex gap-1 pt-2 border-t border-gray-800">
+                                 <form onSubmit={handleSendChat} className="mt-4 flex gap-2 pt-3 border-t-2 border-[var(--color-gold-dark)]/20">
                                     <input
                                         type="text"
                                         value={chatInput}
                                         onChange={(e) => setChatInput(e.target.value)}
-                                        placeholder="Message..."
-                                        className="flex-1 bg-gray-800 text-white text-xs px-2 py-1 rounded border border-gray-700 focus:border-blue-500 focus:outline-none"
+                                        placeholder={t('lobby.sidebar.type_words')}
+                                        className="flex-1 bg-[var(--color-base-dark)] text-white text-xs px-3 py-2 border-2 border-[var(--color-gold-dark)]/40 focus:border-[var(--color-gold)] focus:outline-none font-medieval"
                                     />
-                                    <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white p-1 rounded">
-                                        <Send size={14} />
+                                    <button type="submit" className="bg-[var(--color-orange-vibrant)] hover:bg-[var(--color-accent-blue)] text-white p-2 border-2 border-[var(--color-gold)] shadow-lg active:translate-y-1 transition-all">
+                                        <Send size={16} />
                                     </button>
                                 </form>
+
                             </div>
                         ) : (
-                            <div className="h-full flex flex-col items-center justify-center text-gray-600">
-                                <MessageSquare size={32} className="mb-2 opacity-20" />
-                                <p className="text-xs">No active chat</p>
-                                <p className="text-[10px] mt-1">Approach a player and press E</p>
+                            <div className="h-full flex flex-col items-center justify-center text-[var(--color-gold-dark)]">
+                                <MessageSquare size={48} className="mb-4 opacity-20" />
+                                <p className="text-sm font-bold uppercase tracking-widest text-[var(--color-gold)]">{t('lobby.sidebar.empty_chat_title')}</p>
+                                <p className="text-[11px] mt-2 font-medium italic text-center px-6 text-[var(--color-parchment-dark)]">{t('lobby.sidebar.empty_chat_subtitle')}</p>
                             </div>
                         )}
                     </div>
                 </div>
 
-                {/* Friends Section */}
-                <div className="h-48 lg:h-64 border-b border-gray-700 flex flex-col flex-shrink-0">
-                    <div className="p-4 pb-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <Users size={16} className="text-purple-400" />
-                            <h3 className="text-gray-400 text-xs uppercase tracking-widest">Friends</h3>
+                {/* Friends Section (Guild List) */}
+                <div className="min-h-[200px] border-b-4 border-[#8b6d1b] flex flex-col flex-shrink-0 relative z-10">
+                    <div className="p-4 pb-2 flex items-center justify-between bg-[var(--color-sidebar-content-bg)]">
+                        <div className="flex items-center gap-3">
+                            <Users size={16} className="text-[var(--color-gold)]" />
+                            <h3 className="text-[var(--color-gold-dark)] text-xs uppercase font-medieval tracking-widest">{t('lobby.sidebar.guild')}</h3>
                         </div>
                         {!isGuest && (
-                            <button onClick={refreshFriends} className="text-[10px] text-gray-400 hover:text-white border border-gray-700 px-2 py-1 rounded">Refresh</button>
+                            <button onClick={refreshFriends} className="text-[9px] font-medieval text-[var(--color-gold-dark)]/60 hover:text-[var(--color-gold)] border-2 border-[var(--color-gold-dark)]/40 px-2 py-0.5 transition-colors bg-[var(--color-base-dark)] shadow-sm">{t('lobby.sidebar.refresh')}</button>
                         )}
                     </div>
 
                     {isGuest ? (
-                        <div className="px-4 pb-4 text-xs text-gray-500">Login required.</div>
+                        <div className="px-4 py-6 text-xs text-[var(--color-parchment-dark)] font-serif italic">{t('lobby.sidebar.login_required')}</div>
                     ) : (
-                        <div className="flex-1 overflow-y-auto px-4 pb-4 custom-scrollbar">
-                            {friendsError && <div className="mb-2 text-xs text-red-400">{friendsError}</div>}
-                            <form onSubmit={handleSendFriendRequest} className="flex gap-2 mb-3">
-                                <input value={friendUsername} onChange={(e) => setFriendUsername(e.target.value)} placeholder="Add user..." className="flex-1 bg-gray-800 text-white text-xs px-2 py-1 rounded border-gray-700" />
-                                <button type="submit" className="bg-purple-600 text-white text-xs px-3 py-1 rounded">Add</button>
+                        <div className="flex-1 overflow-y-auto bg-[var(--color-sidebar-content-bg)] px-4 pb-4 custom-scrollbar relative">
+                            {friendsError && <div className="mb-3 text-[10px] text-[var(--color-orange-vibrant)] font-medieval uppercase">{friendsError}</div>}
+                            <form onSubmit={handleSendFriendRequest} className="flex gap-2 mb-4">
+                                <input value={friendUsername} onChange={(e) => setFriendUsername(e.target.value)} placeholder={t('lobby.sidebar.username_placeholder')} className="flex-1 bg-[var(--color-base-dark)] text-white text-[10px] px-2 py-1.5 border-2 border-[var(--color-gold-dark)]/40 focus:border-[var(--color-gold)] outline-none font-medieval placeholder-[var(--color-gold-dark)]/50" />
+                                <button type="submit" className="bg-[var(--color-green-primary)] text-white text-[10px] font-medieval px-3 py-1.5 border border-white/20 hover:brightness-110 shadow-lg">{t('lobby.sidebar.invite')}</button>
                             </form>
 
                             {incomingRequests.length > 0 && (
-                                <div className="mb-2 space-y-1">
+                                <div className="mb-4 space-y-2">
                                     {incomingRequests.map(req => (
-                                        <div key={req.id} className="text-xs flex justify-between bg-gray-800 p-1 rounded">
-                                            <span className="truncate max-w-[80px]" title={req.requester_username}>{req.requester_username}</span>
-                                            <div className="flex gap-1">
-                                                <button onClick={() => handleAcceptRequest(req.id)} className="text-green-400">✓</button>
-                                                <button onClick={() => handleRejectRequest(req.id)} className="text-red-400">✗</button>
+                                        <div key={req.id} className="text-[10px] font-serif flex justify-between bg-[var(--color-base-dark)] p-2 border border-[var(--color-gold)]/30 text-[var(--color-parchment)]">
+                                            <span className="truncate max-w-[100px] font-medieval">{req.requester_username}</span>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => handleAcceptRequest(req.id)} className="text-green-500 hover:text-green-400 font-bold">✓</button>
+                                                <button onClick={() => handleRejectRequest(req.id)} className="text-red-500 hover:text-red-400 font-bold">✗</button>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                             )}
 
-                            <ul className="space-y-1">
+                            <ul className="space-y-2">
                                 {friends.map(f => (
-                                    <li key={f.id} className="bg-gray-800/50 p-1.5 rounded flex justify-between items-center">
-                                        <div className="flex items-center gap-2 overflow-hidden">
-                                            <span className={`w-1.5 h-1.5 rounded-full ${players.has(String(f.id)) ? 'bg-green-500' : 'bg-gray-600'}`} />
-                                            <span className="text-xs text-gray-300 truncate">{f.username}</span>
+                                    <li key={f.id} className="bg-[var(--color-base-dark)]/40 p-2 border-2 border-[var(--color-gold-dark)]/30 flex justify-between items-center transition-colors hover:border-[var(--color-gold)]/50 group shadow-inner">
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <span className={`w-2 h-2 rounded-full shadow-[0_0_8px] ${players.has(String(f.id)) ? 'bg-green-600 shadow-green-600' : 'bg-gray-800 shadow-black'}`} />
+                                            <span className="text-xs text-[var(--color-gold)] font-medieval truncate">{f.username}</span>
                                         </div>
-                                        <div className="flex gap-1">
-                                            <button disabled={!players.has(String(f.id))} onClick={() => handleTeleportToFriend(f.id)} className="text-gray-500 hover:text-white disabled:opacity-20"><MapPin size={12} /></button>
-                                            <button onClick={() => handleCallFriend(f.id)} className="text-blue-500 hover:text-blue-400"><Phone size={12} /></button>
-                                            <button onClick={() => handleRemoveFriend(f.id)} className="text-gray-600 hover:text-red-400"><X size={12} /></button>
+                                        <div className="flex gap-2">
+                                            <button disabled={!players.has(String(f.id))} onClick={() => handleTeleportToFriend(f.id)} className="text-[var(--color-gold-dark)] hover:text-[var(--color-gold)] disabled:opacity-10 transition-colors"><MapPin size={14} /></button>
+                                            <button onClick={() => handleCallFriend(f.id)} className="text-[var(--color-gold-dark)] hover:text-white transition-colors" title={t('lobby.sidebar.call_friend')}><Phone size={14} /></button>
+                                            <button onClick={() => handleRemoveFriend(f.id)} className="text-[var(--color-orange-vibrant)]/40 hover:text-[var(--color-orange-vibrant)] transition-colors"><X size={14} /></button>
                                         </div>
                                     </li>
                                 ))}
@@ -370,14 +376,13 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle }) => {
                         </div>
                     )}
                 </div>
-
-                {/* Footer */}
-                <div className="p-4 bg-gray-800/30 mt-auto">
-                    <button onClick={() => setShowSettings(true)} className="flex items-center gap-3 text-gray-400 hover:text-white w-full p-2 rounded hover:bg-gray-800 transition mb-1">
-                        <Settings size={18} /> <span className="text-sm font-medium">Settings</span>
+                {/* Footer (Controls) */}
+                <div className="p-4 bg-[var(--color-accent-blue)] border-t-2 border-[var(--color-gold)] shrink-0 relative z-10 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
+                    <button onClick={() => setShowSettings(true)} className="flex items-center gap-4 text-[var(--color-gold)] hover:text-[var(--color-pure-white)] w-full p-3 transition-all hover:bg-[var(--color-base-dark)]/40 border border-transparent hover:border-[var(--color-gold-dark)]/30 mb-2 group shadow-sm">
+                        <Settings size={20} className="group-hover:rotate-45 transition-transform" /> <span className="text-sm font-bold uppercase tracking-widest">{t('lobby.sidebar.settings')}</span>
                     </button>
-                    <button onClick={handleLogout} className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full p-2 rounded hover:bg-red-900/20 transition">
-                        <LogOut size={18} /> <span className="text-sm font-medium">Logout</span>
+                    <button onClick={handleLogout} className="flex items-center gap-4 text-[var(--color-orange-vibrant)] hover:text-white w-full p-3 transition-all hover:bg-[var(--color-base-dark)]/40 border border-transparent hover:border-[var(--color-orange-vibrant)]/20 shadow-sm">
+                        <LogOut size={20} /> <span className="text-sm font-bold uppercase tracking-widest">{t('lobby.sidebar.depart')}</span>
                     </button>
                 </div>
             </div>

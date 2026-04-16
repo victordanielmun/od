@@ -2,8 +2,11 @@ import { useAuthStore } from '../../store/authStore';
 import { useGameStore } from '../../store/gameStore';
 import { useAudioStore } from '../../store/audioStore';
 import { PlayerSprite } from '../entities/PlayerSprite';
+import { NPCSprite } from '../entities/NPCSprite';
 import { loadCharacterSprites, createCharacterAnimations } from '../config/CharacterConfig';
+import { loadNPCSprites, createNPCAnimations, STATE_TO_ANIM } from '../config/NPCConfig';
 import api from '../../services/api';
+import i18n from '../../i18n';
 
 const Phaser = window.Phaser;
 
@@ -48,7 +51,7 @@ export class LobbyScene extends Phaser.Scene {
     this.rectPreview = null;
     this.onEditorEvent = null;
     this.GRID_SIZE = 100;
-    this.editorBuildScale = 2; // default 2× (range 1–2.5)
+    this.editorBuildScale = 2.5; // default 2.5× (range 1–3)
     // Default metadata for newly-placed builds — must match the UI's default (portalType: 'map')
     this.editorBuildMetadata = { portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '' };
 
@@ -74,6 +77,7 @@ export class LobbyScene extends Phaser.Scene {
 
   preload() {
     loadCharacterSprites(this);
+    loadNPCSprites(this);
 
     // Generate tile textures for each type
     const tileTypes = [
@@ -81,13 +85,19 @@ export class LobbyScene extends Phaser.Scene {
       { key: 'tile-floor', fill: 0x8B7355, stroke: 0x6B5335, label: 'F' },
       { key: 'tile-spawn', fill: 0x00CC66, stroke: 0x009944, label: 'S' },
       { key: 'tile-npc', fill: 0x4488FF, stroke: 0x2266DD, label: 'N' },
+      { key: 'tile-item', fill: 0xE91E63, stroke: 0xC2185B, label: 'I' },
       // Void: #2596be, stroke same as fill so no visible border
       { key: 'tile-void', fill: 0x2596be, stroke: 0x2596be, label: 'V' },
+      // Collider: Gold #FFD700, semi-transparent for editor visibility
+      { key: 'tile-collider', fill: 0xFFD700, stroke: 0xDAA520, label: 'C' },
     ];
 
     tileTypes.forEach(({ key, fill, stroke }) => {
       const g = this.make.graphics({ x: 0, y: 0, add: false });
-      g.fillStyle(fill);
+      // Usar un alpha menor para el marcador de NPC e Item (0.3) para que no oculte el suelo y se vea más profesional
+      // El colisionador también usa transparencia para que se vea el suelo debajo
+      const alpha = (key === 'tile-npc' || key === 'tile-item' || key === 'tile-collider') ? 0.3 : 1;
+      g.fillStyle(fill, alpha);
       g.fillRect(0, 0, 100, 100);
       g.lineStyle(2, stroke);
       g.strokeRect(0, 0, 100, 100);
@@ -124,6 +134,9 @@ export class LobbyScene extends Phaser.Scene {
     this.load.audio('bgm_fight_boss', '/music/FightBoss.mp3');
     this.load.audio('bgm_pixel_pantry', '/music/Pixel_Pantry_Jingle.mp3');
     this.load.audio('bgm_pixelated_haven', '/music/Pixelated_Haven.mp3');
+
+    // Load Item Sprites dynamically
+    this.load.json('item-sprites-list', '/api/admin/item-sprites');
   }
 
   create() {
@@ -139,19 +152,52 @@ export class LobbyScene extends Phaser.Scene {
     const urlParams = new URLSearchParams(window.location.search);
     // Prioritize initData (from portal) -> URL param -> default 'lobby'
     this.currentMapKey = this.initData?.map || urlParams.get('map') || urlParams.get('edit_map') || 'lobby';
+    
+    // Sync with gameStore for UI components
+    useGameStore.setState({ currentSceneKey: this.currentMapKey });
+
     this.loadServerMapConfig();
 
-    // 3. NPCs (Only in Lobby)
-    // if (this.currentMapKey === 'lobby') {
-    //   this.createNPCs();
-    //   this.createChallengePoints();
-    // }
+    // 3. NPCs (Dynamic from Backend)
+    this.npcs = []; // Array of containers or sprites
+    this.npcSprites = new Map(); // npcTemplateId -> sprite/container
+    this.loadNPCs();
+    this.loadMapPickups();
+    this.nearbyNPC = null;
+    this.nearbyPickup = null;
 
-    // 4. Other Players
+    // Subscribe to room id changes to load NPCs properly when joining
+    this.roomUnsubscribe = useGameStore.subscribe(
+      (state) => state.currentRoomId,
+      (roomId) => {
+        if (roomId) this.loadNPCs();
+      }
+    );
+
+    // Listener para cambios de estado de NPC durante el diálogo
+    this.onNPCStateChange = (e) => {
+      const { templateId, state } = e.detail;
+      const container = this.npcSprites.get(templateId);
+      if (container && container.list) {
+          const npcSprite = container.list.find(obj => obj instanceof NPCSprite);
+          if (npcSprite) {
+              const anims = STATE_TO_ANIM[state] || STATE_TO_ANIM.idle;
+              npcSprite.playAnimation(anims.body);
+          }
+      }
+    };
+    window.addEventListener('npc-state-changed', this.onNPCStateChange);
+
+    // 4. Other Players & Missions
     // Subscribe to store changes
     this.unsubscribe = useGameStore.subscribe(
       (state) => state.players,
       (players) => this.handlePlayersUpdate(players)
+    );
+
+    this.missionUnsubscribe = useGameStore.subscribe(
+        (state) => state.activeMission,
+        (mission) => this.handleMissionUpdate(mission)
     );
 
     // Initial render of existing players (in case they loaded before scene)
@@ -210,6 +256,8 @@ export class LobbyScene extends Phaser.Scene {
         window.removeEventListener('phaser-camera-zoom', this.onZoomEvent);
         window.removeEventListener('chat-message-received', this.onChatMsg);
         window.removeEventListener('player-emoji-received', this.onEmojiMsg);
+        window.removeEventListener('npc-speech-bubble', this.onNPCSpeech);
+        window.removeEventListener('map-pickups-updated', this.onPickupsUpdated);
     });
 
     // Ensure playerSprites is fresh if restarting
@@ -257,12 +305,42 @@ export class LobbyScene extends Phaser.Scene {
     this.onChatMsg = (e) => this._onChatReceived(e);
     window.addEventListener('chat-message-received', this.onChatMsg);
 
-    // Listen for emojis
-    this.onEmojiMsg = (e) => this._onEmojiReceived(e);
-    window.addEventListener('player-emoji-received', this.onEmojiMsg);
+    // Listen for NPC speech bubbles
+    this.onNPCSpeech = (e) => this._onNPCSpeechReceived(e);
+    window.addEventListener('npc-speech-bubble', this.onNPCSpeech);
+
+    // Listen for map pickup updates (from Editor save)
+    this.onPickupsUpdated = () => this.loadMapPickups();
+    window.addEventListener('map-pickups-updated', this.onPickupsUpdated);
+
+    // Listen for NPC interaction states to pause movement
+    this.onNPCInteractionStart = (e) => {
+        const { templateId } = e.detail;
+        const npc = this.npcSprites.get(templateId);
+        if (npc) npc.npcData.isTalking = true;
+    };
+    this.onNPCInteractionEnd = (e) => {
+        const { templateId } = e.detail;
+        const npc = this.npcSprites.get(templateId);
+        if (npc) npc.npcData.isTalking = false;
+    };
+    window.addEventListener('npc-interaction-start', this.onNPCInteractionStart);
+    window.addEventListener('npc-interaction-end', this.onNPCInteractionEnd);
 
     // Notify React that the scene is ready (hides loading screen)
     window.dispatchEvent(new Event('game-ready'));
+
+    // Secondary preload for item sprites once we have the list
+    const spritesList = this.cache.json.get('item-sprites-list');
+    if (Array.isArray(spritesList)) {
+      spritesList.forEach(file => {
+        const key = `item-sprite-${file}`;
+        if (!this.textures.exists(key)) {
+          this.load.image(key, `/Items/sprites/${file}`);
+        }
+      });
+      this.load.start();
+    }
   }
 
   _onChatReceived(e) {
@@ -293,6 +371,14 @@ export class LobbyScene extends Phaser.Scene {
 
     if (targetSprite) {
         targetSprite.showEmojiBubble(emoji_id);
+    }
+  }
+
+  _onNPCSpeechReceived(e) {
+    const { templateId, text } = e.detail;
+    const targetNPC = this.npcSprites.get(templateId);
+    if (targetNPC) {
+      this._showChatBubble(targetNPC, text);
     }
   }
 
@@ -437,35 +523,35 @@ export class LobbyScene extends Phaser.Scene {
     this.input.on('pointerup', this._editorPointerUp, this);
   }
 
-  _paintTile(gx, gy) {
+  _eraseTileAt(gx, gy) {
     if (!this.editorTiles) this.editorTiles = new Map();
     const key = `${gx}_${gy}`;
 
-    if (this.editorTool === 'eraser') {
-      if (this.editorTiles.has(key)) {
-        this.editorTiles.get(key).destroy();
-        this.editorTiles.delete(key);
-      }
-      return;
+    // 1. Remove from temporary editor tiles
+    if (this.editorTiles.has(key)) {
+      this.editorTiles.get(key).destroy();
+      this.editorTiles.delete(key);
     }
-
-    if (this.editorTiles.has(key)) this.editorTiles.get(key).destroy();
-
-    let sprite;
-    if (this.editorTileType === 'forest' || this.editorTileType === 'build') {
-      const atlas = this.editorTileType === 'forest' ? 'forest' : 'builds';
-      sprite = this.add.image(gx + this.GRID_SIZE / 2, gy + this.GRID_SIZE / 2, atlas, this.editorTextureFrame);
-      sprite.setDisplaySize(this.GRID_SIZE, this.GRID_SIZE);
-    } else {
-      const textureKey = `tile-${this.editorTileType}`;
-      sprite = this.add.image(gx, gy, textureKey).setOrigin(0);
-    }
-    sprite.setDepth(gy + 1);
-    sprite._tileType = this.editorTileType;
-    sprite._gridX = gx;
-    sprite._gridY = gy;
-    this.editorTiles.set(key, sprite);
-    this.editorHistory.push(key);
+    
+    // 2. Remove from static groups (saved objects)
+    const groups = [
+      this.walls, this.floors, this.forest, this.builds, 
+      this.npcZones, this.pickups, this.spawns, this.voids, this.colliders
+    ];
+    
+    const checkRange = this.GRID_SIZE / 2;
+    groups.forEach(group => {
+      if (!group) return;
+      const children = group.getChildren ? group.getChildren() : [];
+      children.forEach(child => {
+        if (Math.abs(child.x - (gx + this.GRID_SIZE/2)) < checkRange && 
+            Math.abs(child.y - (gy + this.GRID_SIZE/2)) < checkRange) {
+          child.destroy();
+        } else if (child.originX === 0 && Math.abs(child.x - gx) < 5 && Math.abs(child.y - gy) < 5) {
+          child.destroy();
+        }
+      });
+    });
   }
 
   _handleEditorCommand({ action, value }) {
@@ -476,10 +562,8 @@ export class LobbyScene extends Phaser.Scene {
       case 'undo':
         if (this.editorHistory.length > 0) {
           const last = this.editorHistory.pop();
-          if (this.editorTiles && this.editorTiles.has(last)) {
-            this.editorTiles.get(last).destroy();
-            this.editorTiles.delete(last);
-          }
+          const [gx, gy] = last.split('_').map(Number);
+          this._eraseTileAt(gx, gy);
         }
         break;
       default: break;
@@ -488,6 +572,7 @@ export class LobbyScene extends Phaser.Scene {
 
   createAnimations() {
     createCharacterAnimations(this);
+    createNPCAnimations(this);
   }
 
   adjustZoom(delta) {
@@ -537,6 +622,7 @@ export class LobbyScene extends Phaser.Scene {
       this.mapWidth / 2, this.mapHeight / 2,
       this.mapWidth, this.mapHeight, 0x2a2a2a
     );
+    this.backgroundRect.setDepth(-100); // FIXED: Prevent background from hiding floor tiles (-10)
 
     // Base grid lines
     this.gridGraphics = this.add.graphics();
@@ -561,7 +647,9 @@ export class LobbyScene extends Phaser.Scene {
     this.builds = this.physics.add.staticGroup(); // Portal structures
     this.spawns = this.add.group();           // visual markers
     this.npcZones = this.add.group();          // visual markers
+    this.pickups = this.add.group();           // visual markers for item pickups in editor
     this.voids = this.physics.add.staticGroup(); // Solid void blocks
+    this.colliders = this.physics.add.staticGroup(); // Invisible solid blocks
 
     // Default walls for first load
     for (let x = 200; x < 600; x += G) {
@@ -651,7 +739,11 @@ export class LobbyScene extends Phaser.Scene {
       }
 
       if (this.editorTool !== 'rect') {
-        this._editorPlaceOrErase(gx, gy);
+        if (this.editorTool === 'inspector') {
+          this._pickObjectAt(gx, gy);
+        } else {
+          this._editorPlaceOrErase(gx, gy);
+        }
       }
     });
 
@@ -685,14 +777,53 @@ export class LobbyScene extends Phaser.Scene {
         case 'setTexture': this.setEditorTexture(value); break;
         case 'setBuildMetadata': this.editorBuildMetadata = value; break;
         case 'setBuildScale': this.editorBuildScale = parseFloat(value) || 1; break;
+        case 'setNPCMetadata': this.editorNPCMetadata = value; break;
+        case 'setPickupMetadata': this.editorPickupMetadata = value; break;
         case 'setMoveMode': this.setEditorMoveMode(value); break;
         case 'undo': this.undo(); break;
         case 'redo': this.redo(); break;
         case 'clearAll': this.clearAllTiles(); break;
+        case 'importMap': this.importMapConfig(value); break;
         case 'applyBuildMetadata': this.applyBuildMetadataToAll(); break;
+        case 'setTool': this.setEditorTool(value); break;
       }
     };
     window.addEventListener('editor-command', this.onEditorEvent);
+  }
+
+  _pickObjectAt(gx, gy) {
+    const found = this._findTileAt(gx, gy);
+    if (!found) return;
+
+    const { tile, type } = found;
+    let metadata = {};
+    if (tile.data) {
+      metadata = tile.data.getAll();
+    }
+
+    const detail = {
+      type: type,
+      frame: tile.frame.name,
+      scale: tile.scaleX || 1,
+      metadata: metadata,
+      x: gx,
+      y: gy
+    };
+
+    console.log('[MapEditor] Object picked:', detail);
+    window.dispatchEvent(new CustomEvent('editor-picked-object', { detail }));
+
+    // Visual feedback: brief flash on the picked tile
+    const flash = this.add.graphics();
+    flash.lineStyle(2, 0xffffff, 1);
+    flash.strokeRect(gx - this.GRID_SIZE/2, gy - this.GRID_SIZE/2, this.GRID_SIZE, this.GRID_SIZE);
+    flash.setDepth(2000);
+    this.tweens.add({
+        targets: flash,
+        alpha: 0,
+        duration: 300,
+        onComplete: () => flash.destroy()
+    });
   }
 
   applyBuildMetadataToAll() {
@@ -700,12 +831,19 @@ export class LobbyScene extends Phaser.Scene {
     const { targetMap, targetX, targetY, targetRoute, interactionText } = this.editorBuildMetadata;
     let count = 0;
     this.builds?.getChildren().forEach(s => {
-      if (targetMap !== undefined) s.data.set('targetMap', targetMap);
-      if (targetRoute !== undefined) s.data.set('targetRoute', targetRoute);
-      if (this.editorBuildMetadata.portalType !== undefined) s.data.set('portalType', this.editorBuildMetadata.portalType);
-      if (targetX !== undefined) s.data.set('targetX', targetX);
-      if (targetY !== undefined) s.data.set('targetY', targetY);
-      if (interactionText !== undefined) s.data.set('interactionText', interactionText);
+      const gObj = s;
+      if (targetMap !== undefined) gObj.data.set('targetMap', targetMap);
+      if (targetRoute !== undefined) gObj.data.set('targetRoute', targetRoute);
+      if (this.editorBuildMetadata.portalType !== undefined) gObj.data.set('portalType', this.editorBuildMetadata.portalType);
+      if (targetX !== undefined) gObj.data.set('targetX', targetX);
+      if (targetY !== undefined) gObj.data.set('targetY', targetY);
+      if (interactionText !== undefined) gObj.data.set('interactionText', interactionText);
+      
+      // Update the buildScale if it was changed
+      const scale = this.editorBuildMetadata.buildScale || 2;
+      gObj.setScale(scale);
+      gObj.data.set('buildScale', scale);
+      
       count++;
     });
     console.log(`[LobbyScene] Applied metadata to ${count} builds`);
@@ -716,7 +854,7 @@ export class LobbyScene extends Phaser.Scene {
   // ===== Editor: Tile placement / erasure =====
 
   _getTextureForType(type) {
-    const map = { wall: 'tile-wall', floor: 'tile-floor', spawn: 'tile-spawn', npc: 'tile-npc', forest: 'forest', build: 'builds' };
+    const map = { wall: 'tile-wall', floor: 'tile-floor', spawn: 'tile-spawn', npc: 'tile-npc', forest: 'forest', build: 'builds', void: 'tile-void', collider: 'tile-collider' };
     return map[type] || 'tile-wall';
   }
 
@@ -728,28 +866,42 @@ export class LobbyScene extends Phaser.Scene {
       case 'build': return this.builds;
       case 'spawn': return this.spawns;
       case 'npc': return this.npcZones;
+      case 'item': return this.pickups;
       case 'void': return this.voids;
+      case 'collider': return this.colliders;
       default: return this.walls;
     }
   }
 
   _findTileAt(gx, gy, targetType = null) {
-    // Search all groups for a tile at the given grid position
-    const groups = [this.walls, this.floors, this.forest, this.builds, this.spawns, this.npcZones, this.voids];
-    const types = ['wall', 'floor', 'forest', 'build', 'spawn', 'npc', 'void'];
-    for (let i = 0; i < groups.length; i++) {
-      if (!groups[i]) continue;
-      if (targetType && types[i] !== targetType) continue; // Filter if targetType provided
-      const children = groups[i].getChildren();
+    // Search all groups for a tile at the given grid position.
+    // ORDER MATTERS: We check interactive/topmost objects first (builds, npcs) 
+    // and background objects last (floors, voids) so the 'Inspect' tool picks what the user expects.
+    const searchOrder = [
+      { group: this.builds, type: 'build' },
+      { group: this.npcZones, type: 'npc' },
+      { group: this.pickups, type: 'item' },
+      { group: this.forest, type: 'forest' },
+      { group: this.walls, type: 'wall' },
+      { group: this.spawns, type: 'spawn' },
+      { group: this.floors, type: 'floor' },
+      { group: this.voids, type: 'void' },
+      { group: this.colliders, type: 'collider' }
+    ];
+
+    for (const item of searchOrder) {
+      if (!item.group) continue;
+      if (targetType && item.type !== targetType) continue; // Filter if targetType provided
+      const children = item.group.getChildren();
       const found = children.find(t => Math.abs(t.x - gx) < 1 && Math.abs(t.y - gy) < 1);
-      if (found) return { tile: found, type: types[i], group: groups[i] };
+      if (found) return { tile: found, type: item.type, group: item.group };
     }
     return null;
   }
 
   _findAllTilesAt(gx, gy) {
-    const groups = [this.walls, this.floors, this.forest, this.builds, this.spawns, this.npcZones, this.voids];
-    const types = ['wall', 'floor', 'forest', 'build', 'spawn', 'npc', 'void'];
+    const groups = [this.walls, this.floors, this.forest, this.builds, this.spawns, this.npcZones, this.pickups, this.voids, this.colliders];
+    const types = ['wall', 'floor', 'forest', 'build', 'spawn', 'npc', 'item', 'void', 'collider'];
     const found = [];
     for (let i = 0; i < groups.length; i++) {
       if (!groups[i]) continue;
@@ -779,7 +931,27 @@ export class LobbyScene extends Phaser.Scene {
         if (toErase) {
           this.editorHistory.push({ action: 'remove', type: toErase.type, x: gx, y: gy });
           this.editorRedoStack = [];
+          
+          // 1. Destroy visual marker
           toErase.tile.destroy();
+
+          // 2. IMMEDIATE FEEDBACK: Destroy real NPC or item if erasing its marker
+          if (toErase.type === 'npc') {
+            const npcToRemove = this.npcs.find(n => Math.abs(n.x - gx) < this.GRID_SIZE && Math.abs(n.y - gy) < this.GRID_SIZE);
+            if (npcToRemove) {
+              const tid = npcToRemove.npcData?.templateId;
+              if (tid) this.npcSprites.delete(tid);
+              npcToRemove.destroy();
+              this.npcs = this.npcs.filter(n => n !== npcToRemove);
+            }
+          } else if (toErase.type === 'item') {
+            const pickupToRemove = this.activePickups.find(p => Math.abs(p.x - gx) < this.GRID_SIZE && Math.abs(p.y - gy) < this.GRID_SIZE);
+            if (pickupToRemove) {
+              pickupToRemove.destroy();
+              this.activePickups = this.activePickups.filter(p => p !== pickupToRemove);
+            }
+          }
+
           this._emitEditorStats();
         }
       }
@@ -799,16 +971,57 @@ export class LobbyScene extends Phaser.Scene {
     }
 
     if (replacing) {
-      if (replacing.type === this.editorTileType) return; // same type, skip
+      // If inspector tool, we don't place anything, we already handled it in pointerdown
+      if (this.editorTool === 'inspector') return;
+
+      // Check if it's EXACTLY the same (type, frame, and metadata)
+      const sameType = replacing.type === this.editorTileType;
+      const sameFrame = (replacing.tile.frame.name === this.editorTextureFrame) || (!this.editorTextureFrame && replacing.tile.frame.name === 'sprite1');
+      
+      // For objects with complex data, we check if they are likely same (simplified)
+      // Actually, if it's same type but different frame/scale, we WANT to replace it to "edit" it.
+      if (sameType && sameFrame) {
+        // Special check for builds/npcs: if metadata is different in UI vs actual, we might still want to update.
+        // But for now, if it's same type and same frame, we skip to avoid redundant placements.
+        return; 
+      }
+      
+      // Capture old metadata for perfect Undo/Redo
+      const oldMetadata = replacing.tile.data ? JSON.parse(JSON.stringify(replacing.tile.data.getAll())) : null;
+      let newMetadata = null;
+      if (this.editorTileType === 'build') newMetadata = this.editorBuildMetadata;
+      else if (this.editorTileType === 'npc') newMetadata = this.editorNPCMetadata;
+      else if (this.editorTileType === 'item') newMetadata = this.editorPickupMetadata;
+
       // Different type: remove old, place new
-      this.editorHistory.push({ action: 'replace', oldType: replacing.type, newType: this.editorTileType, x: gx, y: gy });
+      this.editorHistory.push({ 
+        action: 'replace', 
+        oldType: replacing.type, 
+        oldMetadata: oldMetadata,
+        newType: this.editorTileType, 
+        newMetadata: newMetadata,
+        x: gx, y: gy 
+      });
       replacing.tile.destroy();
     } else {
       // Avoid placing void on top of void
       if (this.editorTileType === 'void') {
         if (existingTiles.find(t => t.type === 'void')) return;
       }
-      this.editorHistory.push({ action: 'place', type: this.editorTileType, x: gx, y: gy, frame: this.editorTextureFrame, metadata: this.editorBuildMetadata, scale: this.editorBuildScale });
+
+      let currentMetadata = null;
+      if (this.editorTileType === 'build') currentMetadata = this.editorBuildMetadata;
+      else if (this.editorTileType === 'npc') currentMetadata = this.editorNPCMetadata;
+      else if (this.editorTileType === 'item') currentMetadata = this.editorPickupMetadata;
+
+      this.editorHistory.push({ 
+        action: 'place', 
+        type: this.editorTileType, 
+        x: gx, y: gy, 
+        frame: this.editorTextureFrame, 
+        metadata: currentMetadata, 
+        scale: this.editorBuildScale 
+      });
     }
     this.editorRedoStack = [];
 
@@ -828,6 +1041,7 @@ export class LobbyScene extends Phaser.Scene {
       // Forest objects: collidable, variable size
       const f = this.editorTextureFrame || 'sprite1';
       const sprite = group.create(gx, gy, 'forest', f);
+      sprite.setScale(1.8);
       this._setupForestSprite(sprite);
     } else if (this.editorTileType === 'build') {
       // Build objects: portal logic
@@ -846,8 +1060,30 @@ export class LobbyScene extends Phaser.Scene {
       }
       sprite.data.set('buildScale', scale);
       this._setupBuildSprite(sprite);
+    } else if (this.editorTileType === 'npc' || this.editorTileType === 'item') {
+      const sprite = group.create(gx, gy, texture);
+      sprite.setAlpha(0.8);
+      sprite.setVisible(this.editorMode);
+      sprite.data = new Phaser.Data.DataManager(sprite);
+      if (this.editorNPCMetadata) {
+        sprite.data.set('definitionId', this.editorNPCMetadata.definitionId);
+        sprite.data.set('role', this.editorNPCMetadata.role);
+        if (this.editorNPCMetadata.missionIds) {
+          sprite.data.set('missionIds', [...this.editorNPCMetadata.missionIds]);
+        } else if (this.editorNPCMetadata.missionId) {
+          sprite.data.set('missionIds', [this.editorNPCMetadata.missionId]);
+        }
+      }
+      if (this.editorTileType === 'item' && this.editorPickupMetadata) {
+        sprite.data.set('itemId', this.editorPickupMetadata.itemId);
+        sprite.data.set('quantity', this.editorPickupMetadata.quantity || 1);
+      }
+    } else if (this.editorTileType === 'void' || this.editorTileType === 'collider') {
+      const sprite = group.create(gx, gy, texture);
+      if (sprite) sprite.setVisible(this.editorMode);
     } else {
       const sprite = this.add.sprite(gx, gy, texture);
+      sprite.setVisible(this.editorMode);
       sprite.setAlpha(0.8);
       group.add(sprite);
     }
@@ -869,6 +1105,7 @@ export class LobbyScene extends Phaser.Scene {
       }
     }
   }
+
 
   _drawRectPreview(x1, y1, x2, y2) {
     const G = this.GRID_SIZE;
@@ -894,6 +1131,9 @@ export class LobbyScene extends Phaser.Scene {
         builds: this.builds?.getChildren()?.length || 0,
         spawns: this.spawns?.getChildren()?.length || 0,
         npcZones: this.npcZones?.getChildren()?.length || 0,
+        pickups: this.pickups?.getChildren()?.length || 0,
+        voids: this.voids?.getChildren()?.length || 0,
+        colliders: this.colliders?.getChildren()?.length || 0,
         historySize: this.editorHistory?.length || 0,
         redoSize: this.editorRedoStack?.length || 0,
       }
@@ -905,14 +1145,14 @@ export class LobbyScene extends Phaser.Scene {
   setEditorTool(tool) {
     this.editorTool = tool;
     // Update cursor color based on tool
-    const colors = { brush: 0x00ff88, eraser: 0xff4444, rect: 0xffff00, marker: 0x00ffff };
+    const colors = { brush: 0x00ff88, eraser: 0xff4444, rect: 0xffff00, marker: 0x00ffff, inspector: 0xff00ff };
     this.cursorPreview?.setStrokeStyle(2, colors[tool] || 0xffffff, 0.8);
   }
 
   setEditorTileType(type) {
     this.editorTileType = type;
     // Update cursor fill to match tile color
-    const colors = { wall: 0x666666, floor: 0x8B7355, forest: 0x228B22, build: 0xCD853F, spawn: 0x00CC66, npc: 0x4488FF };
+    const colors = { wall: 0x666666, floor: 0x8B7355, forest: 0x228B22, build: 0xCD853F, spawn: 0x00CC66, npc: 0x4488FF, void: 0x2596be, collider: 0xFFD700 };
     this.cursorPreview?.setFillStyle(colors[type] || 0xffffff, 0.3);
   }
 
@@ -981,10 +1221,11 @@ export class LobbyScene extends Phaser.Scene {
     } else if (type === 'forest') {
       const f = frame || 'sprite1';
       const sprite = group.create(gx, gy, 'forest', f);
+      sprite.setScale(1.8);
       this._setupForestSprite(sprite);
     } else if (type === 'build') {
       const f = frame || 'sprite1';
-      const scale = (metadata && metadata.buildScale) || 2;
+      const scale = (metadata && metadata.buildScale) || 2.5;
       const sprite = group.create(gx, gy, 'builds', f);
       sprite.setScale(scale);
       sprite.data = new Phaser.Data.DataManager(sprite);
@@ -998,74 +1239,78 @@ export class LobbyScene extends Phaser.Scene {
         sprite.data.set('buildScale', scale);
       }
       this._setupBuildSprite(sprite);
+    } else if (type === 'npc') {
+      const sprite = group.create(gx, gy, texture);
+      sprite.setAlpha(0.8);
+      sprite.setVisible(this.editorMode);
+      sprite.data = new Phaser.Data.DataManager(sprite);
+      if (metadata) {
+        sprite.data.set('definitionId', metadata.definitionId);
+        sprite.data.set('role', metadata.role);
+        sprite.data.set('missionId', metadata.missionId);
+      }
+    } else if (type === 'void') {
+      const sprite = group.create(gx, gy, texture);
+      sprite.setVisible(this.editorMode);
+    } else if (type === 'collider') {
+      const sprite = group.create(gx, gy, texture);
+      sprite.setVisible(this.editorMode);
     } else {
       const sprite = this.add.sprite(gx, gy, texture);
       sprite.setAlpha(0.8);
+      sprite.setVisible(this.editorMode);
       group.add(sprite);
     }
   }
 
   _setupForestSprite(sprite) {
     // 1. Depth Sorting: Base of the tree
-    // Use the mathematical base of the object for depth (accounts for scale/displayHeight)
     sprite.setDepth(sprite.y + (sprite.displayHeight * 0.5));
 
     // 2. Physics Body: Trunk only
-    // We want the collision to be at the bottom center, roughly 40% width and 20% height.
-    // This allows the player to walk "behind" the tree (the top part).
-
-    // First refresh to ensure body matches sprite position/size initially
+    // refreshBody() matches the body exactly to the current displayed sprite size.
     sprite.refreshBody();
 
-    const w = sprite.width;
-    const h = sprite.height;
+    const dw = sprite.displayWidth;
+    const dh = sprite.displayHeight;
 
-    const bodyW = w * 0.4;
-    const bodyH = h * 0.2;
+    // Trunk collision area: 40% width, 10% height
+    const bodyW = dw * 0.4;
+    const bodyH = dh * 0.1;
 
-    // Offset is relative to top-left of the sprite texture?
-    // StaticBody setOffset/setSize might behavior differently.
-    // For StaticBody, setSize sets the dimensions.
-    // setOffset sets the offset from the Game Object's position (top-left?).
-    // Actually, distinct from DynamicBody.
-
-    // Let's try explicit setSize and setOffset.
-    // Reduce height to 10% (trunk base) to allow walking behind the canopy
-    const newBodyH = h * 0.1;
-    sprite.body.setSize(bodyW, newBodyH);
-
-    // Offset calculation:
-    // We want it centered horizontally: (w - bodyW) / 2
-    // Bottom aligned: h - newBodyH
-    sprite.body.setOffset((w - bodyW) / 2, h - newBodyH);
+    // For StaticBody, we set the size in displayed pixels and then 
+    // set the offset from the top-left of the sprite's display area.
+    sprite.body.setSize(bodyW, bodyH);
+    sprite.body.setOffset((dw - bodyW) / 2, dh - bodyH);
   }
 
   _setupBuildSprite(sprite) {
     // ---- 1. Depth sorting ----
-    // Use the mathematical base of the object for depth
-    sprite.setDepth(sprite.y + (sprite.displayHeight * 0.5));
+    // AGGRESSIVE SORTING: Use a point high up on the sprite (10% from the top center)
+    // to ensure that almost the entire building structure is rendered BEHIND players
+    // standing anywhere on the porch, stairs, or foundation.
+    sprite.setDepth(sprite.y - (sprite.displayHeight * 0.1));
 
     // ---- 2. Physics body ----
     // refreshBody() syncs the StaticBody position to the sprite's current world pos
-    // and resets size to the full displayWidth x displayHeight.
     sprite.refreshBody();
 
     const dw = sprite.displayWidth;    // width  × scale
     const dh = sprite.displayHeight;   // height × scale
 
     const bodyW = dw * 0.80;           // 80% of displayed width
-    const bodyH = dh * 0.65;           // bottom 65% (up to roof)
+    const bodyH = dh * 0.60;           // 60% height (walls and roof)
 
-    // setSize(w, h, center=true) — sets body size in DISPLAY pixels and
-    // re-centers the body on the sprite. The internal tree is updated automatically.
-    sprite.body.setSize(bodyW, bodyH, true);
+    // setSize(w, h)
+    sprite.body.setSize(bodyW, bodyH);
 
-    // setOffset(x, y) — shifts body position by x,y in DISPLAY pixels.
-    // We need to push down so the body aligns to the BOTTOM of the sprite:
-    //   centered body top = sprite.y - bodyH/2
-    //   target body top   = sprite.y + dh/2 - bodyH
-    //   shift needed      = (dh - bodyH) / 2
-    sprite.body.setOffset(0, (dh - bodyH) / 2);
+    // Offset: Align to the new "solid" line (35% from bottom)
+    // dh is the full height. Bottom of body should be at dh * 0.35? 
+    // No, wait. dh * 1.0 is the bottom. dh * 0.35 is high up.
+    // In our aggressive depth logic, the base was sprite.y - (dh * 0.1).
+    // The visual base is at dh * 0.9 or something. 
+    // Let's use the bottom edge for physics for now, or just below the walls.
+    sprite.body.setOffset((dw - bodyW) / 2, dh - bodyH);
   }
 
   // ===== Editor: Clear & Toggle =====
@@ -1078,7 +1323,21 @@ export class LobbyScene extends Phaser.Scene {
     this.builds.clear(true, true);
     this.spawns.clear(true, true);
     this.npcZones.clear(true, true);
+    this.pickups.clear(true, true); // FIXED: Added pickups layer
     this.voids.clear(true, true);
+    this.colliders.clear(true, true);
+
+    // Also clear the "live" sprites if we are in the editor to avoid visual clutter
+    this.npcs.forEach(n => n.destroy());
+    this.npcs = [];
+    if (this.npcSprites) this.npcSprites.clear();
+    
+    // Clear active pickups
+    if (this.activePickups) {
+      this.activePickups.forEach(p => p.destroy());
+      this.activePickups = [];
+    }
+
     this.editorHistory = [];
     this.editorRedoStack = [];
     this._emitEditorStats();
@@ -1099,8 +1358,35 @@ export class LobbyScene extends Phaser.Scene {
     }
 
     this.editorMode = enabled;
+
+    // Toggle physics debug visibility
+    if (this.physics && this.physics.world) {
+      if (enabled) {
+        this.physics.world.drawDebug = true;
+        if (!this.physics.world.debugGraphic) {
+          this.physics.world.createDebugGraphic();
+        }
+        this.physics.world.debugGraphic.setVisible(true);
+      } else {
+        this.physics.world.drawDebug = false;
+        if (this.physics.world.debugGraphic) {
+          this.physics.world.debugGraphic.setVisible(false);
+        }
+      }
+    }
     this.cursorPreview?.setVisible(enabled);
     this.cursorCoordLabel?.setVisible(enabled);
+    if (this.gridGraphics) this.gridGraphics.setVisible(enabled);
+
+    // Toggle visibility of editor-only marker groups
+    const markerGroups = [this.spawns, this.npcZones, this.pickups, this.voids, this.colliders];
+    markerGroups.forEach(group => {
+      if (group) {
+        group.getChildren().forEach(child => {
+          if (child.setVisible) child.setVisible(enabled);
+        });
+      }
+    });
 
     if (this.player) {
       if (enabled) {
@@ -1115,7 +1401,7 @@ export class LobbyScene extends Phaser.Scene {
         // --- EXIT EDITOR MODE ---
         // Fully restore character mode
         this.editorMoveMode = 'camera'; // Reset for next open
-        this.player.setVisible(true);
+        this.player.setAlpha(1);
         if (this.player.body) {
           this.player.body.setEnable(true);
           this.player.body.setVelocity(0, 0);
@@ -1155,21 +1441,40 @@ export class LobbyScene extends Phaser.Scene {
    */
   _applyEditorMoveMode(mode) {
     if (!this.player) return;
+
+    const isCharacterMode = (mode === 'character');
+    const markersVisible = this.editorMode;
+
+    if (this.gridGraphics) this.gridGraphics.setVisible(markersVisible);
+
+    const markerGroups = [this.spawns, this.npcZones, this.pickups, this.voids, this.colliders];
+    markerGroups.forEach(group => {
+      if (group) {
+        group.getChildren().forEach(child => {
+          if (child.setVisible) child.setVisible(markersVisible);
+        });
+      }
+    });
+
     if (mode === 'camera') {
-      // Hide player and stop physics so the editor is clean
-      this.player.setVisible(false);
+      // Keep player visible but semi-transparent so the editor is clean but location is known
+      this.player.setAlpha(0.4);
       if (this.player.body) {
         this.player.body.setEnable(false);
         this.player.body.setVelocity(0, 0);
       }
+      // FIXED: Remove camera bounds entirely to allow unrestricted panning across the whole canvas
+      this.cameras.main.removeBounds();
       this.cameras.main.stopFollow();
     } else {
-      // character mode: player is visible and physics-enabled, camera follows
-      this.player.setVisible(true);
+      // character mode: player is fully opaque and physics-enabled, camera follows
+      this.player.setAlpha(1);
       if (this.player.body) {
         this.player.body.setEnable(true);
       }
       this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+      // Restore bounds to map size for player mode
+      this.cameras.main.setBounds(0, 0, this.mapWidth, this.mapHeight);
     }
   }
 
@@ -1179,6 +1484,11 @@ export class LobbyScene extends Phaser.Scene {
     const data = {
       width: this.mapWidth,
       height: this.mapHeight,
+      defaultSpawnX: this.mapDefaultSpawnX,
+      defaultSpawnY: this.mapDefaultSpawnY,
+      bgmTrack: this.currentBgmTrackId || 'none',
+      isPublic: this.mapIsPublic || false,
+      maxUsers: this.mapMaxUsers || 50,
       walls: this.walls.getChildren().map(t => ({
         x: t.x, y: t.y,
         frame: (t.frame.name === '__BASE' || t.texture.key === 'tile-wall') ? 'sprite1' : t.frame.name
@@ -1188,18 +1498,122 @@ export class LobbyScene extends Phaser.Scene {
       builds: this.builds.getChildren().map(t => ({
         x: t.x, y: t.y, frame: t.frame.name,
         scale: t.data?.get('buildScale') || t.scaleX || 1,
-        ...(t.data?.get('targetMap') !== undefined && t.data?.get('targetMap') !== '' ? { targetMap: t.data.get('targetMap') } : {}),
-        ...(t.data?.get('targetRoute') !== undefined && t.data?.get('targetRoute') !== '' ? { targetRoute: t.data.get('targetRoute') } : {}),
-        ...(t.data?.get('targetX') !== undefined && t.data?.get('targetX') !== '' ? { targetX: t.data.get('targetX') } : {}),
-        ...(t.data?.get('targetY') !== undefined && t.data?.get('targetY') !== '' ? { targetY: t.data.get('targetY') } : {}),
-        ...(t.data?.get('interactionText') !== undefined && t.data?.get('interactionText') !== '' ? { interactionText: t.data.get('interactionText') } : {}),
-        ...(t.data?.get('portalType') !== undefined && t.data?.get('portalType') !== '' ? { portalType: t.data.get('portalType') } : {}),
+        ...(t.data?.get('targetMap') !== undefined ? { targetMap: t.data.get('targetMap') } : {}),
+        ...(t.data?.get('targetRoute') !== undefined ? { targetRoute: t.data.get('targetRoute') } : {}),
+        ...(t.data?.get('targetX') !== undefined ? { targetX: t.data.get('targetX') } : {}),
+        ...(t.data?.get('targetY') !== undefined ? { targetY: t.data.get('targetY') } : {}),
+        ...(t.data?.get('interactionText') !== undefined ? { interactionText: t.data.get('interactionText') } : {}),
+        ...(t.data?.get('portalType') !== undefined ? { portalType: t.data.get('portalType') } : {}),
       })),
       spawns: this.spawns.getChildren().map(t => ({ x: t.x, y: t.y })),
-      npcZones: this.npcZones.getChildren().map(t => ({ x: t.x, y: t.y })),
+      npcZones: this.npcZones.getChildren().map(t => ({
+        x: t.x, y: t.y,
+        definitionId: t.data?.get('definitionId'),
+        role: t.data?.get('role'),
+        missionIds: t.data?.get('missionIds'),
+        missionId: t.data?.get('missionId'), // Keep for backward compatibility if needed
+        templateId: t.data?.get('templateId')
+      })),
+      pickups: this.pickups.getChildren().map(t => ({
+        x: t.x, y: t.y,
+        itemId: t.data?.get('itemId'),
+        quantity: t.data?.get('quantity') || 1
+      })),
       voids: this.voids.getChildren().map(t => ({ x: t.x, y: t.y })),
+      colliders: this.colliders.getChildren().map(t => ({ x: t.x, y: t.y })),
     };
     return JSON.stringify(data, null, 2);
+  }
+
+  importMapConfig(config) {
+    if (!config) return;
+    try {
+      const data = typeof config === 'string' ? JSON.parse(config) : config;
+      
+      this.clearAllTiles();
+      
+      if (data.width) this.mapWidth = data.width;
+      if (data.height) this.mapHeight = data.height;
+      
+      // FIXED: Call resizeMap to update visuals and bounds immediately
+      this.resizeMap(this.mapWidth, this.mapHeight);
+      
+      // Update map-level properties
+      if (data.defaultSpawnX != null) this.mapDefaultSpawnX = Number(data.defaultSpawnX);
+      if (data.defaultSpawnY != null) this.mapDefaultSpawnY = Number(data.defaultSpawnY);
+      if (data.isPublic !== undefined) this.mapIsPublic = !!data.isPublic;
+      if (data.maxUsers !== undefined) this.mapMaxUsers = Number(data.maxUsers);
+      
+      if (data.bgmTrack && data.bgmTrack !== 'none') {
+        this.currentBgmTrackId = data.bgmTrack;
+        // Trigger BGM change via store if possible or next reload will pick it up
+      }
+      
+      // Resize bounds and background if dimensions changed
+      this.physics.world.setBounds(0, 0, this.mapWidth, this.mapHeight);
+      if (this.backgroundRect) {
+        this.backgroundRect.setSize(this.mapWidth, this.mapHeight);
+        this.backgroundRect.setPosition(this.mapWidth / 2, this.mapHeight / 2);
+      }
+      
+      // Update grid graphics
+      if (this.gridGraphics) {
+        this.gridGraphics.clear();
+        this.gridGraphics.lineStyle(1, 0x333333, 0.5);
+        const G = this.GRID_SIZE;
+        for (let x = 0; x <= this.mapWidth; x += G) {
+          this.gridGraphics.moveTo(x, 0);
+          this.gridGraphics.lineTo(x, this.mapHeight);
+        }
+        for (let y = 0; y <= this.mapHeight; y += G) {
+          this.gridGraphics.moveTo(0, y);
+          this.gridGraphics.lineTo(this.mapWidth, y);
+        }
+        this.gridGraphics.strokePath();
+      }
+
+      // Re-populate layers
+      if (data.floors) data.floors.forEach(t => this._placeTileDirect('floor', t.x, t.y, t.frame));
+      if (data.walls) data.walls.forEach(t => this._placeTileDirect('wall', t.x, t.y, t.frame));
+      if (data.forest) data.forest.forEach(t => this._placeTileDirect('forest', t.x, t.y, t.frame));
+      if (data.builds) data.builds.forEach(t => {
+        const metadata = {
+          targetMap: t.targetMap,
+          targetRoute: t.targetRoute,
+          targetX: t.targetX,
+          targetY: t.targetY,
+          interactionText: t.interactionText,
+          portalType: t.portalType,
+          buildScale: t.scale
+        };
+        this._placeTileDirect('build', t.x, t.y, t.frame, metadata);
+      });
+      if (data.spawns) data.spawns.forEach(t => this._placeTileDirect('spawn', t.x, t.y));
+      if (data.npcZones) data.npcZones.forEach(t => {
+        const metadata = {
+          definitionId: t.definitionId,
+          role: t.role,
+          missionId: t.missionId
+        };
+        this._placeTileDirect('npc', t.x, t.y, null, metadata);
+      });
+      if (data.pickups) data.pickups.forEach(t => {
+        const metadata = {
+          itemId: t.itemId,
+          quantity: t.quantity
+        };
+        this._placeTileDirect('item', t.x, t.y, null, metadata);
+      });
+      if (data.voids) data.voids.forEach(t => this._placeTileDirect('void', t.x, t.y));
+      if (data.colliders) data.colliders.forEach(t => this._placeTileDirect('collider', t.x, t.y));
+      if (data.collider && !data.colliders) data.collider.forEach(t => this._placeTileDirect('collider', t.x, t.y)); // Compatibility
+
+      console.log('[LobbyScene] Map imported successfully');
+      this._emitEditorStats();
+      this.cameras.main.flash(300, 0, 150, 255);
+    } catch (err) {
+      console.error('[LobbyScene] Error importing map config:', err);
+    }
   }
 
   clearMap() {
@@ -1209,7 +1623,9 @@ export class LobbyScene extends Phaser.Scene {
     this.builds.clear(true, true);
     this.spawns.clear(true, true);
     this.npcZones.clear(true, true);
+    this.pickups.clear(true, true); 
     this.voids.clear(true, true);
+    this.colliders.clear(true, true);
   }
 
   loadMapConfig(jsonConfig) {
@@ -1251,38 +1667,58 @@ export class LobbyScene extends Phaser.Scene {
       (data.forest || []).forEach(w => {
         const frame = w.frame || 'sprite1';
         const s = this.forest.create(w.x, w.y, 'forest', frame);
+        s.setScale(1.8);
         this._setupForestSprite(s);
       });
       (data.builds || []).forEach((w, idx) => {
         const frame = w.frame || 'sprite1';
-        const scale = w.scale || 2;
+        const scale = w.scale || 2.5;
         const s = this.builds.create(w.x, w.y, 'builds', frame);
         s.setScale(scale);
         s.data = new Phaser.Data.DataManager(s);
         s.data.set('buildScale', scale);
-        if (w.targetMap !== undefined) {
-          s.data.set('targetMap', w.targetMap);
-        } else if (w.targetRoute !== undefined) {
-          s.data.set('targetRoute', w.targetRoute);
-        } else if (w.portalType && w.portalType !== 'local') {
-          console.warn('[MapLoad] build[' + idx + '] Portal has no targetMap or targetRoute (raw:', JSON.stringify(w), ')');
-        } else {
-          console.warn('[MapLoad] build[' + idx + '] NO targetMap (raw:', JSON.stringify(w), ')');
-        }
+        
+        if (w.targetMap !== undefined) s.data.set('targetMap', w.targetMap);
+        if (w.targetRoute !== undefined) s.data.set('targetRoute', w.targetRoute);
         if (w.targetX !== undefined) s.data.set('targetX', w.targetX);
         if (w.targetY !== undefined) s.data.set('targetY', w.targetY);
         if (w.interactionText !== undefined) s.data.set('interactionText', w.interactionText);
-        if (w.portalType !== undefined) {
-          s.data.set('portalType', w.portalType);
-          console.log(`[MapLoad] Portal loaded at ${w.x}, ${w.y} (Type: ${w.portalType})`);
-        } else {
-          console.warn('[MapLoad] build[' + idx + '] NO portalType (raw:', JSON.stringify(w), ')');
-        }
+        if (w.portalType !== undefined) s.data.set('portalType', w.portalType);
+        
         this._setupBuildSprite(s);
       });
-      (data.spawns || []).forEach(w => { const s = this.add.sprite(w.x, w.y, 'tile-spawn'); s.setAlpha(0.8); this.spawns.add(s); });
-      (data.npcZones || []).forEach(w => { const s = this.add.sprite(w.x, w.y, 'tile-npc'); s.setAlpha(0.8); this.npcZones.add(s); });
-      (data.voids || []).forEach(w => { this.voids.create(w.x, w.y, 'tile-void').refreshBody(); });
+      (data.spawns || []).forEach(w => { const s = this.add.sprite(w.x, w.y, 'tile-spawn'); s.setAlpha(0.8); s.setVisible(this.editorMode); this.spawns.add(s); });
+      (data.npcZones || []).forEach(w => {
+        const s = this.add.sprite(w.x, w.y, 'tile-npc');
+        s.setAlpha(0.8);
+        s.setVisible(this.editorMode);
+        s.data = new Phaser.Data.DataManager(s);
+        if (w.definitionId !== undefined) s.data.set('definitionId', w.definitionId);
+        if (w.role !== undefined) s.data.set('role', w.role);
+        if (w.missionIds !== undefined) {
+          s.data.set('missionIds', w.missionIds);
+        } else if (w.missionId !== undefined) {
+          s.data.set('missionIds', [w.missionId]);
+          s.data.set('missionId', w.missionId);
+        }
+        if (w.templateId !== undefined) s.data.set('templateId', w.templateId);
+        this.npcZones.add(s);
+      });
+      (data.pickups || []).forEach(w => {
+        const s = this.add.sprite(w.x, w.y, 'tile-item');
+        s.setAlpha(0.8);
+        s.setVisible(this.editorMode);
+        s.data = new Phaser.Data.DataManager(s);
+        if (w.itemId !== undefined) s.data.set('itemId', w.itemId);
+        if (w.quantity !== undefined) s.data.set('quantity', w.quantity);
+        this.pickups.add(s);
+      });
+      (data.voids || []).forEach(w => { this.voids.create(w.x, w.y, 'tile-void').refreshBody().setVisible(this.editorMode); });
+      
+      const colls = data.colliders || data.collider || [];
+      colls.forEach(w => { 
+        this.colliders.create(w.x, w.y, 'tile-collider').refreshBody().setVisible(this.editorMode); 
+      });
     } catch (e) {
       console.error('[MapEditor] Failed to load map config', e);
     }
@@ -1511,6 +1947,8 @@ export class LobbyScene extends Phaser.Scene {
       if (this.voids?.getChildren().some(v => Math.abs(v.x - gx) < GRID / 2 && Math.abs(v.y - gy) < GRID / 2)) return true;
       // Check wall tiles
       if (this.walls?.getChildren().some(v => Math.abs(v.x - gx) < GRID / 2 && Math.abs(v.y - gy) < GRID / 2)) return true;
+      // Check collider tiles
+      if (this.colliders?.getChildren().some(v => Math.abs(v.x - gx) < GRID / 2 && Math.abs(v.y - gy) < GRID / 2)) return true;
       return false;
     };
     if (isBlockedAt(startX, startY)) {
@@ -1547,6 +1985,9 @@ export class LobbyScene extends Phaser.Scene {
     }
     if (this.voids) {
       this.physics.add.collider(this.player, this.voids);
+    }
+    if (this.colliders) {
+      this.physics.add.collider(this.player, this.colliders);
     }
 
     const cls = user?.characterClass || this.getRandomClass();
@@ -1753,30 +2194,248 @@ export class LobbyScene extends Phaser.Scene {
     }
   }
 
-  createNPCs() {
-    // Define NPCs
-    const npcData = [
-      { id: 'mission_master', name: 'Mission Master', x: 1000, y: 800, color: 0x4444ff, role: 'mission' },
-      { id: 'trainer', name: 'Trainer', x: 1200, y: 900, color: 0x44ff44, role: 'class' },
-      { id: 'shop', name: 'Shop Keeper', x: 800, y: 900, color: 0xffff44, role: 'shop' }
-    ];
+  async loadNPCs() {
+    const roomId = useGameStore.getState().currentRoomId;
+    if (!roomId) return;
 
-    npcData.forEach(data => {
-      const container = this.add.container(data.x, data.y);
+    try {
+      console.log(`[LobbyScene] Fetching NPCs for Room: ${roomId}, Map: ${this.currentMapKey}`);
+      const response = await api.get(`/rooms/${roomId}/npcs`, {
+        params: { scene_key: this.currentMapKey }
+      });
 
-      // NPC Visual
-      const shape = this.add.rectangle(0, 0, 30, 30, data.color);
-      const label = this.add.text(0, -25, data.name, {
-        fontSize: '12px',
-        fill: '#cccccc'
-      }).setOrigin(0.5);
+      if (response.data) {
+        // Clear existing NPCs
+        this.npcs.forEach(npc => npc.destroy());
+        this.npcs = [];
+        this.npcSprites.clear();
 
-      container.add([shape, label]);
-      this.physics.add.existing(container, true); // Static body
+        response.data.forEach(instance => {
+          this.createNPCSprite(instance);
+        });
 
-      container.npcData = data;
-      this.npcs.push(container);
+        // Update indicators based on active mission
+        this.handleMissionUpdate(useGameStore.getState().activeMission);
+      }
+    } catch (err) {
+      console.error('[LobbyScene] Failed to load NPCs:', err);
+    }
+  }
+
+  createNPCSprite(instance) {
+    console.log('[LobbyScene] Raw instance from API:', instance);
+    const tmpl = instance.npc_template;
+    const def = tmpl?.npc_definition;
+    if (!tmpl || !def) return;
+
+    console.log(`[LobbyScene] Spawning NPC: ${def.name} at (${tmpl.position_x}, ${tmpl.position_y})`);
+
+    // Use a container for name tags and indicators
+    const container = this.add.container(tmpl.position_x, tmpl.position_y);
+    container.setDepth(tmpl.position_y);
+
+    // FIX: Si hay un marcador de editor ('tile-npc') debajo, lo ocultamos para que no haga de "fondo"
+    // Buscamos tanto en zonas estáticas como en las recién pintadas (editorTiles)
+    const gridSize = this.GRID_SIZE;
+    const hideMarkersAt = (tx, ty) => {
+        if (this.npcZones) {
+            this.npcZones.getChildren().forEach(zone => {
+                if (Math.abs(zone.x - tx) < 5 && Math.abs(zone.y - ty) < 5) zone.setVisible(false);
+            });
+        }
+        if (this.editorTiles) {
+            this.editorTiles.forEach(tile => {
+                if (tile._tileType === 'npc' && Math.abs(tile.x - tx) < gridSize && Math.abs(tile.y - ty) < gridSize) {
+                    tile.setVisible(false);
+                }
+            });
+        }
+    };
+    hideMarkersAt(tmpl.position_x, tmpl.position_y);
+
+    // NPC Sprite (using NPCSprite for high-quality visuals)
+    // FIX: Usamos def.character_id o def.sprite en lugar de tmpl.id para cargar el arte correcto
+    const sprite = new NPCSprite(
+      this,
+      0, 0,
+      def.character_id || def.sprite || '2',
+      def.name
+    );
+    
+    // NPC doesn't move by default, so we set it to idle facing the default direction
+    const facing = tmpl.facing_direction || 'south';
+    sprite.setFacing(facing);
+
+    container.add(sprite);
+
+    // Store essential data for interactions
+    container.npcData = {
+      templateId: tmpl.id,
+      definitionId: def.id,
+      instanceId: instance.id,
+      characterId: def.character_id || def.sprite || '2',
+      name: def.name,
+      role: instance.role || tmpl.role || 'ambient',
+      interactionMode: def.interaction_mode || 'hybrid',
+      voiceType: def.voice_type || 'male',
+      missionId: instance.mission_id,
+      shopId: def.shop_id,
+      roomId: instance.room_id,
+      // Movement Params
+      movementType: tmpl.movement_type || 'static',
+      movementRange: tmpl.movement_range || 0,
+      movementSpeed: tmpl.movement_speed || 50,
+      spawnX: tmpl.position_x,
+      spawnY: tmpl.position_y,
+      targetX: tmpl.position_x,
+      targetY: tmpl.position_y,
+      moveTimer: 0,
+      isTalking: false
+    };
+
+    this.physics.add.existing(container, false); // Dynamic body
+    if (container.body) {
+        container.body.setImmovable(true); // Don't let player push them
+        container.body.setCircle(20, -20, -20); // Collision circle
+    }
+    this.npcs.push(container);
+    this.npcSprites.set(tmpl.id, container);
+  }
+
+  handleMissionUpdate(mission) {
+    if (!this.npcs) return;
+
+    this.npcs.forEach(npcContainer => {
+      const npcId = npcContainer.npcData.templateId;
+      const status = this.getNpcMissionStatus(npcId, mission);
+      this.updateNpcIndicator(npcContainer, status);
     });
+  }
+
+  getNpcMissionStatus(npcId, mission) {
+      if (!mission) return null;
+      
+      // Check if this NPC is the source of the mission or a target
+      const isStartNpc = mission.start_npc_id === npcId;
+      const tasks = mission.tasks || [];
+      const currentTask = tasks.find(t => !t.is_completed);
+      
+      if (!currentTask && isStartNpc) return 'complete'; // Ready to hand in
+      
+      if (currentTask) {
+          if (currentTask.npc_id === npcId) {
+              return currentTask.is_completed ? 'success' : 'active';
+          }
+      }
+      
+      return null;
+  }
+
+  updateNpcIndicator(container, status) {
+      // Remove old indicator if exists
+      if (container.indicator) {
+          container.indicator.destroy();
+          container.indicator = null;
+      }
+
+      let emoji = '';
+      let color = '#ffffff';
+
+      if (status === 'complete') {
+          emoji = '❓';
+          color = '#ffff00';
+      } else if (status === 'active') {
+          emoji = '❗';
+          color = '#ffff00';
+      } else if (status === 'success') {
+          emoji = '✔';
+          color = '#00ff00';
+      }
+
+      if (emoji) {
+          const indicator = this.add.text(0, -45, emoji, {
+              fontSize: '20px',
+              fill: color,
+              stroke: '#000000',
+              strokeThickness: 3
+          }).setOrigin(0.5);
+          container.add(indicator);
+          container.indicator = indicator;
+
+          // Add a little bounce
+          this.tweens.add({
+              targets: indicator,
+              y: -50,
+              duration: 1000,
+              yoyo: true,
+              repeat: -1,
+              ease: 'Sine.easeInOut'
+          });
+      }
+  }
+
+  async loadMapPickups() {
+    try {
+      console.log(`[LobbyScene] Fetching Map Pickups for scene: ${this.currentMapKey}`);
+      const response = await api.get(`/inventory/pickups/${this.currentMapKey}`);
+      
+      if (response.data) {
+        // Clear existing pickups if any (usually empty on start)
+        this.activePickups?.forEach(p => p.destroy());
+        this.activePickups = [];
+
+        response.data.forEach(pickup => {
+          if (!pickup.is_picked_up) {
+            this.createMapPickupSprite(pickup);
+          }
+        });
+      }
+    } catch (err) {
+      console.error('[LobbyScene] Failed to load map pickups:', err);
+    }
+  }
+
+  createMapPickupSprite(pickup) {
+    const item = pickup.item;
+    if (!item) return;
+
+    // Visual container for the item
+    const container = this.add.container(pickup.x, pickup.y);
+    container.setDepth(pickup.y);
+    
+    // Hide editor marker if exists underneath
+    if (this.pickups) {
+      this.pickups.getChildren().forEach(p => {
+        if (Math.abs(p.x - pickup.x) < 5 && Math.abs(p.y - pickup.y) < 5) {
+          p.setVisible(false);
+        }
+      });
+    }
+
+    const spriteKey = `item-sprite-${item.icon_key}`;
+    // If not loaded yet, use a fallback circle/square
+    let sprite;
+    if (this.textures.exists(spriteKey)) {
+      sprite = this.add.image(0, 0, spriteKey);
+    } else {
+      sprite = this.add.rectangle(0, 0, 32, 32, 0xffff00);
+    }
+    
+    sprite.setDisplaySize(32, 32);
+    container.add(sprite);
+
+    // Floating animation
+    this.tweens.add({
+      targets: sprite,
+      y: -5,
+      duration: 1500,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+
+    container.pickupData = pickup;
+    this.activePickups.push(container);
   }
 
   createChallengePoints() {
@@ -1824,8 +2483,11 @@ export class LobbyScene extends Phaser.Scene {
     return false;
   }
 
-  update(time) {
+  update(time, delta) {
     if (!this.player) return;
+
+    // Update NPCs
+    this.updateNPCs(time, delta);
 
     // Force camera follow every frame to fix teleport lag/desync - MOVED TO createMyPlayer
     // this.cameras.main.startFollow(this.player, true, 1, 1);
@@ -1858,7 +2520,7 @@ export class LobbyScene extends Phaser.Scene {
       if (this.editorMoveMode === 'camera') {
         // CAMERA PAN: WASD/Arrows scroll the viewport freely
         if (!this.isTyping()) {
-          const panSpeed = 10;
+          const panSpeed = 20; // Increased speed from 10 to 20 for smoother navigation in large maps
           const cam = this.cameras.main;
           const left = this.cursors.left.isDown || this.wasd.left.isDown;
           const right = this.cursors.right.isDown || this.wasd.right.isDown;
@@ -1874,6 +2536,9 @@ export class LobbyScene extends Phaser.Scene {
       // CHARACTER MODE: fall through to normal player movement below
       // (editing tools still work — the pointer events are separate)
     }
+
+    // Dynamic Depth Sorting: Local Player (Snap base to feet)
+    this.player.setDepth(this.player.y + 1);
 
     const speed = 160;
     const body = this.player.body;
@@ -1948,11 +2613,58 @@ export class LobbyScene extends Phaser.Scene {
     this.updateCameraBounds();
   }
 
+  updateNPCs(time, delta) {
+    if (!this.npcs) return;
+
+    this.npcs.forEach(npc => {
+        // Enforce depth sorting (Feet at container.y)
+        npc.setDepth(npc.y + 1);
+
+        const data = npc.npcData;
+        if (!data || data.movementType === 'static' || data.isTalking) {
+            if (npc.body) npc.body.setVelocity(0);
+            // Ensure child PlayerSprite is idle
+            const sprite = npc.list.find(item => item instanceof PlayerSprite);
+            if (sprite) sprite.playAnimation('idle');
+            return;
+        }
+
+        if (data.movementType === 'wander') {
+            const distToTarget = Phaser.Math.Distance.Between(npc.x, npc.y, data.targetX, data.targetY);
+            const sprite = npc.list.find(item => item instanceof PlayerSprite);
+
+            if (distToTarget < 5) {
+                // We reached the target
+                if (npc.body) npc.body.setVelocity(0);
+                if (sprite) sprite.playAnimation('idle');
+
+                // Wait before picking next target
+                if (time > data.moveTimer) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = Math.random() * data.movementRange;
+                    data.targetX = data.spawnX + Math.cos(angle) * dist;
+                    data.targetY = data.spawnY + Math.sin(angle) * dist;
+                    data.moveTimer = time + 2000 + Math.random() * 3000; // Wait 2-5 seconds
+                }
+            } else {
+                // Move towards target
+                this.physics.moveTo(npc, data.targetX, data.targetY, data.movementSpeed);
+                if (sprite) {
+                    sprite.playAnimation('walk');
+                    // Flip sprite based on velocity
+                    if (npc.body.velocity.x < 0) sprite.sprite.setFlipX(true);
+                    else if (npc.body.velocity.x > 0) sprite.sprite.setFlipX(false);
+                }
+            }
+        }
+    });
+  }
+
   // DELETED DUPLICATE shutdown() here to consolidate at end of file
 
   processSyncInteractions() {
     if (!this._readyInteractions) return;
-    const { found, foundChallenge, foundPlayer, foundBuild } = this._readyInteractions;
+    const { found, foundChallenge, foundPlayer, foundBuild, foundPickup } = this._readyInteractions;
 
     if (found) {
       this.triggerInteraction(found.npcData);
@@ -2016,6 +2728,53 @@ export class LobbyScene extends Phaser.Scene {
           // Check if map is public or needs a code
           this._handleMapEntry(targetMap, targetX, targetY);
         }
+      }
+    } else if (foundPickup) {
+      this.handlePickupItem(foundPickup);
+    }
+  }
+
+  async handlePickupItem(pickupContainer) {
+    const pickup = pickupContainer.pickupData;
+    if (!pickup || !pickup.id) {
+        console.warn('[LobbyScene] Interaction attempted with an object that has no pickup ID (Editor Marker?).');
+        return;
+    }
+    
+    try {
+      console.log(`[LobbyScene] Picking up item: ${pickup.item?.name || 'Unknown Item'}`);
+      const response = await api.post(`/inventory/pickup/${pickup.id}`);
+      
+      if (response.data) {
+        // Success! Remove from scene
+        this.activePickups = this.activePickups.filter(p => p !== pickupContainer);
+        
+        // Tween effect before destroying
+        this.tweens.add({
+          targets: pickupContainer,
+          y: pickupContainer.y - 50,
+          alpha: 0,
+          scale: 1.5,
+          duration: 500,
+          onComplete: () => pickupContainer.destroy()
+        });
+
+        // Show toast or message
+        const itemName = pickup.item?.name || 'Objeto';
+        window.dispatchEvent(new CustomEvent('player-message', { detail: { text: `Recogiste ${itemName} x${pickup.quantity}` } }));
+
+        // Update React Inventory State in HUD
+        useGameStore.getState().fetchInventory();
+      }
+    } catch (err) {
+      console.error('[LobbyScene] Failed to pickup item:', err);
+      // Special handling for 404 (ID stale or item moved/stolen)
+      if (err.response?.status === 404) {
+          console.warn('[LobbyScene] Pickup ID not found on server. Removing stale item from scene.');
+          this.activePickups = this.activePickups.filter(p => p !== pickupContainer);
+          pickupContainer.destroy();
+          // Optionally trigger a re-fetch of pickups
+          // this.loadMapPickups();
       }
     }
   }
@@ -2099,21 +2858,41 @@ export class LobbyScene extends Phaser.Scene {
       });
     }
 
+    // Check Pickups
+    let foundPickup = null;
+    if (this.activePickups) {
+      this.activePickups.forEach(p => {
+        const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y);
+        if (dist < 60 && !foundPickup) {
+          foundPickup = p;
+        }
+      });
+    }
+
     this.nearbyNPC = found;
+    this.nearbyPickup = foundPickup;
 
     // Save state for synchronous interaction processing
-    this._readyInteractions = { found, foundChallenge, foundPlayer, foundBuild };
+    this._readyInteractions = { found, foundChallenge, foundPlayer, foundBuild, foundPickup };
 
     // Update Interaction Prompt
-    if (found || foundChallenge || foundPlayer || foundBuild) {
-      let msg = "Presiona E";
-      if (found) msg = `Presiona E para hablar con ${found.npcData.name}`;
-      else if (foundChallenge) {
+    if (found || foundChallenge || foundPlayer || foundBuild || foundPickup) {
+      const t = (key, opts) => i18n.t(`lobby.interactions.${key}`, opts);
+      let msg = t('press_e');
+
+      if (found) {
+        msg = t('talk_to', { name: found.npcData.name });
+      } else if (foundPickup) {
+        msg = t('pickup', { 
+          name: foundPickup.pickupData.item.name, 
+          qty: foundPickup.pickupData.quantity 
+        });
+      } else if (foundChallenge) {
         const isJoined = useGameStore.getState().activeChallengeId === foundChallenge.challengeData.id;
-        msg = isJoined ? "Presiona E para salir" : `Presiona E para unirte a ${foundChallenge.challengeData.name}`;
-      }
-      else if (foundPlayer) msg = `Presiona E para chatear con ${foundPlayer.name}`;
-      else if (foundBuild) {
+        msg = isJoined ? t('leave_challenge') : t('join_challenge', { name: foundChallenge.challengeData.name });
+      } else if (foundPlayer) {
+        msg = t('chat_with', { name: foundPlayer.name });
+      } else if (foundBuild) {
         const portalType = foundBuild.data?.get('portalType') || 'map';
         const targetMap = foundBuild.data?.get('targetMap');
         const targetRoute = foundBuild.data?.get('targetRoute');
@@ -2126,9 +2905,9 @@ export class LobbyScene extends Phaser.Scene {
           (portalType === 'local' && targetX != null && targetY != null);
 
         if (hasDest) {
-          msg = customText ? `Presiona E: ${customText}` : `Presiona E para Entrar`;
+          msg = customText ? t('press_e_custom', { text: customText }) : t('enter');
         } else {
-          msg = '⚠ Edif. sin destino configurado';
+          msg = t('no_destination');
         }
       }
 
@@ -2207,9 +2986,13 @@ export class LobbyScene extends Phaser.Scene {
       this.unsubscribe();
       this.unsubscribe = null;
     }
-    if (this.audioUnsubscribe) {
-      this.audioUnsubscribe();
-      this.audioUnsubscribe = null;
+    if (this.missionUnsubscribe) {
+      this.missionUnsubscribe();
+      this.missionUnsubscribe = null;
+    }
+    if (this.roomUnsubscribe) {
+      this.roomUnsubscribe();
+      this.roomUnsubscribe = null;
     }
     
     // Clean up window listeners
@@ -2232,6 +3015,10 @@ export class LobbyScene extends Phaser.Scene {
     if (this.onZoomEvent) {
       window.removeEventListener('phaser-camera-zoom', this.onZoomEvent);
       this.onZoomEvent = null;
+    }
+    if (this.onNPCSpeech) {
+      window.removeEventListener('npc-speech-bubble', this.onNPCSpeech);
+      this.onNPCSpeech = null;
     }
     if (this.onEditorEvent) {
       window.removeEventListener('editor-command', this.onEditorEvent);
@@ -2259,6 +3046,7 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   triggerInteraction(data) {
+    console.log('[LobbyScene] Emitiendo evento lobby-interaction con data:', data);
     // Emit event to React
     const event = new CustomEvent('lobby-interaction', { detail: data });
     window.dispatchEvent(event);

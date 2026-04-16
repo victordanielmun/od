@@ -1,6 +1,6 @@
-  // ⚙️  AUTO-GENERADO por map_character_frames.cjs
-  // Para regenerar: node map_character_frames.cjs
-  animationsByCharacter: {
+// ⚙️  AUTO-GENERADO por map_character_frames.cjs
+// Para regenerar: node map_character_frames.cjs
+export const animationsByCharacter = {
     '1': {
       // --- Base Sheet ---
       'walk':        { sheetType: 'base', frames: ['sprite3', 'sprite5', 'sprite6', 'sprite7', 'sprite8', 'sprite9'], frameRate: 10, repeat: -1 },
@@ -87,4 +87,33 @@
       'avatar-poisoned':{ sheetType: 'avatar', frames: ['sprite32'], frameRate: 1, repeat: -1 },
       'avatar-stunned':{ sheetType: 'avatar', frames: ['sprite33'], frameRate: 1, repeat: -1 },
     },
-  }
+
+    '4': {
+      // --- Base Sheet ---
+      'walk':        { sheetType: 'base', frames: ['sprite1', 'sprite2', 'sprite3', 'sprite4', 'sprite5', 'sprite6'], frameRate: 10, repeat: -1 },
+      'idle':        { sheetType: 'base', frames: ['sprite7', 'sprite8', 'sprite9', 'sprite10', 'sprite11', 'sprite12'], frameRate: 8, repeat: -1 },
+      'hurt':        { sheetType: 'base', frames: ['sprite13', 'sprite14', 'sprite15', 'sprite16', 'sprite17', 'sprite18'], frameRate: 10, repeat: 0 },
+      'die':         { sheetType: 'base', frames: ['sprite19', 'sprite20', 'sprite21', 'sprite22', 'sprite23', 'sprite24'], frameRate: 8, repeat: 0 },
+      'stun':        { sheetType: 'base', frames: ['sprite25', 'sprite26', 'sprite27', 'sprite28', 'sprite29', 'sprite30'], frameRate: 10, repeat: -1 },
+      'poison':      { sheetType: 'base', frames: ['sprite31', 'sprite32', 'sprite33', 'sprite34', 'sprite35', 'sprite36'], frameRate: 8, repeat: -1 },
+      // --- Combat Sheet ---
+      'slash':       { sheetType: 'combat', frames: ['sprite1', 'sprite2', 'sprite3', 'sprite4', 'sprite5', 'sprite6'], frameRate: 12, repeat: 0 },
+      'special':     { sheetType: 'combat', frames: ['sprite7', 'sprite8', 'sprite9', 'sprite10', 'sprite11', 'sprite12'], frameRate: 12, repeat: 0 },
+      'potion':      { sheetType: 'combat', frames: ['sprite13', 'sprite14', 'sprite15', 'sprite16', 'sprite17', 'sprite18'], frameRate: 10, repeat: 0 },
+      'projectile':  { sheetType: 'combat', frames: ['sprite19', 'sprite20', 'sprite21', 'sprite22', 'sprite23', 'sprite24'], frameRate: 12, repeat: 0 },
+      'block':       { sheetType: 'combat', frames: ['sprite25', 'sprite26', 'sprite27', 'sprite28', 'sprite29', 'sprite30'], frameRate: 10, repeat: 0 },
+      // --- Avatar Sheet ---
+      'avatar-idle': { sheetType: 'avatar', frames: ['sprite1'], frameRate: 1, repeat: -1 },
+      'avatar-hurt': { sheetType: 'avatar', frames: ['sprite2'], frameRate: 1, repeat: -1 },
+      'avatar-low-health':{ sheetType: 'avatar', frames: ['sprite3'], frameRate: 1, repeat: -1 },
+      'avatar-dead': { sheetType: 'avatar', frames: ['sprite4'], frameRate: 1, repeat: -1 },
+      'avatar-special':{ sheetType: 'avatar', frames: ['sprite5'], frameRate: 1, repeat: -1 },
+      'avatar-help': { sheetType: 'avatar', frames: ['sprite6'], frameRate: 1, repeat: -1 },
+      'avatar-angry':{ sheetType: 'avatar', frames: ['sprite7'], frameRate: 1, repeat: -1 },
+      'avatar-happy':{ sheetType: 'avatar', frames: ['sprite8'], frameRate: 1, repeat: -1 },
+      'avatar-surprised':{ sheetType: 'avatar', frames: ['sprite9'], frameRate: 1, repeat: -1 },
+      'avatar-thinking':{ sheetType: 'avatar', frames: ['sprite10'], frameRate: 1, repeat: -1 },
+      'avatar-poisoned':{ sheetType: 'avatar', frames: ['sprite11'], frameRate: 1, repeat: -1 },
+      'avatar-stunned':{ sheetType: 'avatar', frames: ['sprite12'], frameRate: 1, repeat: -1 },
+    },
+};

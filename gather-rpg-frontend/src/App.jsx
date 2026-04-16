@@ -14,6 +14,12 @@ import { AdminLayout } from './layouts/AdminLayout';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminMapList } from './pages/admin/AdminMapList';
 import { AdminCharacters } from './pages/admin/AdminCharacters';
+import { AdminNPCDefinitions } from './pages/admin/AdminNPCDefinitions';
+import { AdminNPCs } from './pages/admin/AdminNPCs';
+import { AdminAITester } from './pages/admin/AdminAITester';
+import { AdminMissions } from './pages/admin/AdminMissions';
+import { AdminItems } from './pages/admin/AdminItems';
+import { AdminShops } from './pages/admin/AdminShops';
 import PracticePage from './pages/PracticePage';
 import { useAuthStore } from './store/authStore';
 
@@ -59,6 +65,12 @@ function App() {
           <Route index element={<AdminDashboard />} />
           <Route path="maps" element={<AdminMapList />} />
           <Route path="characters" element={<AdminCharacters />} />
+          <Route path="npcs" element={<AdminNPCDefinitions />} />
+          <Route path="npcsprites" element={<AdminNPCs />} />
+          <Route path="items" element={<AdminItems />} />
+          <Route path="shops" element={<AdminShops />} />
+          <Route path="missions" element={<AdminMissions />} />
+          <Route path="ai-test" element={<AdminAITester />} />
         </Route>
 
         {/* English Learning / Pronunciation Routes */}

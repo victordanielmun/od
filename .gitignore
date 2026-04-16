@@ -50,3 +50,4 @@ voice/backend/uvicorn_*.txt
 # OS
 .DS_Store
 Thumbs.db
+.grepai/

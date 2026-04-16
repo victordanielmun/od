@@ -9,7 +9,11 @@
 import axios from 'axios';
 import gatherApi from './api';
 
-const VOICE_API_BASE = import.meta.env.VITE_VOICE_API_URL || '/voice';
+const VOICE_API_BASE = import.meta.env.VITE_VOICE_API_URL && import.meta.env.VITE_VOICE_API_URL !== "" 
+    ? import.meta.env.VITE_VOICE_API_URL 
+    : '/voice';
+
+console.log('[VoiceApi] Base URL:', VOICE_API_BASE);
 
 const voiceApi = axios.create({
     baseURL: VOICE_API_BASE,
@@ -117,13 +121,23 @@ export interface TTSResponse {
     cache_key: string;
 }
 
-export async function generateTTS(text: string): Promise<TTSResponse> {
-    const { data } = await voiceApi.post<TTSResponse>('/api/tts/generate', { text });
+export async function generateTTS(text: string, voice?: string): Promise<TTSResponse> {
+    const { data } = await voiceApi.post<TTSResponse>('/api/tts/generate', { text, voice });
+    
+    // Prefix with /voice if needed to ensure Vite proxy picks it up
+    if (data.audio_url && data.audio_url.startsWith('/api')) {
+        const prefix = (VOICE_API_BASE === '/api' || !VOICE_API_BASE) ? '/voice' : VOICE_API_BASE;
+        data.audio_url = `${prefix}${data.audio_url}`;
+    }
+    
+    console.log('[VoiceApi] Generated TTS URL:', data.audio_url);
     return data;
 }
 
 export function getTTSAudioUrl(cacheKey: string): string {
-    return `${VOICE_API_BASE}/api/tts/audio/${cacheKey}`;
+    // Force /voice prefix if VOICE_API_BASE is empty or /api (Go backend)
+    const base = (VOICE_API_BASE === '/api' || !VOICE_API_BASE) ? '/voice' : VOICE_API_BASE;
+    return `${base}/api/tts/audio/${cacheKey}`;
 }
 
 /* ─── Learning Progress (Go Backend) ──────────────────── */

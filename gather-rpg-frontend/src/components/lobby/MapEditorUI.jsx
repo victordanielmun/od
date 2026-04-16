@@ -1,28 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
-  Hammer, Save, Download, X, Undo2, Redo2, Trash2,
+  Hammer, Save, Download, Upload, X, Undo2, Redo2, Trash2,
   Paintbrush, Eraser, Square, ChevronDown, ChevronUp,
-  Camera, User, MapPin,
+  Camera, User, MapPin, Pipette,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import api from '../../services/api';
 
-const TOOLS = [
-  { id: 'brush', label: 'Pincel', icon: Paintbrush, shortcut: 'B' },
-  { id: 'eraser', label: 'Borrar', icon: Eraser, shortcut: 'E' },
-  { id: 'rect', label: 'Rect', icon: Square, shortcut: 'R' },
-  { id: 'marker', label: 'Marcador', icon: MapPin, shortcut: 'M' },
-];
-
-const TILE_TYPES = [
-  { id: 'wall', label: 'Muro', color: '#666666' },
-  { id: 'floor', label: 'Suelo', color: '#8B7355' },
-  { id: 'forest', label: 'Bosque', color: '#228B22' },
-  { id: 'build', label: 'Edif.', color: '#CD853F' },
-  { id: 'spawn', label: 'Spawn', color: '#00CC66' },
-  { id: 'npc', label: 'NPC', color: '#4488FF' },
-  { id: 'void', label: 'Vacio', color: '#111111' },
-];
+const TILE_COLORS = {
+  wall: '#666666',
+  floor: '#8B7355',
+  forest: '#228B22',
+  build: '#CD853F',
+  spawn: '#00CC66',
+  npc: '#4488FF',
+  item: '#E91E63',
+  void: '#111111',
+  collider: '#FFD700',
+};
 
 const dispatchEditorCommand = (action, value) =>
   window.dispatchEvent(new CustomEvent('editor-command', { detail: { action, value } }));
@@ -105,6 +101,7 @@ const SpriteJsonGrid = ({ jsonPath, imgPath, active, onSelect, scaleTarget = 32 
 
 /* ═══════════════════════════════════════════ */
 export const MapEditorUI = ({ gameRef }) => {
+  const { t } = useTranslation();
   const isAdmin = useAuthStore(s => s.isAdmin());
   const adminCheck = isAdmin;
 
@@ -114,12 +111,17 @@ export const MapEditorUI = ({ gameRef }) => {
   const [activeTile, setActiveTile] = useState('wall');
   const [activeTexture, setActiveTexture] = useState('sprite1');
   const [buildMeta, setBuildMeta] = useState({ portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '' });
+  const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [] });
   const [buildScale, setBuildScale] = useState(2);
   const [availableMaps, setAvailableMaps] = useState([]);
+  const [npcDefinitions, setNpcDefinitions] = useState([]);
+  const [availableMissions, setAvailableMissions] = useState([]);
+  const [availableItems, setAvailableItems] = useState([]);
+  const [pickupMeta, setPickupMeta] = useState({ itemId: '', quantity: 1 });
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // 'success'|'error'|null
   const [exportedData, setExportedData] = useState(null);
-  const [stats, setStats] = useState({ walls: 0, floors: 0, forest: 0, builds: 0, spawns: 0, npcZones: 0, historySize: 0, redoSize: 0 });
+  const [stats, setStats] = useState({ walls: 0, floors: 0, forest: 0, builds: 0, spawns: 0, npcZones: 0, pickups: 0, historySize: 0, redoSize: 0 });
 
   // Current map settings (width, height, public, etc.)
   const [currentSettings, setCurrentSettings] = useState({
@@ -127,10 +129,70 @@ export const MapEditorUI = ({ gameRef }) => {
     defaultSpawnX: 1000, defaultSpawnY: 750
   });
 
+  const TOOLS = useMemo(() => [
+    { id: 'brush', label: t('lobby.editor.tool_brush'), icon: Paintbrush, shortcut: 'B' },
+    { id: 'eraser', label: t('lobby.editor.tool_eraser'), icon: Eraser, shortcut: 'E' },
+    { id: 'rect', label: t('lobby.editor.tool_rect'), icon: Square, shortcut: 'R' },
+    { id: 'marker', label: t('lobby.editor.tool_marker'), icon: MapPin, shortcut: 'M' },
+    { id: 'inspector', label: t('lobby.editor.tool_inspector') || 'Pick', icon: Pipette, shortcut: 'I' },
+  ], [t]);
+
+  const fileInputRef = useRef(null);
+
+  const TILE_TYPES = useMemo(() => [
+    { id: 'wall', label: t('lobby.editor.tile_wall'), color: TILE_COLORS.wall },
+    { id: 'floor', label: t('lobby.editor.tile_floor'), color: TILE_COLORS.floor },
+    { id: 'forest', label: t('lobby.editor.tile_forest'), color: TILE_COLORS.forest },
+    { id: 'build', label: t('lobby.editor.tile_build'), color: TILE_COLORS.build },
+    { id: 'spawn', label: t('lobby.editor.tile_spawn'), color: TILE_COLORS.spawn },
+    { id: 'npc', label: t('lobby.editor.tile_npc'), color: TILE_COLORS.npc },
+    { id: 'item', label: t('lobby.editor.tile_item'), color: TILE_COLORS.item },
+    { id: 'void', label: t('lobby.editor.tile_void'), color: TILE_COLORS.void },
+    { id: 'collider', label: t('lobby.editor.tile_collider') || 'Collider', color: TILE_COLORS.collider },
+  ], [t]);
+
   useEffect(() => {
     const onStats = e => setStats(e.detail);
+    const onPicked = e => {
+      const { type, frame, scale, metadata } = e.detail;
+      console.log('[MapEditorUI] Object picked from scene:', e.detail);
+      
+      setActiveTile(type);
+      setActiveTexture(frame);
+      setBuildScale(scale);
+
+      if (type === 'build') {
+        setBuildMeta({
+          portalType: metadata.portalType || 'map',
+          targetMap: metadata.targetMap || '',
+          targetX: metadata.targetX || '',
+          targetY: metadata.targetY || '',
+          targetRoute: metadata.targetRoute || '',
+          interactionText: metadata.interactionText || ''
+        });
+      } else if (type === 'npc') {
+        setNpcMeta({
+          definitionId: metadata.definitionId || '',
+          missionIds: Array.isArray(metadata.missionIds) ? metadata.missionIds : (metadata.missionId ? [metadata.missionId] : [])
+        });
+      } else if (type === 'item') {
+        setPickupMeta({
+          itemId: metadata.itemId || '',
+          quantity: metadata.quantity || 1
+        });
+      }
+
+      // Switch to brush tool automatically after picking for convenience
+      setActiveTool('brush');
+      dispatchEditorCommand('setTool', 'brush');
+    };
+
     window.addEventListener('editor-stats', onStats);
-    return () => window.removeEventListener('editor-stats', onStats);
+    window.addEventListener('editor-picked-object', onPicked);
+    return () => {
+      window.removeEventListener('editor-stats', onStats);
+      window.removeEventListener('editor-picked-object', onPicked);
+    };
   }, []);
 
   // Sync moveMode when the Phaser scene changes it (e.g. on editor open/close)
@@ -143,6 +205,16 @@ export const MapEditorUI = ({ gameRef }) => {
   useEffect(() => {
     if (isEditorActive) {
       api.get('/admin/maps').then(r => setAvailableMaps(r.data)).catch(() => { });
+      api.get('/admin/npc-definitions').then(r => setNpcDefinitions(r.data)).catch(() => { });
+      // Fetch all missions for assignment (assuming endpoint exists, if not we'll use a placeholder/mock)
+      api.get('/admin/missions').then(r => setAvailableMissions(r.data)).catch(() => { 
+        // Fallback for missions if /all doesn't exist yet
+        setAvailableMissions([
+          { id: 1, title: 'First Steps' },
+          { id: 2, title: 'The Lost Gem' }
+        ]);
+      });
+      api.get('/admin/items').then(r => setAvailableItems(r.data)).catch(() => { });
     }
   }, [isEditorActive]);
 
@@ -190,6 +262,7 @@ export const MapEditorUI = ({ gameRef }) => {
       if (e.key === 'e' || e.key === 'E') { selectTool('eraser'); return; }
       if (e.key === 'r' || e.key === 'R') { selectTool('rect'); return; }
       if (e.key === 'm' || e.key === 'M') { selectTool('marker'); return; }
+      if (e.key === 'i' || e.key === 'I') { selectTool('inspector'); return; }
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); dispatchEditorCommand('undo'); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); dispatchEditorCommand('redo'); }
     };
@@ -216,6 +289,7 @@ export const MapEditorUI = ({ gameRef }) => {
 
   // Auto-open if URL has ?edit_map
   useEffect(() => {
+    if (!isAdmin) return;
     if (!new URLSearchParams(window.location.search).get('edit_map')) return;
     let n = 0;
     const tryOpen = () => {
@@ -253,6 +327,16 @@ export const MapEditorUI = ({ gameRef }) => {
   const selectTexture = id => { setActiveTexture(id); dispatchEditorCommand('setTexture', id); };
   const updateMeta = (k, v) => { const m = { ...buildMeta, [k]: v }; setBuildMeta(m); dispatchEditorCommand('setBuildMetadata', m); };
   const updateScale = v => { const s = parseFloat(v); setBuildScale(s); dispatchEditorCommand('setBuildScale', s); };
+  const updateNpcMeta = (k, v) => { 
+    setNpcMeta(prev => ({ ...prev, [k]: v })); 
+  };
+  useEffect(() => {
+    dispatchEditorCommand('setNPCMetadata', npcMeta);
+  }, [npcMeta]);
+
+  useEffect(() => {
+    dispatchEditorCommand('setPickupMetadata', pickupMeta);
+  }, [pickupMeta]);
   const selectMoveMode = (mode) => { setMoveMode(mode); dispatchEditorCommand('setMoveMode', mode); };
 
   const getMapKey = () => {
@@ -263,57 +347,115 @@ export const MapEditorUI = ({ gameRef }) => {
   const currentMapKey = getMapKey();
 
   const saveToServer = () => {
-    const sc = getScene(); if (!sc) return;
+    const sc = getScene(); 
+    if (!sc) return;
+    
     const sceneKey = getMapKey();
-    setSaving(true); setSaveStatus(null);
+    setSaving(true); 
+    setSaveStatus(null);
 
-    setCurrentSettings(prev => {
-      const wallsJson = sc.exportMapConfig();
-      const mapData = JSON.stringify({
-        width: prev.width,
-        height: prev.height,
-        defaultSpawnX: prev.defaultSpawnX,
-        defaultSpawnY: prev.defaultSpawnY,
-        bgmTrack: prev.bgmTrack
-      });
-      const payload = {
-        scene_key: sceneKey,
-        walls_json: wallsJson,
-        map_data: mapData,
-        is_public: prev.isPublic,
-        max_users: prev.maxUsers,
-      };
-
-      // Use PUT when map already exists (send settings + walls together in one call)
-      // This avoids the race condition where POST saves walls but settings come from a different request
-      const existingMap = availableMaps.find(m => m.scene_key === sceneKey);
-      const request = existingMap
-        ? api.put(`/admin/maps/${existingMap.id}`, payload)
-        : api.post('/admin/maps', payload);
-
-      request
-        .then(() => {
-          setSaveStatus('success');
-          if (isEditorActive) api.get('/admin/maps').then(r => setAvailableMaps(r.data));
-        })
-        .catch(() => setSaveStatus('error'))
-        .finally(() => {
-          setSaving(false);
-          setTimeout(() => setSaveStatus(null), 3000);
-        });
-
-      return prev; // no state mutation
+    const wallsJson = sc.exportMapConfig();
+    const mapData = JSON.stringify({
+      width: currentSettings.width,
+      height: currentSettings.height,
+      defaultSpawnX: currentSettings.defaultSpawnX,
+      defaultSpawnY: currentSettings.defaultSpawnY,
+      bgmTrack: currentSettings.bgmTrack
     });
+
+    const payload = {
+      scene_key: sceneKey,
+      walls_json: wallsJson,
+      map_data: mapData,
+      is_public: currentSettings.isPublic,
+      max_users: currentSettings.maxUsers,
+    };
+
+    // Use PUT when map already exists
+    const existingMap = availableMaps.find(m => m.scene_key === sceneKey);
+    const request = existingMap
+      ? api.put(`/admin/maps/${existingMap.id}`, payload)
+      : api.post('/admin/maps', payload);
+
+    request
+      .then(() => {
+        setSaveStatus('success');
+        // Signal Game Scene to refresh pickups now that IDs might have changed on server
+        window.dispatchEvent(new CustomEvent('map-pickups-updated'));
+        if (isEditorActive) api.get('/admin/maps').then(r => setAvailableMaps(r.data));
+      })
+      .catch((err) => {
+        console.error('[MapEditor] Save failed:', err);
+        setSaveStatus('error');
+      })
+      .finally(() => {
+        setSaving(false);
+        setTimeout(() => setSaveStatus(null), 3000);
+      });
   };
 
   const exportMap = () => {
     const sc = getScene(); if (!sc) return;
-    const data = sc.exportMapConfig();
-    setExportedData(data);
-    navigator.clipboard.writeText(data).catch(() => { });
+    const configString = sc.exportMapConfig();
+    
+    const blob = new Blob([configString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `map_export_${currentMapKey}_${new Date().getTime()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
-  const total = (stats.walls || 0) + (stats.floors || 0) + (stats.forest || 0) + (stats.builds || 0) + (stats.spawns || 0) + (stats.npcZones || 0);
+  const handleImportClick = () => {
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target.result);
+        if (confirm(t('lobby.editor.import_confirm') || '¿Importar mapa? Esto borrará el contenido actual.')) {
+          // Send to Phaser
+          dispatchEditorCommand('importMap', json);
+          
+          // Update React state to match imported values
+          setCurrentSettings({
+            width: json.width || 800,
+            height: json.height || 800,
+            defaultSpawnX: json.defaultSpawnX !== undefined ? json.defaultSpawnX : 1000,
+            defaultSpawnY: json.defaultSpawnY !== undefined ? json.defaultSpawnY : 750,
+            bgmTrack: json.bgmTrack || 'none',
+            isPublic: json.isPublic !== undefined ? json.isPublic : false,
+            maxUsers: json.maxUsers || 50
+          });
+        }
+      } catch (err) {
+        alert(t('lobby.editor.import_error') || 'Error al importar el archivo JSON.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset for next time
+  };
+
+  const total = (stats.walls || 0) + (stats.floors || 0) + (stats.forest || 0) + (stats.builds || 0) + (stats.spawns || 0) + (stats.npcZones || 0) + (stats.pickups || 0);
+
+  const TILE_TYPE_TO_STAT = {
+    wall: 'stat_walls',
+    floor: 'stat_floors',
+    forest: 'stat_forests',
+    build: 'stat_builds',
+    spawn: 'stat_spawns',
+    npc: 'stat_npcs',
+    item: 'stat_pickups',
+    collider: 'stat_colliders',
+  };
 
   /* ─── render ─── */
   return (
@@ -322,7 +464,7 @@ export const MapEditorUI = ({ gameRef }) => {
       <div className="absolute top-4 right-4 z-50 pointer-events-auto flex flex-col items-end gap-2">
         <button
           onClick={toggleEditor}
-          title="Editor de Mapa (Admin)"
+          title={t('lobby.editor.title')}
           className={`p-3 rounded-full shadow-xl transition-all ${isEditorActive
             ? 'bg-yellow-500 text-black'
             : 'bg-gray-900/90 border border-gray-700 text-gray-400 hover:bg-gray-800'}`}
@@ -333,7 +475,7 @@ export const MapEditorUI = ({ gameRef }) => {
           <div className={`px-3 py-1.5 rounded text-xs font-semibold shadow-lg ${saveStatus === 'success'
             ? 'bg-green-900 text-green-300 border border-green-700'
             : 'bg-red-900   text-red-300   border border-red-700'}`}>
-            {saveStatus === 'success' ? '✅ Guardado' : '❌ Error al guardar'}
+            {saveStatus === 'success' ? `✅ ${t('lobby.editor.saved')}` : `❌ ${t('lobby.editor.save_error')}`}
           </div>
         )}
       </div>
@@ -349,7 +491,7 @@ export const MapEditorUI = ({ gameRef }) => {
           <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 flex-shrink-0">
             <div className="flex items-center gap-2">
               <Hammer size={14} className="text-yellow-400" />
-              <span className="text-xs font-bold text-white tracking-wide">Map Editor</span>
+              <span className="text-xs font-bold text-white tracking-wide">{t('lobby.editor.title')}</span>
             </div>
             <button onClick={toggleEditor} className="text-gray-500 hover:text-white transition-colors">
               <X size={14} />
@@ -360,12 +502,11 @@ export const MapEditorUI = ({ gameRef }) => {
           <div className="flex-1 overflow-y-auto"
             style={{ scrollbarWidth: 'thin', scrollbarColor: '#374151 transparent' }}>
 
-            {/* Map Settings — single unified panel, no duplicate */}
-            <Section title="Configuración del Mapa" defaultOpen={true}>
+            <Section title={t('lobby.editor.map_settings')} defaultOpen={true}>
               <div className="flex flex-col gap-2">
                 <div className="flex gap-1">
                   <div className="flex-1">
-                    <label className="text-[9px] text-gray-500 block mb-0.5">Ancho</label>
+                    <label className="text-[9px] text-gray-500 block mb-0.5">{t('lobby.editor.width')}</label>
                     <input type="number" value={currentSettings.width}
                       onChange={e => {
                         const val = Number(e.target.value);
@@ -377,7 +518,7 @@ export const MapEditorUI = ({ gameRef }) => {
                       className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none" />
                   </div>
                   <div className="flex-1">
-                    <label className="text-[9px] text-gray-500 block mb-0.5">Alto</label>
+                    <label className="text-[9px] text-gray-500 block mb-0.5">{t('lobby.editor.height')}</label>
                     <input type="number" value={currentSettings.height}
                       onChange={e => {
                         const val = Number(e.target.value);
@@ -390,37 +531,36 @@ export const MapEditorUI = ({ gameRef }) => {
                   </div>
                 </div>
 
-                {/* Default Spawn for this map */}
                 <div className="border-t border-gray-700/60 pt-1.5">
-                  <div className="text-[9px] text-green-400 font-semibold mb-1">Spawn Predeterminado del Mapa</div>
+                  <div className="text-[9px] text-green-400 font-semibold mb-1">{t('lobby.editor.default_spawn')}</div>
                   <div className="flex gap-1">
                     <div className="flex-1">
-                      <label className="text-[9px] text-gray-500 block mb-0.5">Spawn X</label>
+                      <label className="text-[9px] text-gray-500 block mb-0.5">{t('lobby.editor.spawn_x')}</label>
                       <input type="number" value={currentSettings.defaultSpawnX}
                         onChange={e => setCurrentSettings(p => ({ ...p, defaultSpawnX: Number(e.target.value) }))}
                         placeholder="1000"
                         className="w-full bg-gray-800 border border-green-800/60 rounded px-2 py-1 text-[10px] text-green-300 outline-none" />
                     </div>
                     <div className="flex-1">
-                      <label className="text-[9px] text-gray-500 block mb-0.5">Spawn Y</label>
+                      <label className="text-[9px] text-gray-500 block mb-0.5">{t('lobby.editor.spawn_y')}</label>
                       <input type="number" value={currentSettings.defaultSpawnY}
                         onChange={e => setCurrentSettings(p => ({ ...p, defaultSpawnY: Number(e.target.value) }))}
                         placeholder="750"
                         className="w-full bg-gray-800 border border-green-800/60 rounded px-2 py-1 text-[10px] text-green-300 outline-none" />
                     </div>
                   </div>
-                  <p className="text-[8px] text-gray-600 mt-1 leading-tight">Usado cuando no hay spawn de portal específico.</p>
+                  <p className="text-[8px] text-gray-600 mt-1 leading-tight">{t('lobby.editor.default_spawn_hint') || 'Usado cuando no hay spawn de portal específico.'}</p>
                 </div>
 
                 {/* Background Music Selector */}
                 <div className="border-t border-gray-700/60 pt-1.5">
-                  <label className="text-[9px] text-blue-400 font-semibold block mb-1">Música de Fondo (BGM)</label>
+                  <label className="text-[9px] text-blue-400 font-semibold block mb-1">{t('lobby.editor.bgm')}</label>
                   <select
                     value={currentSettings.bgmTrack || 'none'}
                     onChange={e => setCurrentSettings(p => ({ ...p, bgmTrack: e.target.value }))}
                     className="w-full bg-gray-800 border border-blue-800/60 rounded px-2 py-1 text-[10px] text-blue-300 outline-none"
                   >
-                    <option value="none">Sin Música</option>
+                    <option value="none">{t('lobby.editor.no_music')}</option>
                     <option value="bgm_pixelated_prelude">Pixelated Prelude (Lobby/Inicio)</option>
                     <option value="bgm_serene_village">Serene Village (Pueblo)</option>
                     <option value="bgm_whispering_woods">Whispering Woods (Bosque)</option>
@@ -439,56 +579,56 @@ export const MapEditorUI = ({ gameRef }) => {
                     <input type="checkbox" checked={currentSettings.isPublic}
                       onChange={e => setCurrentSettings(p => ({ ...p, isPublic: e.target.checked }))}
                       className="w-3 h-3 accent-yellow-500 rounded-sm" />
-                    <span className="text-[10px] text-gray-300">Público</span>
+                    <span className="text-[10px] text-gray-300">{t('lobby.editor.is_public')}</span>
                   </label>
                   <div className="flex items-center gap-1">
-                    <span className="text-[9px] text-gray-500">Max:</span>
+                    <span className="text-[9px] text-gray-500">{t('lobby.editor.max_users_label') || 'Max'}:</span>
                     <input type="number" value={currentSettings.maxUsers}
                       onChange={e => setCurrentSettings(p => ({ ...p, maxUsers: Number(e.target.value) }))}
                       className="w-10 bg-gray-800 border border-gray-700 rounded px-1 text-[10px] text-white text-right outline-none" />
                   </div>
                 </div>
                 <p className="text-[8px] text-gray-600 leading-tight">
-                  Pulsa <span className="text-yellow-500 font-semibold">Guardar</span> para aplicar todos los cambios.
+                  {t('lobby.editor.save_hint')}
                 </p>
               </div>
             </Section>
 
             {/* Move Mode toggle */}
-            <Section title="Modo Movimiento">
+            <Section title={t('lobby.editor.move_mode')}>
               <div className="flex gap-1.5">
                 <button
                   onClick={() => selectMoveMode('camera')}
-                  title="Cámara libre — WASD desplaza el mapa"
+                  title={t('lobby.editor.camera_tooltip')}
                   className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded border text-[9px] transition-all
                     ${moveMode === 'camera'
                       ? 'bg-yellow-500/20 border-yellow-500/60 text-yellow-400'
                       : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
                 >
                   <Camera size={13} />
-                  <span>Cámara</span>
+                  <span>{t('lobby.editor.camera')}</span>
                 </button>
                 <button
                   onClick={() => selectMoveMode('character')}
-                  title="Personaje — WASD mueve al personaje"
+                  title={t('lobby.editor.character_tooltip')}
                   className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded border text-[9px] transition-all
                     ${moveMode === 'character'
                       ? 'bg-blue-500/20 border-blue-500/60 text-blue-400'
                       : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
                 >
                   <User size={13} />
-                  <span>Personaje</span>
+                  <span>{t('lobby.editor.character')}</span>
                 </button>
               </div>
               <p className="text-[8px] text-gray-600 mt-1.5 leading-tight">
                 {moveMode === 'camera'
-                  ? '🎥 WASD desplaza la cámara libremente'
-                  : '🧍 WASD mueve tu personaje (cámara sigue)'}
+                  ? `🎥 ${t('lobby.editor.camera_tooltip')}`
+                  : `🧍 ${t('lobby.editor.character_tooltip')}`}
               </p>
             </Section>
 
             {/* Tools */}
-            <Section title="Herramientas">
+            <Section title={t('lobby.editor.tools')}>
               <div className="flex gap-1.5">
                 {TOOLS.map(t => {
                   const Icon = t.icon;
@@ -505,7 +645,7 @@ export const MapEditorUI = ({ gameRef }) => {
             </Section>
 
             {/* Tile type */}
-            <Section title="Tipo de tile">
+            <Section title={t('lobby.editor.tile_type')}>
               <div className="grid grid-cols-3 gap-1">
                 {TILE_TYPES.map(tile => {
                   const on = activeTile === tile.id;
@@ -522,7 +662,7 @@ export const MapEditorUI = ({ gameRef }) => {
             </Section>
 
             {/* Texture / Sprites */}
-            <Section title="Textura">
+            <Section title={t('lobby.editor.texture')}>
               {activeTile === 'floor' && (
                 <FloorGrid active={activeTexture} onSelect={selectTexture} />
               )}
@@ -548,17 +688,17 @@ export const MapEditorUI = ({ gameRef }) => {
                 />
               )}
               {!['floor', 'forest', 'build', 'wall'].includes(activeTile) && (
-                <p className="text-[10px] text-gray-600 italic">Sin opciones de textura</p>
+                <p className="text-[10px] text-gray-600 italic">{t('lobby.editor.no_texture_options')}</p>
               )}
             </Section>
 
             {/* Build portal settings */}
             {activeTile === 'build' && (
-              <Section title="Config. Portal" defaultOpen={true}>
+              <Section title={t('lobby.editor.portal_config')} defaultOpen={true}>
                 {/* Scale */}
                 <div className="mb-2">
                   <div className="flex justify-between mb-0.5">
-                    <span className="text-[9px] text-gray-500">Escala</span>
+                    <span className="text-[9px] text-gray-500">{t('lobby.editor.scale')}</span>
                     <span className="text-[9px] text-yellow-400 font-mono">{buildScale.toFixed(2)}×</span>
                   </div>
                   <input type="range" min="1" max="2.5" step="0.05" value={buildScale}
@@ -571,22 +711,22 @@ export const MapEditorUI = ({ gameRef }) => {
 
                 {/* Portal Type */}
                 <div className="mb-2">
-                  <label className="block text-[9px] text-gray-500 mb-0.5">Tipo de Portal</label>
+                  <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.portal_type')}</label>
                   <select value={buildMeta.portalType} onChange={e => updateMeta('portalType', e.target.value)}
                     className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none">
-                    <option value="map">Viajar a otro Mapa</option>
-                    <option value="local">Teleport Local (Mismo Mapa)</option>
-                    <option value="route">Abrir Ruta Web (Popup)</option>
+                    <option value="map">{t('lobby.editor.portal_type_map')}</option>
+                    <option value="local">{t('lobby.editor.portal_type_local')}</option>
+                    <option value="route">{t('lobby.editor.portal_type_route')}</option>
                   </select>
                 </div>
 
                 {/* Target map (Only if type is 'map') */}
                 {(buildMeta.portalType === 'map') && (
                   <div className="mb-2">
-                    <label className="block text-[9px] text-gray-500 mb-0.5">Mapa destino</label>
+                    <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.target_map')}</label>
                     <select value={buildMeta.targetMap} onChange={e => updateMeta('targetMap', e.target.value)}
                       className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none">
-                      <option value="">Seleccionar...</option>
+                      <option value="">{t('lobby.editor.none')}...</option>
                       {availableMaps
                         .filter(m => m.scene_key !== 'lobby') // Filter out if api returns it
                         .map(m => <option key={m.id} value={m.scene_key}>{m.scene_key}</option>)}
@@ -598,7 +738,7 @@ export const MapEditorUI = ({ gameRef }) => {
                 {/* Target Route (Only if type is 'route') */}
                 {(buildMeta.portalType === 'route') && (
                   <div className="mb-2">
-                    <label className="block text-[9px] text-gray-500 mb-0.5">Ruta Destino</label>
+                    <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.target_route')}</label>
                     <input type="text" value={buildMeta.targetRoute || ''} onChange={e => updateMeta('targetRoute', e.target.value)}
                       placeholder="/learn"
                       className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none" />
@@ -607,10 +747,10 @@ export const MapEditorUI = ({ gameRef }) => {
 
                 {/* Interaction text */}
                 <div className="mb-2">
-                  <label className="block text-[9px] text-gray-500 mb-0.5">Texto interacción</label>
+                  <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.interaction_text')}</label>
                   <input type="text" value={buildMeta.interactionText || ''}
                     onChange={e => updateMeta('interactionText', e.target.value)}
-                    placeholder="Entrar al Dungeon…"
+                    placeholder={t('lobby.editor.interaction_placeholder') || 'Enter...'}
                     className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none" />
                 </div>
 
@@ -618,13 +758,13 @@ export const MapEditorUI = ({ gameRef }) => {
                 {(buildMeta.portalType !== 'route') && (
                   <div className="grid grid-cols-2 gap-1.5 mb-2">
                     <div>
-                      <label className="block text-[9px] text-gray-500 mb-0.5">Spawn X</label>
+                      <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.spawn_x')}</label>
                       <input type="number" value={buildMeta.targetX} onChange={e => updateMeta('targetX', e.target.value)}
                         placeholder="1000"
                         className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none" />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-gray-500 mb-0.5">Spawn Y</label>
+                      <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.spawn_y')}</label>
                       <input type="number" value={buildMeta.targetY} onChange={e => updateMeta('targetY', e.target.value)}
                         placeholder="750"
                         className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none" />
@@ -634,27 +774,117 @@ export const MapEditorUI = ({ gameRef }) => {
 
                 <button onClick={() => dispatchEditorCommand('applyBuildMetadata')}
                   className="w-full py-1 bg-yellow-900/40 border border-yellow-700/50 rounded text-[9px] text-yellow-200 hover:bg-yellow-900/60 transition-colors">
-                  Aplicar a todos los existentes
+                  {t('lobby.editor.apply_to_all')}
                 </button>
+              </Section>
+            )}
+
+            {/* NPC Settings */}
+            {activeTile === 'npc' && (
+              <Section title={t('lobby.editor.npc_config')} defaultOpen={true}>
+                <div className="mb-2">
+                  <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.character_def')}</label>
+                  <select value={npcMeta.definitionId} onChange={e => updateNpcMeta('definitionId', e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none">
+                    <option value="">{t('lobby.editor.none')}...</option>
+                    {npcDefinitions.map(d => (
+                      <option key={d.id} value={d.id}>{d.name} ({d.character_id})</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Associated Missions */}
+
+                <div className="mb-2">
+                  <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.associated_mission')}</label>
+                  <div className="max-h-40 overflow-y-auto bg-gray-800 border border-gray-700 rounded p-2 custom-scrollbar">
+                    {availableMissions.length === 0 && (
+                      <p className="text-[10px] text-gray-500 italic">{t('lobby.editor.no_missions_found') || 'No missions found'}</p>
+                    )}
+                    {availableMissions.map(m => (
+                      <label key={m.id} className="flex items-center gap-2 py-1 cursor-pointer group">
+                        <input 
+                          type="checkbox" 
+                          checked={(npcMeta.missionIds || []).includes(String(m.id)) || (npcMeta.missionIds || []).includes(Number(m.id))}
+                          onChange={e => {
+                            const ids = [...(npcMeta.missionIds || [])];
+                            if (e.target.checked) {
+                              ids.push(String(m.id));
+                            } else {
+                              const idx = ids.indexOf(String(m.id));
+                              if (idx > -1) ids.splice(idx, 1);
+                              // also check for numeric match
+                              const idxNum = ids.indexOf(Number(m.id));
+                              if (idxNum > -1) ids.splice(idxNum, 1);
+                            }
+                            updateNpcMeta('missionIds', ids);
+                          }}
+                          className="w-3 h-3 accent-yellow-500"
+                        />
+                        <span className="text-[10px] text-gray-300 group-hover:text-white truncate">{m.title}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                
+                <p className="text-[8px] text-gray-400 italic mt-2">
+                  {t('lobby.editor.npc_placement_hint')}
+                </p>
+              </Section>
+            )}
+
+            {/* Item Settings */}
+            {activeTile === 'item' && (
+              <Section title={t('lobby.editor.item_config')} defaultOpen={true}>
+                <div className="mb-2">
+                  <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.select_item')}</label>
+                  <select 
+                    value={pickupMeta.itemId} 
+                    onChange={e => setPickupMeta(p => ({ ...p, itemId: e.target.value }))}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none"
+                  >
+                    <option value="">{t('lobby.editor.none')}...</option>
+                    {availableItems.map(item => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} ({item.logic_type})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-2">
+                  <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.quantity')}</label>
+                  <input 
+                    type="number" 
+                    min="1" 
+                    value={pickupMeta.quantity} 
+                    onChange={e => setPickupMeta(p => ({ ...p, quantity: parseInt(e.target.value) || 1 }))}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none"
+                  />
+                </div>
+
+                <p className="text-[8px] text-gray-400 italic mt-2">
+                  {t('lobby.editor.item_placement_hint')}
+                </p>
               </Section>
             )}
 
 
             {/* Stats */}
-            <Section title={`Stats · ${total} tiles`} defaultOpen={false}>
+            <Section title={`${t('lobby.editor.stats')} · ${total} tiles`} defaultOpen={false}>
               <div className="grid grid-cols-2 gap-1">
-                {TILE_TYPES.map(t => {
-                  const key = t.id === 'npc' ? 'npcZones' : `${t.id}s`;
-                  const cnt = stats[key] || 0;
+                {TILE_TYPES.map(t_obj => {
+                  const key = TILE_TYPE_TO_STAT[t_obj.id] || `${t_obj.id}s`;
+                  const cnt = stats[t_obj.id === 'npc' ? 'npcZones' : (t_obj.id === 'item' ? 'pickups' : `${t_obj.id}s`)] || 0;
                   return (
-                    <div key={t.id} className="flex items-center gap-1.5 text-[9px] text-gray-400">
-                      <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: t.color }} />
-                      {t.label}: <span className="text-white font-mono">{cnt}</span>
+                    <div key={t_obj.id} className="flex items-center gap-1.5 text-[9px] text-gray-400">
+                      <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: t_obj.color }} />
+                      {t_obj.label}: <span className="text-white font-mono">{cnt}</span>
                     </div>
                   );
                 })}
                 <div className="text-[9px] text-gray-500 col-span-2 pt-1 border-t border-gray-800 mt-1">
-                  Historial: {stats.historySize || 0} &nbsp;|&nbsp; Redo: {stats.redoSize || 0}
+                  {t('lobby.editor.history')}: {stats.historySize || 0} &nbsp;|&nbsp; {t('lobby.editor.redo')}: {stats.redoSize || 0}
                 </div>
               </div>
             </Section>
@@ -664,15 +894,15 @@ export const MapEditorUI = ({ gameRef }) => {
           <div className="flex-shrink-0 border-t border-gray-700 p-2 flex flex-col gap-1.5">
             {/* Undo / Redo / Clear */}
             <div className="flex gap-1">
-              <button onClick={() => dispatchEditorCommand('undo')} disabled={!stats.historySize} title="Deshacer (Ctrl+Z)"
+              <button onClick={() => dispatchEditorCommand('undo')} disabled={!stats.historySize} title={`${t('lobby.editor.undo')} (Ctrl+Z)`}
                 className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-gray-800 border border-gray-700 rounded text-gray-400 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
-                <Undo2 size={13} /><span className="text-[9px]">Deshacer</span>
+                <Undo2 size={13} /><span className="text-[9px]">{t('lobby.editor.undo')}</span>
               </button>
-              <button onClick={() => dispatchEditorCommand('redo')} disabled={!stats.redoSize} title="Rehacer (Ctrl+Y)"
+              <button onClick={() => dispatchEditorCommand('redo')} disabled={!stats.redoSize} title={`${t('lobby.editor.redo')} (Ctrl+Y)`}
                 className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-gray-800 border border-gray-700 rounded text-gray-400 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
-                <Redo2 size={13} /><span className="text-[9px]">Rehacer</span>
+                <Redo2 size={13} /><span className="text-[9px]">{t('lobby.editor.redo')}</span>
               </button>
-              <button onClick={() => { if (confirm('¿Borrar todos los tiles?')) dispatchEditorCommand('clearAll'); }} title="Limpiar todo"
+              <button onClick={() => { if (confirm(t('lobby.editor.clear_confirm'))) dispatchEditorCommand('clearAll'); }} title={t('lobby.editor.clear_all')}
                 className="px-2 py-1.5 bg-red-900/50 border border-red-800/60 rounded text-red-400 hover:bg-red-800/60 transition-all">
                 <Trash2 size={13} />
               </button>
@@ -684,12 +914,23 @@ export const MapEditorUI = ({ gameRef }) => {
                 className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded text-[11px] font-semibold transition-all
                   ${saving ? 'bg-gray-700 text-gray-400 cursor-wait' : 'bg-green-700 hover:bg-green-600 text-white'}`}>
                 <Save size={13} />
-                {saving ? 'Guardando…' : 'Guardar'}
+                {saving ? t('lobby.editor.saving') : t('lobby.editor.save')}
               </button>
-              <button onClick={exportMap}
-                className="px-3 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded text-[11px] font-semibold flex items-center gap-1 transition-all">
+              <button onClick={exportMap} title={t('lobby.editor.download') || 'Descargar JSON'}
+                className="px-3 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded text-[11px] font-semibold flex items-center justify-center transition-all">
                 <Download size={13} />
               </button>
+              <button onClick={handleImportClick} title={t('lobby.editor.upload') || 'Subir JSON'}
+                className="px-3 py-2 bg-purple-700 hover:bg-purple-600 text-white rounded text-[11px] font-semibold flex items-center justify-center transition-all">
+                <Upload size={13} />
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileUpload} 
+                accept=".json" 
+                className="hidden" 
+              />
             </div>
           </div>
         </div >

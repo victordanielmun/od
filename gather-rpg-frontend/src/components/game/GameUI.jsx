@@ -8,44 +8,51 @@ export const GameUI = ({
   connectionQuality = 100 
 }) => {
   return (
-    <div className="absolute bottom-0 left-0 right-0 p-4 pointer-events-none">
-      <div className="flex justify-center items-end gap-4">
-        {/* Toolbar */}
-        <div className="bg-gray-900/90 backdrop-blur px-6 py-3 rounded-2xl flex items-center gap-4 pointer-events-auto shadow-xl border border-gray-700">
-          <button
-            onClick={onToggleMic}
-            className={`p-3 rounded-full transition-all ${
-              isMicOn ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-red-500 hover:bg-red-600 text-white'
-            }`}
-            title={isMicOn ? "Mute Microphone" : "Unmute Microphone"}
-          >
-            {isMicOn ? <Mic size={24} /> : <MicOff size={24} />}
-          </button>
+    <div className="absolute bottom-0 left-0 right-0 p-6 pointer-events-none flex flex-col items-center gap-4">
+      {/* Wooden Toolbar */}
+      <div className="bg-[var(--color-base-dark)] border-4 border-[var(--color-gold)] px-8 py-4 flex items-center gap-6 pointer-events-auto shadow-[0_15px_40px_rgba(0,0,0,0.8)] relative overflow-hidden">
+        {/* Grain texture overlay */}
+        <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/wood-pattern.png")' }}></div>
+        
+        <button
+          onClick={onToggleMic}
+          className={`p-4 border-2 transition-all active:translate-y-1 shadow-lg ${
+            isMicOn 
+              ? 'bg-[var(--color-base-dark)] border-[var(--color-gold)] text-[var(--color-gold)] hover:text-white' 
+              : 'bg-[var(--color-orange-vibrant)] border-[var(--color-gold)] text-white'
+          }`}
+          title={isMicOn ? "Mute Microphone" : "Unmute Microphone"}
+        >
+          {isMicOn ? <Mic size={24} /> : <MicOff size={24} />}
+        </button>
 
-          <button
-            onClick={onToggleVideo}
-            className={`p-3 rounded-full transition-all ${
-              isVideoOn ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-red-500 hover:bg-red-600 text-white'
-            }`}
-            title={isVideoOn ? "Turn Off Camera" : "Turn On Camera"}
-          >
-            {isVideoOn ? <Video size={24} /> : <VideoOff size={24} />}
-          </button>
+        <button
+          onClick={onToggleVideo}
+          className={`p-4 border-2 transition-all active:translate-y-1 shadow-lg ${
+            isVideoOn 
+              ? 'bg-[var(--color-base-dark)] border-[var(--color-gold)] text-[var(--color-gold)] hover:text-white' 
+              : 'bg-[var(--color-orange-vibrant)] border-[var(--color-gold)] text-white'
+          }`}
+          title={isVideoOn ? "Turn Off Camera" : "Turn On Camera"}
+        >
+          {isVideoOn ? <Video size={24} /> : <VideoOff size={24} />}
+        </button>
 
-          <div className="w-px h-8 bg-gray-700" />
+        <div className="w-1 h-10 bg-[var(--color-base-dark)] border-l border-[var(--color-gold-dark)]/50" />
 
-          <button 
-            className="p-3 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-all"
-            title="Settings"
-          >
-            <Settings size={24} />
-          </button>
-        </div>
+        <button 
+          className="p-4 bg-[var(--color-base-dark)] border-2 border-[var(--color-gold)] text-[var(--color-gold)] hover:text-white transition-all active:translate-y-1 shadow-lg"
+          title="Menu Settings"
+        >
+          <Settings size={24} />
+        </button>
+      </div>
 
-        {/* Connection Status */}
-        <div className="absolute bottom-4 right-4 bg-gray-900/80 px-3 py-1 rounded-lg text-xs text-gray-400 pointer-events-auto">
-          Ping: {Math.round(100 - connectionQuality)}ms
-        </div>
+      {/* Latency Badge (Parchment style) */}
+      <div className="absolute bottom-6 right-6 bg-[var(--color-parchment)] border-2 border-[var(--color-gold)] px-4 py-1.5 shadow-lg pointer-events-auto">
+        <span className="text-[10px] font-medieval uppercase tracking-widest text-[var(--color-base-dark)]">
+          Latency: {Math.round(100 - connectionQuality)}ms
+        </span>
       </div>
     </div>
   );

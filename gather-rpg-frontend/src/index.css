@@ -1,13 +1,84 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* High-Contrast Medieval Palette */
+  --color-base-dark: #001C14;    /* Verde Botella Casi Negro (Texto/Base) */
+  --color-accent-blue: #003049;  /* Azul Marino Oscuro (Cabeceras/Acentos) */
+  --color-green-primary: #00644B; /* Verde Bosque (Naturaleza/Magia) */
+  --color-orange-vibrant: #E14B26; /* Naranja Coral (Acción/Aviso) */
+  --color-gold: #F7C42D;         /* Oro Cálido (Riqueza/Bordes) */
+  --color-parchment: #EBE1CB;    /* Crema Suave (Base de Lectura) */
+  --color-pure-white: #FEFEFE;   /* Blanco Puro (Contraste Máximo) */
+
+  /* Utility Shades */
+  --color-gold-dark: #8b6d1b;
+  --color-parchment-dark: #c4a484;
+  --color-sidebar-content-bg: rgba(235, 225, 203, 0.15); /* Light, translucent parchment for sidebar detail areas */
+}
+
 body {
   margin: 0;
   padding: 0;
-  /* overflow: hidden; Removed to allow scrolling on landing page */
-  background-color: #050b14;
-  color: rgba(255, 255, 255, 0.87);
+  background-color: #1a1a1a;
+  color: #d7ccc8;
+  font-family: 'Montserrat', sans-serif; /* Montserrat for maximum legibility */
+  image-rendering: auto;
+}
+
+h1, h2, h3, h4, .font-medieval {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+}
+
+.medieval-border {
+  border: 4px double var(--color-gold);
+  position: relative;
+  box-shadow: inset 0 0 15px rgba(0,0,0,0.4);
+}
+
+.medieval-border::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border: 1px solid var(--color-gold-dark);
+  pointer-events: none;
+}
+
+.parchment-bg {
+  background-color: var(--color-parchment);
+  background-image: url("https://www.transparenttextures.com/patterns/parchment.png");
+  color: var(--color-base-dark);
+  box-shadow: inset 0 0 40px rgba(0,0,0,0.1);
+}
+
+.wood-panel {
+  background-color: var(--color-base-dark);
+  background-image: url("https://www.transparenttextures.com/patterns/wood-pattern.png");
+  border: 2px solid var(--color-gold-dark);
+  color: var(--color-pure-white);
+  box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
+}
+
+.pixel-button {
+  background-color: var(--color-gold);
+  border: 2px solid var(--color-gold-dark);
+  color: var(--color-base-dark);
+  font-weight: bold;
+  box-shadow: 0 4px 0 var(--color-gold-dark);
+  transition: all 0.1s active;
+}
+
+.pixel-button:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 var(--color-gold-dark), inset 0 2px 0 var(--color-gold-light);
+}
+
+.pixelated {
+  image-rendering: pixelated;
 }
 
 .neon-text-glow {
@@ -45,17 +116,44 @@ body {
   animation: slide-in-left 0.3s ease-out;
 }
 
-/* Custom Scrollbar */
+@keyframes float-breathing {
+  0% { transform: translateY(0px) scale(1); }
+  50% { transform: translateY(-10px) scale(1.02); }
+  100% { transform: translateY(0px) scale(1); }
+}
+
+.animate-float {
+  animation: float-breathing 4s ease-in-out infinite;
+}
+
+/* Custom Scrollbar Styles */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(0,0,0,0.1);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.2);
-  border-radius: 3px;
+  background: rgba(246, 173, 85, 0.3); /* Orange-ish thumb */
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.3);
+  background: rgba(246, 173, 85, 0.5);
+}
+
+.custom-scrollbar-light::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar-light::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar-light::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+.custom-scrollbar-light::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }

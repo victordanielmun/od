@@ -19,7 +19,7 @@ import {
 import OverlaidWaveform from '../components/voice/OverlaidWaveform';
 import Waveform from '../components/voice/Waveform';
 import ChallengeView from '../components/learning/ChallengeView';
-import { Mic, Layout, Trophy, BookOpen } from 'lucide-react';
+import { Mic, Layout, Trophy, BookOpen, Sparkles } from 'lucide-react';
 
 export default function PracticePage() {
     const [word, setWord] = useState(null);
@@ -381,28 +381,44 @@ export default function PracticePage() {
                             </p>
                         </div>
 
-                        {/* Expected vs Heard */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-white/5 rounded-xl p-4">
-                                <p className="text-xs text-gray-500 mb-1">Expected</p>
-                                <p className="text-white font-medium">{result.expected_text}</p>
+                        {/* Word Breakdown */}
+                        {result.feedback?.word_analysis && (
+                            <div className="bg-white/5 rounded-xl p-6 border border-white/5">
+                                <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-4 font-bold">Word Breakdown</p>
+                                <div className="flex flex-wrap gap-3">
+                                    {result.feedback.word_analysis.map((w, i) => (
+                                        <div key={i} className="flex flex-col items-center">
+                                            <span className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition-all ${
+                                                w.text_match 
+                                                ? 'bg-green-500/10 text-green-400 border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.1)]' 
+                                                : w.phonetically_close
+                                                    ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                                    : 'bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]'
+                                            }`}>
+                                                {w.expected}
+                                            </span>
+                                            {!w.text_match && w.heard !== '(missing)' && (
+                                                <span className="text-[10px] text-gray-500 mt-1 font-mono italic">
+                                                    Heard: "{w.heard}"
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                            <div className="bg-white/5 rounded-xl p-4">
-                                <p className="text-xs text-gray-500 mb-1">Heard</p>
-                                <p className={`font-medium ${result.feedback?.match ? 'text-green-400' : 'text-amber-400'}`}>
-                                    {result.transcription}
-                                </p>
-                            </div>
-                        </div>
+                        )}
 
                         {/* Tips */}
                         {result.feedback?.tips?.length > 0 && (
                             <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-4">
-                                <p className="text-xs text-indigo-300 uppercase tracking-wider mb-2">Tips</p>
-                                <ul className="space-y-1">
+                                <div className="flex items-center gap-2 mb-2 text-indigo-300">
+                                    <Sparkles size={14} />
+                                    <p className="text-xs uppercase tracking-wider font-bold">Learning Tips</p>
+                                </div>
+                                <ul className="space-y-1.5">
                                     {result.feedback.tips.map((tip, i) => (
-                                        <li key={i} className="text-sm text-gray-300 flex gap-2">
-                                            <span className="text-indigo-400">•</span> {tip}
+                                        <li key={i} className="text-sm text-gray-300 flex gap-2 leading-relaxed">
+                                            <span className="text-indigo-400 mt-1">•</span> {tip}
                                         </li>
                                     ))}
                                 </ul>

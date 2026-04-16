@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import api from '../services/api';
 import wsClient from '../services/websocket';
 import { useAuthStore } from './authStore';
 import { useNotificationStore } from './notificationStore';
@@ -9,10 +10,13 @@ export const useGameStore = create((set, get) => ({
     messages: [],
     listenersInitialized: false,
     currentRoomId: null,
+    currentSceneKey: 'lobby',
     currentInviteCode: null,
     activeChallengeId: null,
     challengeParticipants: [],
     challengeMessages: [],
+    activeMission: null,
+    inventory: [],
 
     // Chat State
     chatRequests: [], // Array of { requester_id, requester_name }
@@ -504,5 +508,94 @@ export const useGameStore = create((set, get) => ({
 
     requestMapJoin: (sceneKey, type = 'public', inviteCode = '') => {
         wsClient.send('request_map_join', { scene_key: sceneKey, type, invite_code: inviteCode });
+    },
+
+    fetchActiveMission: async (sceneKey) => {
+        try {
+            const response = await api.get(`/missions/scene/${sceneKey}`);
+            if (response.data && response.data.length > 0) {
+                const mission = response.data[0];
+                set({ activeMission: mission });
+
+                // Multi-user mission mode notifications
+                const { addNotification } = useNotificationStore.getState();
+                switch (mission.mode) {
+                    case 'cooperative':
+                        addNotification('info', "🤝 Modo Cooperativo: ¡Luchen juntos por el objetivo!");
+                        break;
+                    case 'competitive':
+                        addNotification('warning', "⚔️ Modo Competitivo: ¡Sé el primero en conseguirlo!");
+                        break;
+                    case 'individual':
+                        addNotification('info', "👤 Modo Individual: Tu progreso es personal.");
+                        break;
+                }
+            } else {
+                set({ activeMission: null });
+            }
+        } catch (err) {
+            console.error("Failed to fetch missions:", err);
+            set({ activeMission: null });
+        }
+    },
+
+    fetchInventory: async () => {
+        try {
+            const response = await api.get('/inventory');
+            if (response.data) {
+                set({ inventory: response.data });
+            }
+        } catch (err) {
+            console.error("Failed to fetch inventory:", err);
+            set({ inventory: [] });
+        }
+    },
+
+    buyItem: async (itemId, quantity) => {
+        try {
+            const response = await api.post('/shop/buy', { item_id: itemId, quantity });
+            if (response.data.status === 'success') {
+                get().fetchInventory();
+                
+                // Update gold and stats in authStore for UI reactivity
+                const { user } = useAuthStore.getState();
+                if (user && response.data.player_stats) {
+                    useAuthStore.setState({ 
+                        user: { 
+                            ...user, 
+                            stats: response.data.player_stats 
+                        } 
+                    });
+                }
+                
+                useNotificationStore.getState().addNotification('success', '¡Compra realizada con éxito!');
+                return true;
+            }
+        } catch (err) {
+            console.error("Failed to buy item:", err);
+            const errorMsg = err.response?.data?.error || 'Error al realizar la compra';
+            useNotificationStore.getState().addNotification('error', errorMsg);
+            return false;
+        }
+    },
+
+    pickupItem: async (pickupId) => {
+        try {
+            const response = await api.post(`/inventory/pickup/${pickupId}`);
+            if (response.data.status === 'success') {
+                get().fetchInventory();
+                useNotificationStore.getState().addNotification('success', '¡Objeto recogido!');
+                return true;
+            }
+        } catch (err) {
+            console.error("Failed to pickup item:", err);
+            useNotificationStore.getState().addNotification('error', 'Error al recoger el objeto');
+            return false;
+        }
+    },
+
+    useItem: async (inventoryId) => {
+        // Placeholder for now as we need UseItem endpoint in backend
+        console.log("Using item:", inventoryId);
     }
 }));

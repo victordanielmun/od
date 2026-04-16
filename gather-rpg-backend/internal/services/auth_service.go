@@ -7,12 +7,14 @@ import (
 	"strconv"
 	"time"
 
+	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/repository"
 	"gather-rpg-backend/internal/utils"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 type AuthService struct {
@@ -46,7 +48,20 @@ func (s *AuthService) LoginGuest() (*models.AuthResponse, error) {
 		CharacterID: randomCharID,
 	}
 
-	if err := s.Repo.Create(user); err != nil {
+	// Use a transaction to create both user and player stats
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(user).Error; err != nil {
+			return err
+		}
+
+		stats := &models.PlayerStats{
+			UserID: user.ID,
+			Gold:   100, // Starting gold
+		}
+		return tx.Create(stats).Error
+	})
+
+	if err != nil {
 		return nil, err
 	}
 
@@ -79,7 +94,20 @@ func (s *AuthService) Register(req models.RegisterRequest) (*models.AuthResponse
 		IsGuest:  false,
 	}
 
-	if err := s.Repo.Create(user); err != nil {
+	// Use a transaction to create both user and player stats
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(user).Error; err != nil {
+			return err
+		}
+
+		stats := &models.PlayerStats{
+			UserID: user.ID,
+			Gold:   100, // Starting gold
+		}
+		return tx.Create(stats).Error
+	})
+
+	if err != nil {
 		return nil, err
 	}
 

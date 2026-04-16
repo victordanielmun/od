@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { useTranslation } from 'react-i18next';
 // import * as Phaser from 'phaser'; 
 const Phaser = window.Phaser;
 
@@ -7,6 +8,7 @@ import { useGameStore } from '../../store/gameStore';
 import { useRoomStore } from '../../store/roomStore';
 
 export const LobbyGameCanvas = forwardRef((props, ref) => {
+  const { t } = useTranslation();
   const internalGameRef = useRef(null);
   const pendingTransitionRef = useRef(null);
 
@@ -198,7 +200,7 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
         default: 'arcade',
         arcade: {
           gravity: { y: 0 },
-          debug: true
+          debug: false
         }
       },
       scale: {
@@ -216,7 +218,7 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
       {isLoading && (
         <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-black">
           <div className="w-12 h-12 border-4 border-gray-600 border-t-yellow-500 rounded-full animate-spin mb-4"></div>
-          <h2 className="text-xl font-bold text-white tracking-widest animate-pulse">CARGANDO MUNDO...</h2>
+          <h2 className="text-xl font-bold text-white tracking-widest animate-pulse">{t('lobby.loading_world')}</h2>
         </div>
       )}
       <div id="phaser-lobby" className="w-full h-full" />

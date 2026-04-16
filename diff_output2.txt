@@ -1,0 +1,1081 @@
+﻿diff --git a/db_schema.sql b/db_schema.sql
+index bfc702f..278a49f 100644
+--- a/db_schema.sql
++++ b/db_schema.sql
+@@ -1,4 +1,4 @@
+-´╗┐--
++--
+ -- PostgreSQL database dump
+ --
+ 
+diff --git a/gather-rpg-backend/cmd/server/main.go b/gather-rpg-backend/cmd/server/main.go
+index b1c9e24..f6bf545 100644
+--- a/gather-rpg-backend/cmd/server/main.go
++++ b/gather-rpg-backend/cmd/server/main.go
+@@ -44,6 +44,17 @@ func main() {
+ 		&models.LearningChallenge{},
+ 		&models.UserChallengeAttempt{},
+ 		&models.UserLearningProfile{},
++		// ÔöÇÔöÇ NPC AI & Mission System (v2) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
++		&models.NPCDefinition{},
++		&models.NPCTemplate{},
++		&models.Mission{},
++		&models.MissionTask{},
++		&models.NPCMissionRole{},
++		&models.NPCRoomInstance{},
++		&models.Conversation{},
++		&models.ConversationMessage{},
++		&models.PlayerMissionProgress{},
++		&models.PlayerLearningStats{},
+ 	); err != nil {
+ 		log.Fatalf("Failed to migrate database: %v", err)
+ 	}
+@@ -67,6 +78,14 @@ func main() {
+ 	learningRepo := repository.NewLearningRepository()
+ 	learningService := services.NewLearningService(learningRepo)
+ 
++	// NPC & Mission System (v2)
++	npcRepo := repository.NewNPCRepository()
++	missionRepo := repository.NewMissionRepository()
++	npcService := services.NewNPCService(npcRepo, missionRepo)
++	missionService := services.NewMissionService(missionRepo)
++	deepSeekClient := services.NewDeepSeekClient(cfg.DeepSeekAPIKey, cfg.DeepSeekModel)
++	dialogueService := services.NewDialogueService(npcRepo, missionRepo, missionService, deepSeekClient)
++
+ 	// WebSocket Hub
+ 	hub := gameWS.NewHub(presenceService, roomService, movementService, peerService, combatService)
+ 	go hub.Run()
+@@ -75,9 +94,13 @@ func main() {
+ 	wsHandler := handlers.NewWSHandler(hub)
+ 	authHandler := handlers.NewAuthHandler(authService)
+ 	roomHandler := handlers.NewRoomHandler(roomService)
+-	adminHandler := handlers.NewAdminHandler()
++	adminHandler := handlers.NewAdminHandler(npcService)
+ 	friendHandler := handlers.NewFriendHandler(friendService, hub)
+ 	learningHandler := handlers.NewLearningHandler(learningService)
++	dialogueHandler := handlers.NewDialogueHandler(dialogueService)
++	missionHandler := handlers.NewMissionHandler(missionService)
++	npcHandler := handlers.NewNPCHandler(npcService, deepSeekClient)
++	missionAdminHandler := handlers.NewMissionAdminHandler(missionService)
+ 
+ 	// App
+ 	app := fiber.New()
+@@ -105,6 +128,7 @@ func main() {
+ 	rooms.Get("/", roomHandler.GetPublicRooms)
+ 	rooms.Post("/", roomHandler.CreateRoom)
+ 	rooms.Get("/:id", roomHandler.GetRoom)
++	rooms.Get("/:id/npcs", npcHandler.GetRoomNPCs)
+ 
+ 	// Friend Routes
+ 	friends := app.Group("/friends", middleware.Protected(cfg))
+@@ -120,6 +144,25 @@ func main() {
+ 	admin.Get("/maps", adminHandler.ListMapConfigs)
+ 	admin.Post("/maps", adminHandler.SaveMapConfig)
+ 	admin.Put("/maps/:id", adminHandler.UpdateMapConfig)
++	admin.Post("/npcs", npcHandler.CreateNPCTemplate)
++	admin.Put("/npcs/:id", npcHandler.UpdateNPCTemplate)
++	admin.Delete("/npcs/:id", npcHandler.DeleteNPCTemplate)
++	admin.Get("/npc-definitions", npcHandler.GetNPCDefinitions)
++	admin.Post("/npc-definitions", npcHandler.CreateNPCDefinition)
++	admin.Put("/npc-definitions/:id", npcHandler.UpdateNPCDefinition)
++	admin.Delete("/npc-definitions/:id", npcHandler.DeleteNPCDefinition)
++	admin.Post("/ai-test", npcHandler.TestAI)
++
++	// Mission Admin Routes
++	admin.Get("/missions", missionAdminHandler.ListMissions)
++	admin.Post("/missions", missionAdminHandler.CreateMission)
++	admin.Put("/missions/:id", missionAdminHandler.UpdateMission)
++	admin.Delete("/missions/:id", missionAdminHandler.DeleteMission)
++	admin.Get("/missions/:id/tasks", missionAdminHandler.ListTasks)
++	admin.Post("/missions/:id/tasks", missionAdminHandler.CreateTask)
++	admin.Put("/tasks/:id", missionAdminHandler.UpdateTask)
++	admin.Delete("/tasks/:id", missionAdminHandler.DeleteTask)
++	admin.Get("/missions/:id/roles", missionAdminHandler.ListRoles)
+ 
+ 	// Map config read (accessible to all authenticated users)
+ 	app.Get("/maps/config", middleware.Protected(cfg), adminHandler.GetMapConfig)
+@@ -133,6 +176,14 @@ func main() {
+ 	learning.Post("/attempts", middleware.Protected(cfg), learningHandler.RecordAttempt)
+ 	learning.Get("/profile", middleware.Protected(cfg), learningHandler.GetMyProfile)
+ 
++	// NPC Dialogue Routes
++	npc := app.Group("/npc", middleware.Protected(cfg))
++	npc.Post("/dialogue", dialogueHandler.ProcessInput)
++
++	// Mission Routes
++	missions := app.Group("/missions", middleware.Protected(cfg))
++	missions.Get("/scene/:key", missionHandler.GetMissionsByScene)
++
+ 	// WS Route
+ 	app.Use("/ws", func(c *fiber.Ctx) error {
+ 		if websocket.IsWebSocketUpgrade(c) {
+diff --git a/gather-rpg-backend/internal/config/config.go b/gather-rpg-backend/internal/config/config.go
+index 1c14a64..ca6f485 100644
+--- a/gather-rpg-backend/internal/config/config.go
++++ b/gather-rpg-backend/internal/config/config.go
+@@ -23,15 +23,18 @@ type Config struct {
+ 
+ 	JWTSecret     string
+ 	JWTExpiration string
++
++	DeepSeekAPIKey string
++	DeepSeekModel  string
+ }
+ 
+ func LoadConfig() *Config {
+ 	// Load .env file if it exists
+-	if err := godotenv.Load(); err != nil {
+-		log.Println("No .env file found, relying on environment variables")
++	if err := godotenv.Load(".env"); err != nil {
++		log.Printf("Warning: Error loading .env file: %v. Working directory might be: %s", err, getWorkingDir())
+ 	}
+ 
+-	return &Config{
++	cfg := &Config{
+ 		ServerPort: getEnv("SERVER_PORT", "3000"),
+ 		Env:        getEnv("ENV", "development"),
+ 
+@@ -47,7 +50,13 @@ func LoadConfig() *Config {
+ 
+ 		JWTSecret:     getEnv("JWT_SECRET", "secret"),
+ 		JWTExpiration: getEnv("JWT_EXPIRATION", "24h"),
++
++		DeepSeekAPIKey: getEnv("DEEPSEEK_API_KEY", ""),
++		DeepSeekModel:  getEnv("DEEPSEEK_MODEL", "deepseek-chat"),
+ 	}
++
++	log.Printf("Config Loaded: DB_HOST=%s, DB_PORT=%s, DB_NAME=%s", cfg.DBHost, cfg.DBPort, cfg.DBName)
++	return cfg
+ }
+ 
+ func getEnv(key, fallback string) string {
+@@ -60,3 +69,11 @@ func getEnv(key, fallback string) string {
+ func (c *Config) GetDBDSN() string {
+ 	return "host=" + c.DBHost + " user=" + c.DBUser + " password=" + c.DBPassword + " dbname=" + c.DBName + " port=" + c.DBPort + " sslmode=disable TimeZone=UTC"
+ }
++
++func getWorkingDir() string {
++	dir, err := os.Getwd()
++	if err != nil {
++		return "unknown"
++	}
++	return dir
++}
+diff --git a/gather-rpg-backend/internal/handlers/admin_handler.go b/gather-rpg-backend/internal/handlers/admin_handler.go
+index 862ebb5..51e028e 100644
+--- a/gather-rpg-backend/internal/handlers/admin_handler.go
++++ b/gather-rpg-backend/internal/handlers/admin_handler.go
+@@ -4,15 +4,18 @@ import (
+ 	"encoding/json"
+ 	"gather-rpg-backend/internal/database"
+ 	"gather-rpg-backend/internal/models"
++	"gather-rpg-backend/internal/services"
+ 
+ 	"github.com/gofiber/fiber/v2"
+ 	"github.com/google/uuid"
+ )
+ 
+-type AdminHandler struct{}
++type AdminHandler struct {
++	NPCService *services.NPCService
++}
+ 
+-func NewAdminHandler() *AdminHandler {
+-	return &AdminHandler{}
++func NewAdminHandler(npcService *services.NPCService) *AdminHandler {
++	return &AdminHandler{NPCService: npcService}
+ }
+ 
+ // SaveMapConfig upserts the wall configuration for a scene.
+@@ -93,6 +96,12 @@ func (h *AdminHandler) SaveMapConfig(c *fiber.Ctx) error {
+ 
+ 	// Re-fetch to return the updated record
+ 	database.DB.Where("scene_key = ?", req.SceneKey).First(&existing)
++
++	// SYNC NPCs: Parse walls_json and update templates
++	if h.NPCService != nil {
++		h.NPCService.SyncTemplatesFromMap(req.SceneKey, req.WallsJSON)
++	}
++
+ 	return c.JSON(existing)
+ }
+ 
+@@ -201,6 +210,12 @@ func (h *AdminHandler) UpdateMapConfig(c *fiber.Ctx) error {
+ 
+ 	// Re-fetch to return full updated record
+ 	database.DB.First(&mapConfig, uid)
++
++	// SYNC NPCs: Parse walls_json and update templates
++	if h.NPCService != nil {
++		h.NPCService.SyncTemplatesFromMap(mapConfig.SceneKey, mapConfig.WallsJSON)
++	}
++
+ 	return c.JSON(mapConfig)
+ }
+ 
+diff --git a/gather-rpg-frontend/src/App.jsx b/gather-rpg-frontend/src/App.jsx
+index fc9ca9c..b4ecc84 100644
+--- a/gather-rpg-frontend/src/App.jsx
++++ b/gather-rpg-frontend/src/App.jsx
+@@ -14,6 +14,9 @@ import { AdminLayout } from './layouts/AdminLayout';
+ import { AdminDashboard } from './pages/admin/AdminDashboard';
+ import { AdminMapList } from './pages/admin/AdminMapList';
+ import { AdminCharacters } from './pages/admin/AdminCharacters';
++import { AdminNPCDefinitions } from './pages/admin/AdminNPCDefinitions';
++import { AdminAITester } from './pages/admin/AdminAITester';
++import { AdminMissions } from './pages/admin/AdminMissions';
+ import PracticePage from './pages/PracticePage';
+ import { useAuthStore } from './store/authStore';
+ 
+@@ -59,6 +62,9 @@ function App() {
+           <Route index element={<AdminDashboard />} />
+           <Route path="maps" element={<AdminMapList />} />
+           <Route path="characters" element={<AdminCharacters />} />
++          <Route path="npcs" element={<AdminNPCDefinitions />} />
++          <Route path="missions" element={<AdminMissions />} />
++          <Route path="ai-test" element={<AdminAITester />} />
+         </Route>
+ 
+         {/* English Learning / Pronunciation Routes */}
+diff --git a/gather-rpg-frontend/src/components/lobby/MapEditorUI.jsx b/gather-rpg-frontend/src/components/lobby/MapEditorUI.jsx
+index b73f805..53e36ec 100644
+--- a/gather-rpg-frontend/src/components/lobby/MapEditorUI.jsx
++++ b/gather-rpg-frontend/src/components/lobby/MapEditorUI.jsx
+@@ -114,8 +114,11 @@ export const MapEditorUI = ({ gameRef }) => {
+   const [activeTile, setActiveTile] = useState('wall');
+   const [activeTexture, setActiveTexture] = useState('sprite1');
+   const [buildMeta, setBuildMeta] = useState({ portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '' });
++  const [npcMeta, setNpcMeta] = useState({ definitionId: '', role: 'guide', missionId: '' });
+   const [buildScale, setBuildScale] = useState(2);
+   const [availableMaps, setAvailableMaps] = useState([]);
++  const [npcDefinitions, setNpcDefinitions] = useState([]);
++  const [availableMissions, setAvailableMissions] = useState([]);
+   const [saving, setSaving] = useState(false);
+   const [saveStatus, setSaveStatus] = useState(null); // 'success'|'error'|null
+   const [exportedData, setExportedData] = useState(null);
+@@ -143,6 +146,15 @@ export const MapEditorUI = ({ gameRef }) => {
+   useEffect(() => {
+     if (isEditorActive) {
+       api.get('/admin/maps').then(r => setAvailableMaps(r.data)).catch(() => { });
++      api.get('/admin/npc-definitions').then(r => setNpcDefinitions(r.data)).catch(() => { });
++      // Fetch all missions for assignment (assuming endpoint exists, if not we'll use a placeholder/mock)
++      api.get('/admin/missions').then(r => setAvailableMissions(r.data)).catch(() => { 
++        // Fallback for missions if /all doesn't exist yet
++        setAvailableMissions([
++          { id: 1, title: 'First Steps' },
++          { id: 2, title: 'The Lost Gem' }
++        ]);
++      });
+     }
+   }, [isEditorActive]);
+ 
+@@ -216,6 +228,7 @@ export const MapEditorUI = ({ gameRef }) => {
+ 
+   // Auto-open if URL has ?edit_map
+   useEffect(() => {
++    if (!isAdmin) return;
+     if (!new URLSearchParams(window.location.search).get('edit_map')) return;
+     let n = 0;
+     const tryOpen = () => {
+@@ -253,6 +266,7 @@ export const MapEditorUI = ({ gameRef }) => {
+   const selectTexture = id => { setActiveTexture(id); dispatchEditorCommand('setTexture', id); };
+   const updateMeta = (k, v) => { const m = { ...buildMeta, [k]: v }; setBuildMeta(m); dispatchEditorCommand('setBuildMetadata', m); };
+   const updateScale = v => { const s = parseFloat(v); setBuildScale(s); dispatchEditorCommand('setBuildScale', s); };
++  const updateNpcMeta = (k, v) => { const m = { ...npcMeta, [k]: v }; setNpcMeta(m); dispatchEditorCommand('setNPCMetadata', m); };
+   const selectMoveMode = (mode) => { setMoveMode(mode); dispatchEditorCommand('setMoveMode', mode); };
+ 
+   const getMapKey = () => {
+@@ -639,6 +653,49 @@ export const MapEditorUI = ({ gameRef }) => {
+               </Section>
+             )}
+ 
++            {/* NPC Settings */}
++            {activeTile === 'npc' && (
++              <Section title="Config. NPC" defaultOpen={true}>
++                <div className="mb-2">
++                  <label className="block text-[9px] text-gray-500 mb-0.5">Personaje (Definition)</label>
++                  <select value={npcMeta.definitionId} onChange={e => updateNpcMeta('definitionId', e.target.value)}
++                    className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none">
++                    <option value="">Seleccionar...</option>
++                    {npcDefinitions.map(d => (
++                      <option key={d.id} value={d.id}>{d.name} ({d.character_id})</option>
++                    ))}
++                  </select>
++                </div>
++
++                <div className="mb-2">
++                  <label className="block text-[9px] text-gray-500 mb-0.5">Rol / Funci├│n</label>
++                  <select value={npcMeta.role} onChange={e => updateNpcMeta('role', e.target.value)}
++                    className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none">
++                    <option value="guide">Gu├¡a / Misiones</option>
++                    {/* Placeholder for future specific roles */}
++                    <option value="teacher">Profesor (Chat En)</option>
++                    <option value="shop">Vendedor</option>
++                    <option value="guard">Guardia</option>
++                  </select>
++                </div>
++
++                <div className="mb-2">
++                  <label className="block text-[9px] text-gray-500 mb-0.5">Misi├│n Asociada (Opcional)</label>
++                  <select value={npcMeta.missionId} onChange={e => updateNpcMeta('missionId', e.target.value)}
++                    className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none">
++                    <option value="">Ninguna</option>
++                    {availableMissions.map(m => (
++                      <option key={m.id} value={m.id}>{m.title}</option>
++                    ))}
++                  </select>
++                </div>
++                
++                <p className="text-[8px] text-gray-400 italic mt-2">
++                  Al colocar el NPC, se guardar├í con esta configuraci├│n.
++                </p>
++              </Section>
++            )}
++
+ 
+             {/* Stats */}
+             <Section title={`Stats ┬À ${total} tiles`} defaultOpen={false}>
+diff --git a/gather-rpg-frontend/src/game/scenes/LobbyScene.js b/gather-rpg-frontend/src/game/scenes/LobbyScene.js
+index 002f241..35591d5 100644
+--- a/gather-rpg-frontend/src/game/scenes/LobbyScene.js
++++ b/gather-rpg-frontend/src/game/scenes/LobbyScene.js
+@@ -138,22 +138,24 @@ export class LobbyScene extends Phaser.Scene {
+     // after the async map fetch resolves, so mapDefaultSpawnX/Y are set first.
+     const urlParams = new URLSearchParams(window.location.search);
+     // Prioritize initData (from portal) -> URL param -> default 'lobby'
+-    this.currentMapKey = this.initData?.map || urlParams.get('map') || urlParams.get('edit_map') || 'lobby';
+-    this.loadServerMapConfig();
+-
+-    // 3. NPCs (Only in Lobby)
+-    // if (this.currentMapKey === 'lobby') {
+-    //   this.createNPCs();
+-    //   this.createChallengePoints();
+-    // }
++    // 3. NPCs (Dynamic from Backend)
++    this.npcs = []; // Array of containers or sprites
++    this.npcSprites = new Map(); // npcTemplateId -> sprite/container
++    this.loadNPCs();
++    this.nearbyNPC = null;
+ 
+-    // 4. Other Players
++    // 4. Other Players & Missions
+     // Subscribe to store changes
+     this.unsubscribe = useGameStore.subscribe(
+       (state) => state.players,
+       (players) => this.handlePlayersUpdate(players)
+     );
+ 
++    this.missionUnsubscribe = useGameStore.subscribe(
++        (state) => state.activeMission,
++        (mission) => this.handleMissionUpdate(mission)
++    );
++
+     // Initial render of existing players (in case they loaded before scene)
+     this.handlePlayersUpdate(useGameStore.getState().players);
+ 
+@@ -257,9 +259,23 @@ export class LobbyScene extends Phaser.Scene {
+     this.onChatMsg = (e) => this._onChatReceived(e);
+     window.addEventListener('chat-message-received', this.onChatMsg);
+ 
+-    // Listen for emojis
+-    this.onEmojiMsg = (e) => this._onEmojiReceived(e);
+-    window.addEventListener('player-emoji-received', this.onEmojiMsg);
++    // Listen for NPC speech bubbles
++    this.onNPCSpeech = (e) => this._onNPCSpeechReceived(e);
++    window.addEventListener('npc-speech-bubble', this.onNPCSpeech);
++
++    // Listen for NPC interaction states to pause movement
++    this.onNPCInteractionStart = (e) => {
++        const { templateId } = e.detail;
++        const npc = this.npcSprites.get(templateId);
++        if (npc) npc.npcData.isTalking = true;
++    };
++    this.onNPCInteractionEnd = (e) => {
++        const { templateId } = e.detail;
++        const npc = this.npcSprites.get(templateId);
++        if (npc) npc.npcData.isTalking = false;
++    };
++    window.addEventListener('npc-interaction-start', this.onNPCInteractionStart);
++    window.addEventListener('npc-interaction-end', this.onNPCInteractionEnd);
+ 
+     // Notify React that the scene is ready (hides loading screen)
+     window.dispatchEvent(new Event('game-ready'));
+@@ -296,6 +312,14 @@ export class LobbyScene extends Phaser.Scene {
+     }
+   }
+ 
++  _onNPCSpeechReceived(e) {
++    const { templateId, text } = e.detail;
++    const targetNPC = this.npcSprites.get(templateId);
++    if (targetNPC) {
++      this._showChatBubble(targetNPC, text);
++    }
++  }
++
+   _showChatBubble(sprite, text) {
+     // 1. Cleanup existing bubble for this sprite if any
+     if (sprite.chatBubble) {
+@@ -685,6 +709,7 @@ export class LobbyScene extends Phaser.Scene {
+         case 'setTexture': this.setEditorTexture(value); break;
+         case 'setBuildMetadata': this.editorBuildMetadata = value; break;
+         case 'setBuildScale': this.editorBuildScale = parseFloat(value) || 1; break;
++        case 'setNPCMetadata': this.editorNPCMetadata = value; break;
+         case 'setMoveMode': this.setEditorMoveMode(value); break;
+         case 'undo': this.undo(); break;
+         case 'redo': this.redo(); break;
+@@ -846,6 +871,15 @@ export class LobbyScene extends Phaser.Scene {
+       }
+       sprite.data.set('buildScale', scale);
+       this._setupBuildSprite(sprite);
++    } else if (this.editorTileType === 'npc') {
++      const sprite = group.create(gx, gy, texture);
++      sprite.setAlpha(0.8);
++      sprite.data = new Phaser.Data.DataManager(sprite);
++      if (this.editorNPCMetadata) {
++        sprite.data.set('definitionId', this.editorNPCMetadata.definitionId);
++        sprite.data.set('role', this.editorNPCMetadata.role);
++        sprite.data.set('missionId', this.editorNPCMetadata.missionId);
++      }
+     } else {
+       const sprite = this.add.sprite(gx, gy, texture);
+       sprite.setAlpha(0.8);
+@@ -998,6 +1032,15 @@ export class LobbyScene extends Phaser.Scene {
+         sprite.data.set('buildScale', scale);
+       }
+       this._setupBuildSprite(sprite);
++    } else if (type === 'npc') {
++      const sprite = group.create(gx, gy, texture);
++      sprite.setAlpha(0.8);
++      sprite.data = new Phaser.Data.DataManager(sprite);
++      if (metadata) {
++        sprite.data.set('definitionId', metadata.definitionId);
++        sprite.data.set('role', metadata.role);
++        sprite.data.set('missionId', metadata.missionId);
++      }
+     } else {
+       const sprite = this.add.sprite(gx, gy, texture);
+       sprite.setAlpha(0.8);
+@@ -1115,7 +1158,7 @@ export class LobbyScene extends Phaser.Scene {
+         // --- EXIT EDITOR MODE ---
+         // Fully restore character mode
+         this.editorMoveMode = 'camera'; // Reset for next open
+-        this.player.setVisible(true);
++        this.player.setAlpha(1);
+         if (this.player.body) {
+           this.player.body.setEnable(true);
+           this.player.body.setVelocity(0, 0);
+@@ -1156,16 +1199,16 @@ export class LobbyScene extends Phaser.Scene {
+   _applyEditorMoveMode(mode) {
+     if (!this.player) return;
+     if (mode === 'camera') {
+-      // Hide player and stop physics so the editor is clean
+-      this.player.setVisible(false);
++      // Keep player visible but semi-transparent so the editor is clean but location is known
++      this.player.setAlpha(0.4);
+       if (this.player.body) {
+         this.player.body.setEnable(false);
+         this.player.body.setVelocity(0, 0);
+       }
+       this.cameras.main.stopFollow();
+     } else {
+-      // character mode: player is visible and physics-enabled, camera follows
+-      this.player.setVisible(true);
++      // character mode: player is fully opaque and physics-enabled, camera follows
++      this.player.setAlpha(1);
+       if (this.player.body) {
+         this.player.body.setEnable(true);
+       }
+@@ -1196,7 +1239,13 @@ export class LobbyScene extends Phaser.Scene {
+         ...(t.data?.get('portalType') !== undefined && t.data?.get('portalType') !== '' ? { portalType: t.data.get('portalType') } : {}),
+       })),
+       spawns: this.spawns.getChildren().map(t => ({ x: t.x, y: t.y })),
+-      npcZones: this.npcZones.getChildren().map(t => ({ x: t.x, y: t.y })),
++      npcZones: this.npcZones.getChildren().map(t => ({
++        x: t.x, y: t.y,
++        definitionId: t.data?.get('definitionId'),
++        role: t.data?.get('role'),
++        missionId: t.data?.get('missionId'),
++        templateId: t.data?.get('templateId')
++      })),
+       voids: this.voids.getChildren().map(t => ({ x: t.x, y: t.y })),
+     };
+     return JSON.stringify(data, null, 2);
+@@ -1281,7 +1330,16 @@ export class LobbyScene extends Phaser.Scene {
+         this._setupBuildSprite(s);
+       });
+       (data.spawns || []).forEach(w => { const s = this.add.sprite(w.x, w.y, 'tile-spawn'); s.setAlpha(0.8); this.spawns.add(s); });
+-      (data.npcZones || []).forEach(w => { const s = this.add.sprite(w.x, w.y, 'tile-npc'); s.setAlpha(0.8); this.npcZones.add(s); });
++      (data.npcZones || []).forEach(w => {
++        const s = this.add.sprite(w.x, w.y, 'tile-npc');
++        s.setAlpha(0.8);
++        s.data = new Phaser.Data.DataManager(s);
++        if (w.definitionId) s.data.set('definitionId', w.definitionId);
++        if (w.role) s.data.set('role', w.role);
++        if (w.missionId) s.data.set('missionId', w.missionId);
++        if (w.templateId) s.data.set('templateId', w.templateId);
++        this.npcZones.add(s);
++      });
+       (data.voids || []).forEach(w => { this.voids.create(w.x, w.y, 'tile-void').refreshBody(); });
+     } catch (e) {
+       console.error('[MapEditor] Failed to load map config', e);
+@@ -1753,32 +1811,174 @@ export class LobbyScene extends Phaser.Scene {
+     }
+   }
+ 
+-  createNPCs() {
+-    // Define NPCs
+-    const npcData = [
+-      { id: 'mission_master', name: 'Mission Master', x: 1000, y: 800, color: 0x4444ff, role: 'mission' },
+-      { id: 'trainer', name: 'Trainer', x: 1200, y: 900, color: 0x44ff44, role: 'class' },
+-      { id: 'shop', name: 'Shop Keeper', x: 800, y: 900, color: 0xffff44, role: 'shop' }
+-    ];
++  async loadNPCs() {
++    const roomId = useGameStore.getState().roomId;
++    if (!roomId) return;
+ 
+-    npcData.forEach(data => {
+-      const container = this.add.container(data.x, data.y);
++    try {
++      console.log(`[LobbyScene] Fetching NPCs for Room: ${roomId}, Map: ${this.currentMapKey}`);
++      const response = await api.get(`/rooms/${roomId}/npcs`, {
++        params: { scene_key: this.currentMapKey }
++      });
+ 
+-      // NPC Visual
+-      const shape = this.add.rectangle(0, 0, 30, 30, data.color);
+-      const label = this.add.text(0, -25, data.name, {
+-        fontSize: '12px',
+-        fill: '#cccccc'
+-      }).setOrigin(0.5);
++      if (response.data) {
++        // Clear existing NPCs
++        this.npcs.forEach(npc => npc.destroy());
++        this.npcs = [];
++        this.npcSprites.clear();
+ 
+-      container.add([shape, label]);
+-      this.physics.add.existing(container, true); // Static body
++        response.data.forEach(instance => {
++          this.createNPCSprite(instance);
++        });
++
++        // Update indicators based on active mission
++        this.handleMissionUpdate(useGameStore.getState().activeMission);
++      }
++    } catch (err) {
++      console.error('[LobbyScene] Failed to load NPCs:', err);
++    }
++  }
+ 
+-      container.npcData = data;
+-      this.npcs.push(container);
++  createNPCSprite(instance) {
++    const tmpl = instance.npc_template;
++    const def = tmpl?.npc_definition;
++    if (!tmpl || !def) return;
++
++    console.log(`[LobbyScene] Spawning NPC: ${def.name} at (${tmpl.position_x}, ${tmpl.position_y})`);
++
++    // Use a container for name tags and indicators
++    const container = this.add.container(tmpl.position_x, tmpl.position_y);
++    container.setDepth(tmpl.position_y);
++
++    // NPC Sprite (using PlayerSprite logic for compatibility)
++    const sprite = new PlayerSprite(
++      this,
++      0, 0,
++      def.sprite || '1',
++      undefined,
++      def.name,
++      false // isLocal = false
++    );
++    
++    // NPC doesn't move by default, so we set it to idle facing the default direction
++    const facing = tmpl.facing_direction || 'south';
++    sprite.playAnimation('idle');
++    if (facing === 'left') sprite.sprite.setFlipX(true);
++    if (facing === 'right') sprite.sprite.setFlipX(false);
++
++    // 3. Name Tag
++    const nameTag = this.add.text(0, -35, def.name, {
++      fontSize: '12px',
++      fill: '#ffffff',
++      stroke: '#000000',
++      strokeThickness: 3,
++      fontFamily: '"Outfit", sans-serif',
++      fontWeight: 'bold'
++    }).setOrigin(0.5);
++
++    container.add([sprite, nameTag]);
++
++    // Store essential data for interactions
++    container.npcData = {
++      templateId: tmpl.id,
++      instanceId: instance.id,
++      name: def.name,
++      role: instance.role || tmpl.role || 'ambient',
++      missionId: instance.mission_id,
++      roomId: useGameStore.getState().roomId,
++      // Movement Params
++      movementType: tmpl.movement_type || 'static',
++      movementRange: tmpl.movement_range || 0,
++      movementSpeed: tmpl.movement_speed || 50,
++      spawnX: tmpl.position_x,
++      spawnY: tmpl.position_y,
++      targetX: tmpl.position_x,
++      targetY: tmpl.position_y,
++      moveTimer: 0,
++      isTalking: false
++    };
++
++    this.physics.add.existing(container, false); // Dynamic body
++    if (container.body) {
++        container.body.setImmovable(true); // Don't let player push them
++        container.body.setCircle(20, -20, -20); // Collision circle
++    }
++    this.npcs.push(container);
++    this.npcSprites.set(tmpl.id, container);
++  }
++
++  handleMissionUpdate(mission) {
++    if (!this.npcs) return;
++
++    this.npcs.forEach(npcContainer => {
++      const npcId = npcContainer.npcData.templateId;
++      const status = this.getNpcMissionStatus(npcId, mission);
++      this.updateNpcIndicator(npcContainer, status);
+     });
+   }
+ 
++  getNpcMissionStatus(npcId, mission) {
++      if (!mission) return null;
++      
++      // Check if this NPC is the source of the mission or a target
++      const isStartNpc = mission.start_npc_id === npcId;
++      const tasks = mission.tasks || [];
++      const currentTask = tasks.find(t => !t.is_completed);
++      
++      if (!currentTask && isStartNpc) return 'complete'; // Ready to hand in
++      
++      if (currentTask) {
++          if (currentTask.npc_id === npcId) {
++              return currentTask.is_completed ? 'success' : 'active';
++          }
++      }
++      
++      return null;
++  }
++
++  updateNpcIndicator(container, status) {
++      // Remove old indicator if exists
++      if (container.indicator) {
++          container.indicator.destroy();
++          container.indicator = null;
++      }
++
++      let emoji = '';
++      let color = '#ffffff';
++
++      if (status === 'complete') {
++          emoji = 'ÔØô';
++          color = '#ffff00';
++      } else if (status === 'active') {
++          emoji = 'ÔØù';
++          color = '#ffff00';
++      } else if (status === 'success') {
++          emoji = 'Ô£ö';
++          color = '#00ff00';
++      }
++
++      if (emoji) {
++          const indicator = this.add.text(0, -45, emoji, {
++              fontSize: '20px',
++              fill: color,
++              stroke: '#000000',
++              strokeThickness: 3
++          }).setOrigin(0.5);
++          container.add(indicator);
++          container.indicator = indicator;
++
++          // Add a little bounce
++          this.tweens.add({
++              targets: indicator,
++              y: -50,
++              duration: 1000,
++              yoyo: true,
++              repeat: -1,
++              ease: 'Sine.easeInOut'
++          });
++      }
++  }
++
+   createChallengePoints() {
+     const points = [
+       { id: 'challenge_1', name: 'Challenge 1', x: 600, y: 350, color: 0xff6b00 },
+@@ -1824,9 +2024,12 @@ export class LobbyScene extends Phaser.Scene {
+     return false;
+   }
+ 
+-  update(time) {
++  update(time, delta) {
+     if (!this.player) return;
+ 
++    // Update NPCs
++    this.updateNPCs(time, delta);
++
+     // Force camera follow every frame to fix teleport lag/desync - MOVED TO createMyPlayer
+     // this.cameras.main.startFollow(this.player, true, 1, 1);
+ 
+@@ -1948,6 +2151,50 @@ export class LobbyScene extends Phaser.Scene {
+     this.updateCameraBounds();
+   }
+ 
++  updateNPCs(time, delta) {
++    if (!this.npcs) return;
++
++    this.npcs.forEach(npc => {
++        const data = npc.npcData;
++        if (!data || data.movementType === 'static' || data.isTalking) {
++            if (npc.body) npc.body.setVelocity(0);
++            // Ensure child PlayerSprite is idle
++            const sprite = npc.list.find(item => item instanceof PlayerSprite);
++            if (sprite) sprite.playAnimation('idle');
++            return;
++        }
++
++        if (data.movementType === 'wander') {
++            const distToTarget = Phaser.Math.Distance.Between(npc.x, npc.y, data.targetX, data.targetY);
++            const sprite = npc.list.find(item => item instanceof PlayerSprite);
++
++            if (distToTarget < 5) {
++                // We reached the target
++                if (npc.body) npc.body.setVelocity(0);
++                if (sprite) sprite.playAnimation('idle');
++
++                // Wait before picking next target
++                if (time > data.moveTimer) {
++                    const angle = Math.random() * Math.PI * 2;
++                    const dist = Math.random() * data.movementRange;
++                    data.targetX = data.spawnX + Math.cos(angle) * dist;
++                    data.targetY = data.spawnY + Math.sin(angle) * dist;
++                    data.moveTimer = time + 2000 + Math.random() * 3000; // Wait 2-5 seconds
++                }
++            } else {
++                // Move towards target
++                this.physics.moveTo(npc, data.targetX, data.targetY, data.movementSpeed);
++                if (sprite) {
++                    sprite.playAnimation('walk');
++                    // Flip sprite based on velocity
++                    if (npc.body.velocity.x < 0) sprite.sprite.setFlipX(true);
++                    else if (npc.body.velocity.x > 0) sprite.sprite.setFlipX(false);
++                }
++            }
++        }
++    });
++  }
++
+   // DELETED DUPLICATE shutdown() here to consolidate at end of file
+ 
+   processSyncInteractions() {
+@@ -2207,9 +2454,9 @@ export class LobbyScene extends Phaser.Scene {
+       this.unsubscribe();
+       this.unsubscribe = null;
+     }
+-    if (this.audioUnsubscribe) {
+-      this.audioUnsubscribe();
+-      this.audioUnsubscribe = null;
++    if (this.missionUnsubscribe) {
++      this.missionUnsubscribe();
++      this.missionUnsubscribe = null;
+     }
+     
+     // Clean up window listeners
+@@ -2233,6 +2480,10 @@ export class LobbyScene extends Phaser.Scene {
+       window.removeEventListener('phaser-camera-zoom', this.onZoomEvent);
+       this.onZoomEvent = null;
+     }
++    if (this.onNPCSpeech) {
++      window.removeEventListener('npc-speech-bubble', this.onNPCSpeech);
++      this.onNPCSpeech = null;
++    }
+     if (this.onEditorEvent) {
+       window.removeEventListener('editor-command', this.onEditorEvent);
+       this.onEditorEvent = null;
+diff --git a/gather-rpg-frontend/src/layouts/AdminLayout.jsx b/gather-rpg-frontend/src/layouts/AdminLayout.jsx
+index 95e35c6..5ac954e 100644
+--- a/gather-rpg-frontend/src/layouts/AdminLayout.jsx
++++ b/gather-rpg-frontend/src/layouts/AdminLayout.jsx
+@@ -1,7 +1,7 @@
+ import React from 'react';
+ import { Outlet, Link, useLocation } from 'react-router-dom';
+ import { useAuthStore } from '../store/authStore';
+-import { LayoutDashboard, Map as MapIcon, Settings, LogOut, Gamepad2 } from 'lucide-react';
++import { LayoutDashboard, Map as MapIcon, Settings, LogOut, Gamepad2, Users, Terminal, ScrollText } from 'lucide-react';
+ 
+ export const AdminLayout = () => {
+     const { isAdmin, logout } = useAuthStore();
+@@ -22,6 +22,9 @@ export const AdminLayout = () => {
+     const navItems = [
+         { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+         { path: '/admin/maps', label: 'Maps', icon: MapIcon },
++        { path: '/admin/npcs', label: 'NPC Models', icon: Users },
++        { path: '/admin/missions', label: 'Missions', icon: ScrollText },
++        { path: '/admin/ai-test', label: 'AI Test', icon: Terminal },
+         { path: '/admin/characters', label: 'Characters', icon: Gamepad2 },
+     ];
+ 
+diff --git a/gather-rpg-frontend/src/layouts/LobbyLayout.jsx b/gather-rpg-frontend/src/layouts/LobbyLayout.jsx
+index ab4a1b2..14dc136 100644
+--- a/gather-rpg-frontend/src/layouts/LobbyLayout.jsx
++++ b/gather-rpg-frontend/src/layouts/LobbyLayout.jsx
+@@ -1,4 +1,5 @@
+ import { useState, useEffect, useRef, useCallback } from 'react';
++import { Copy, Minus, Plus, X } from 'lucide-react';
+ import { RoomList } from '../components/lobby/RoomList';
+ import { CreateRoomModal } from '../components/lobby/CreateRoomModal';
+ import { CharacterSelector } from '../components/lobby/CharacterSelector';
+@@ -8,10 +9,11 @@ import { Sidebar } from '../components/lobby/Sidebar';
+ import { MapEditorUI } from '../components/lobby/MapEditorUI';
+ import { PrivateMapPINToast } from '../components/lobby/PrivateMapPINToast';
+ import { NotificationContainer } from '../components/common/NotificationContainer';
+-import { Minus, Plus, X, Copy } from 'lucide-react';
++import { useAuthStore } from '../store/authStore';
+ import { useGameStore } from '../store/gameStore';
+ import { useRoomStore } from '../store/roomStore';
+-import { useAuthStore } from '../store/authStore';
++import { NPCDialogue } from '../components/game/NPCDialogue';
++import MissionTracker from '../components/game/MissionTracker';
+ 
+ export const LobbyLayout = () => {
+   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
+@@ -20,6 +22,7 @@ export const LobbyLayout = () => {
+   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+   const [pendingChallengeId, setPendingChallengeId] = useState(null);
+   const [challengeChatInput, setChallengeChatInput] = useState('');
++  const [npcData, setNpcData] = useState(null);
+   const challengeMessagesEndRef = useRef(null);
+ 
+   const activeChallengeId = useGameStore(state => state.activeChallengeId);
+@@ -34,6 +37,9 @@ export const LobbyLayout = () => {
+   const currentRoom = rooms.find(r => r.id === currentRoomId);
+   const roomName = currentRoom ? currentRoom.name : (currentRoomId ? `Sala ${String(currentRoomId).slice(0, 8)}...` : 'Sin sala');
+ 
++  const activeMission = useGameStore(state => state.activeMission);
++  const fetchActiveMission = useGameStore(state => state.fetchActiveMission);
++
+   const scrollChallengeToBottom = useCallback(() => {
+     challengeMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+   }, []);
+@@ -49,6 +55,17 @@ export const LobbyLayout = () => {
+       if (role === 'mission') setActiveOverlay('missions');
+       if (role === 'class') setActiveOverlay('character');
+       if (role === 'shop') alert("Shop coming soon!");
++
++      if (e.detail?.templateId) {
++        setNpcData({
++          templateId: e.detail.templateId,
++          name: e.detail.name || "NPC",
++          role: e.detail.role || "Citizen",
++          missionId: e.detail.missionId,
++          roomId: currentRoomId
++        });
++        setActiveOverlay('npc_dialogue');
++      }
+     };
+ 
+     window.addEventListener('lobby-interaction', handleInteraction);
+@@ -90,6 +107,12 @@ export const LobbyLayout = () => {
+     }
+   }, [activeChallengeId, activeOverlay]);
+ 
++  useEffect(() => {
++    if (currentRoomId) {
++      fetchActiveMission('LobbyScene');
++    }
++  }, [currentRoomId, fetchActiveMission]);
++
+   const handleSendChallengeChat = (e) => {
+     e.preventDefault();
+     if (!challengeChatInput.trim()) return;
+@@ -135,8 +158,13 @@ export const LobbyLayout = () => {
+       {/* Private Map PIN Toast (Z-Index 200) ÔÇö appears when a new private room is created */}
+       <PrivateMapPINToast />
+ 
+-      {/* Bottom HUD ÔÇö hidden in editor mode */}
+-      {!isEditorMode && <BottomHUD />}
++      {/* HUD & Tracker */}
++      {!isEditorMode && (
++        <>
++          <BottomHUD />
++          <MissionTracker mission={activeMission} />
++        </>
++      )}
+ 
+       {/* Sidebar Layer ÔÇö hidden in editor mode */}
+       {!isEditorMode && (
+@@ -309,6 +337,15 @@ export const LobbyLayout = () => {
+                   </div>
+                 )}
+                 
++                {activeOverlay === 'npc_dialogue' && npcData && (
++                  <NPCDialogue 
++                    npcData={npcData} 
++                    onClose={() => {
++                      setActiveOverlay(null);
++                      setNpcData(null);
++                    }}
++                  />
++                )}
+                 {activeOverlay === 'route' && (
+                   <div className="w-full h-full flex flex-col pt-6">
+                     <iframe 
+diff --git a/gather-rpg-frontend/src/pages/PracticePage.jsx b/gather-rpg-frontend/src/pages/PracticePage.jsx
+index a3afd19..c253f7f 100644
+--- a/gather-rpg-frontend/src/pages/PracticePage.jsx
++++ b/gather-rpg-frontend/src/pages/PracticePage.jsx
+@@ -19,7 +19,7 @@ import {
+ import OverlaidWaveform from '../components/voice/OverlaidWaveform';
+ import Waveform from '../components/voice/Waveform';
+ import ChallengeView from '../components/learning/ChallengeView';
+-import { Mic, Layout, Trophy, BookOpen } from 'lucide-react';
++import { Mic, Layout, Trophy, BookOpen, Sparkles } from 'lucide-react';
+ 
+ export default function PracticePage() {
+     const [word, setWord] = useState(null);
+@@ -381,28 +381,44 @@ export default function PracticePage() {
+                             </p>
+                         </div>
+ 
+-                        {/* Expected vs Heard */}
+-                        <div className="grid grid-cols-2 gap-4">
+-                            <div className="bg-white/5 rounded-xl p-4">
+-                                <p className="text-xs text-gray-500 mb-1">Expected</p>
+-                                <p className="text-white font-medium">{result.expected_text}</p>
+-                            </div>
+-                            <div className="bg-white/5 rounded-xl p-4">
+-                                <p className="text-xs text-gray-500 mb-1">Heard</p>
+-                                <p className={`font-medium ${result.feedback?.match ? 'text-green-400' : 'text-amber-400'}`}>
+-                                    {result.transcription}
+-                                </p>
++                        {/* Word Breakdown */}
++                        {result.feedback?.word_analysis && (
++                            <div className="bg-white/5 rounded-xl p-6 border border-white/5">
++                                <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-4 font-bold">Word Breakdown</p>
++                                <div className="flex flex-wrap gap-3">
++                                    {result.feedback.word_analysis.map((w, i) => (
++                                        <div key={i} className="flex flex-col items-center">
++                                            <span className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition-all ${
++                                                w.text_match 
++                                                ? 'bg-green-500/10 text-green-400 border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.1)]' 
++                                                : w.phonetically_close
++                                                    ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
++                                                    : 'bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]'
++                                            }`}>
++                                                {w.expected}
++                                            </span>
++                                            {!w.text_match && w.heard !== '(missing)' && (
++                                                <span className="text-[10px] text-gray-500 mt-1 font-mono italic">
++                                                    Heard: "{w.heard}"
++                                                </span>
++                                            )}
++                                        </div>
++                                    ))}
++                                </div>
+                             </div>
+-                        </div>
++                        )}
+ 
+                         {/* Tips */}
+                         {result.feedback?.tips?.length > 0 && (
+                             <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-4">
+-                                <p className="text-xs text-indigo-300 uppercase tracking-wider mb-2">Tips</p>
+-                                <ul className="space-y-1">
++                                <div className="flex items-center gap-2 mb-2 text-indigo-300">
++                                    <Sparkles size={14} />
++                                    <p className="text-xs uppercase tracking-wider font-bold">Learning Tips</p>
++                                </div>
++                                <ul className="space-y-1.5">
+                                     {result.feedback.tips.map((tip, i) => (
+-                                        <li key={i} className="text-sm text-gray-300 flex gap-2">
+-                                            <span className="text-indigo-400">ÔÇó</span> {tip}
++                                        <li key={i} className="text-sm text-gray-300 flex gap-2 leading-relaxed">
++                                            <span className="text-indigo-400 mt-1">ÔÇó</span> {tip}
+                                         </li>
+                                     ))}
+                                 </ul>
+diff --git a/gather-rpg-frontend/src/store/authStore.js b/gather-rpg-frontend/src/store/authStore.js
+index cc2762f..ec2c03e 100644
+--- a/gather-rpg-frontend/src/store/authStore.js
++++ b/gather-rpg-frontend/src/store/authStore.js
+@@ -17,7 +17,18 @@ const getUserFromToken = (token) => {
+ };
+ 
+ export const useAuthStore = create((set, get) => ({
+-  user: JSON.parse(localStorage.getItem('user')) || (localStorage.getItem('token') ? getUserFromToken(localStorage.getItem('token')) : null),
++  user: (() => {
++    const token = localStorage.getItem('token');
++    const userJson = localStorage.getItem('user');
++    const userFromStorage = userJson ? JSON.parse(userJson) : null;
++    
++    if (token) {
++      const userFromToken = getUserFromToken(token);
++      // Merge: priority to Token payload for core identity (role, id, username)
++      return userFromToken ? { ...userFromStorage, ...userFromToken } : userFromStorage;
++    }
++    return userFromStorage;
++  })(),
+   token: localStorage.getItem('token'),
+   isAuthenticated: !!localStorage.getItem('token'),
+   error: null,
+diff --git a/gather-rpg-frontend/src/store/gameStore.js b/gather-rpg-frontend/src/store/gameStore.js
+index af7195b..43e668c 100644
+--- a/gather-rpg-frontend/src/store/gameStore.js
++++ b/gather-rpg-frontend/src/store/gameStore.js
+@@ -1,4 +1,5 @@
+ import { create } from 'zustand';
++import api from '../services/api';
+ import wsClient from '../services/websocket';
+ import { useAuthStore } from './authStore';
+ import { useNotificationStore } from './notificationStore';
+@@ -13,6 +14,7 @@ export const useGameStore = create((set, get) => ({
+     activeChallengeId: null,
+     challengeParticipants: [],
+     challengeMessages: [],
++    activeMission: null,
+ 
+     // Chat State
+     chatRequests: [], // Array of { requester_id, requester_name }
+@@ -504,5 +506,20 @@ export const useGameStore = create((set, get) => ({
+ 
+     requestMapJoin: (sceneKey, type = 'public', inviteCode = '') => {
+         wsClient.send('request_map_join', { scene_key: sceneKey, type, invite_code: inviteCode });
++    },
++
++    setActiveMission: (mission) => set({ activeMission: mission }),
++    fetchActiveMission: async (sceneKey) => {
++        try {
++            const response = await api.get(`/missions/scene/${sceneKey}`);
++            if (response.data && response.data.length > 0) {
++                set({ activeMission: response.data[0] });
++            } else {
++                set({ activeMission: null });
++            }
++        } catch (err) {
++            console.error("Failed to fetch missions:", err);
++            set({ activeMission: null });
++        }
+     }
+ }));
+diff --git a/start-all.ps1 b/start-all.ps1
+index cce5742..9df67c5 100644
+--- a/start-all.ps1
++++ b/start-all.ps1
+@@ -19,7 +19,7 @@ Set-Location -Path ".."
+ 
+ # 2. Go Backend
+ Write-Host "[2/4] Starting Go Backend (Gather RPG)..." -ForegroundColor Green
+-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd 'gather-rpg-backend'; Write-Host '-- Gather RPG Backend Logs --' -ForegroundColor Yellow; .\server.exe"
++Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd 'gather-rpg-backend'; Write-Host '-- Gather RPG Backend Logs --' -ForegroundColor Yellow; go run cmd/server/main.go"
+ 
+ # 3. Voice Backend (Python with venv)
+ Write-Host "[3/4] Starting Voice Backend (FastAPI)..." -ForegroundColor Green

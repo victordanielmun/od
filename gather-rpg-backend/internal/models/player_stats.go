@@ -19,6 +19,7 @@ type PlayerStats struct {
 	Attack      int       `gorm:"default:10" json:"attack"`
 	Defense     int       `gorm:"default:5" json:"defense"`
 	Speed       int       `gorm:"default:10" json:"speed"`
+	Gold        int       `gorm:"default:100" json:"gold"`
 	SkillPoints int       `gorm:"default:0" json:"skill_points"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -44,22 +45,26 @@ type PlayerSkill struct {
 }
 
 type Item struct {
-	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	ItemType    string    `json:"item_type"`   // "consumable", "equipment"
-	EffectType  string    `json:"effect_type"` // "heal_hp", "restore_mp"
-	EffectValue int       `json:"effect_value"`
-	Price       int       `json:"price"`
-	MaxStack    int       `json:"max_stack"`
-	IconKey     string    `json:"icon_key"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	ItemType     string    `json:"item_type"`   // "consumable", "equipment", "throwable", "weapon", "defense", "mission_item"
+	EffectType   string    `json:"effect_type"` // "heal_hp", "restore_mp", "revive", "none"
+	EffectValue  int       `json:"effect_value"`
+	AttackBonus  int       `json:"attack_bonus"`
+	DefenseBonus int       `json:"defense_bonus"`
+	RequiredLevel int      `json:"required_level"`
+	Price        int       `json:"price"`
+	MaxStack     int       `json:"max_stack"`
+	IconKey      string    `json:"icon_key"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type Inventory struct {
 	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	PlayerID  uuid.UUID `json:"player_id"`
 	ItemID    uuid.UUID `json:"item_id"`
+	Item      Item      `gorm:"foreignKey:ItemID" json:"item"`
 	Quantity  int       `json:"quantity"`
 	SlotIndex int       `json:"slot_index"`
 	CreatedAt time.Time `json:"created_at"`

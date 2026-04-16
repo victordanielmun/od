@@ -19,7 +19,7 @@ Set-Location -Path ".."
 
 # 2. Go Backend
 Write-Host "[2/4] Starting Go Backend (Gather RPG)..." -ForegroundColor Green
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd 'gather-rpg-backend'; Write-Host '-- Gather RPG Backend Logs --' -ForegroundColor Yellow; .\server.exe"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd 'gather-rpg-backend'; Write-Host '-- Gather RPG Backend Logs --' -ForegroundColor Yellow; go run cmd/server/main.go"
 
 # 3. Voice Backend (Python with venv)
 Write-Host "[3/4] Starting Voice Backend (FastAPI)..." -ForegroundColor Green

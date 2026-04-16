@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useGameStore } from '../../store/gameStore';
 import { Bell } from 'lucide-react';
 import SettingsMenu from '../common/SettingsMenu';
 
 export const BottomHUD = () => {
+    const { t } = useTranslation();
     const { activeChat, chatRequests } = useGameStore();
     const [menuOpen, setMenuOpen] = useState(false);
     const [initialTab, setInitialTab] = useState('notifications');
@@ -22,7 +24,7 @@ export const BottomHUD = () => {
                 <button
                     onClick={() => openMenu('notifications')}
                     className="relative w-14 h-14 bg-gray-900/90 border border-gray-700 hover:border-blue-500/60 rounded-full text-gray-400 hover:text-white shadow-2xl backdrop-blur-md transition-all duration-200 hover:scale-110 active:scale-95 flex items-center justify-center group"
-                    title="Abrir Dashboard"
+                    title={t('lobby.hud.open_dashboard')}
                 >
                     <Bell size={24} className={hasNotifications ? 'text-blue-400 animate-pulse' : 'group-hover:text-blue-400 transition-colors'} />
 

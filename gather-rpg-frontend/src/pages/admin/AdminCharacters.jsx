@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CHARACTER_CONFIG } from '../../game/config/CharacterConfig';
 import { Users } from 'lucide-react';
 
@@ -85,6 +86,7 @@ const AnimButton = ({ label, active, onClick, color }) => (
 
 // ─── Character Preview Card ───
 const CharacterCard = ({ charDef }) => {
+    const { t } = useTranslation();
     const canvasRef = useRef(null);
     const gameRef = useRef(null);
     const sceneRef = useRef(null);
@@ -160,8 +162,8 @@ const CharacterCard = ({ charDef }) => {
             </div>
 
             {/* Active Animation Label */}
-            <div className="text-center py-2 bg-gray-900">
-                <span className="text-xs text-gray-400">Animación: </span>
+            <div className="text-center py-2 bg-gray-900 flex justify-center gap-2">
+                <span className="text-xs text-gray-400">{t('admin.characters.animation')}: </span>
                 <span className="text-xs text-yellow-400 font-bold uppercase">{activeAnim}</span>
             </div>
 
@@ -215,6 +217,7 @@ const CharacterCard = ({ charDef }) => {
 
 // ─── Main Admin Page ───
 export const AdminCharacters = () => {
+    const { t } = useTranslation();
     const characters = CHARACTER_CONFIG.characters;
 
     return (
@@ -222,15 +225,15 @@ export const AdminCharacters = () => {
             <div className="flex items-center gap-3 mb-8">
                 <Users size={28} className="text-yellow-400" />
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Personajes</h1>
-                    <p className="text-gray-400 text-sm">Gestiona y previsualiza las animaciones de los personajes del juego.</p>
+                    <h1 className="text-2xl font-bold text-white">{t('admin.characters.title')}</h1>
+                    <p className="text-gray-400 text-sm">{t('admin.characters.subtitle')}</p>
                 </div>
             </div>
 
             {characters.length === 0 ? (
                 <div className="bg-gray-900 border border-gray-700 rounded-xl p-12 text-center">
                     <Users size={48} className="mx-auto mb-4 text-gray-600" />
-                    <p className="text-gray-400">No hay personajes configurados en <code className="text-yellow-400">CharacterConfig.js</code></p>
+                    <p className="text-gray-400">{t('admin.characters.empty')}</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -241,12 +244,11 @@ export const AdminCharacters = () => {
             )}
 
             <div className="mt-8 bg-gray-900/50 border border-gray-800 rounded-lg p-4 text-xs text-gray-500 leading-relaxed">
-                <p className="font-bold text-gray-400 mb-1">💡 ¿Cómo agregar un nuevo personaje?</p>
+                <p className="font-bold text-gray-400 mb-1">💡 {t('admin.characters.tutorial_title')}</p>
                 <ol className="list-decimal list-inside space-y-1">
-                    <li>Coloca los spritesheets (<code className="text-yellow-500">PNG + JSON</code>) en <code className="text-blue-400">/public/characters/</code></li>
-                    <li>Agrega una entrada nueva en <code className="text-blue-400">CharacterConfig.js → characters[]</code> con un <code className="text-yellow-500">id</code> único</li>
-                    <li>Los frames de animación ya se comparten entre todos los personajes, solo necesitas que el JSON tenga los mismos nombres de frame</li>
-                    <li>Recarga esta página para ver el nuevo personaje</li>
+                    {t('admin.characters.tutorial_steps', { returnObjects: true }).map((step, idx) => (
+                        <li key={idx}>{step}</li>
+                    ))}
                 </ol>
             </div>
         </div>

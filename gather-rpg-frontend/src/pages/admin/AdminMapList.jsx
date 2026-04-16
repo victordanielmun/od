@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import { Edit, Plus, Search } from 'lucide-react';
+import { Map as MapIcon, Plus, Search, Edit2 } from 'lucide-react';
 
 export const AdminMapList = () => {
+    const { t } = useTranslation();
     const [maps, setMaps] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -24,23 +27,26 @@ export const AdminMapList = () => {
     };
 
     const handleEdit = (sceneKey) => {
-        // Navigate to the lobby with edit_map param
-        // We use window.location.href or navigate to force a full reload if needed, 
-        // but react-router navigate should work if LobbyScene handles the param on mount.
-        // However, since we are moving from Admin Layout to Game Layout, a route change is sufficient.
         navigate(`/lobby?edit_map=${sceneKey}`);
     };
+
+    const filteredMaps = maps.filter(m => 
+        m.scene_key.toLowerCase().includes(search.toLowerCase())
+    );
 
     return (
         <div className="animate-fade-in">
             <div className="flex justify-between items-center mb-8">
-                <div>
-                    <h1 className="text-3xl font-bold text-white mb-2">Map Management</h1>
-                    <p className="text-gray-400">Create and edit game maps.</p>
+                <div className="flex items-center gap-3">
+                    <MapIcon size={28} className="text-yellow-400" />
+                    <div>
+                        <h1 className="text-3xl font-bold text-white mb-2">{t('admin.maps.title')}</h1>
+                        <p className="text-gray-400">{t('admin.maps.subtitle')}</p>
+                    </div>
                 </div>
                 <button
                     onClick={() => {
-                        const sceneKey = prompt("Enter unique Scene Key (e.g., 'login', 'forest'):");
+                        const sceneKey = prompt(t('admin.maps.prompt_key'));
                         if (sceneKey && sceneKey.trim()) {
                             handleEdit(sceneKey.trim().toLowerCase());
                         }
@@ -48,7 +54,7 @@ export const AdminMapList = () => {
                     className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all shadow-lg hover:shadow-green-500/20"
                 >
                     <Plus size={20} />
-                    Create New Map
+                    {t('admin.maps.new_map')}
                 </button>
             </div>
 
@@ -58,7 +64,9 @@ export const AdminMapList = () => {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
                         <input
                             type="text"
-                            placeholder="Search maps..."
+                            placeholder={t('admin.maps.search_placeholder')}
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
                             className="w-full bg-gray-950 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-gray-300 focus:border-blue-500 focus:outline-none"
                         />
                     </div>

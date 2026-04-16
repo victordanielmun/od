@@ -49,24 +49,32 @@ class WebSocketClient {
             }
         };
 
-        this.ws.onclose = () => {
-            console.log('WebSocket disconnected');
+        this.ws.onclose = (event) => {
+            console.log(`WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason}`);
             this.isConnected = false;
             this.emit('connection_status', { status: 'disconnected' });
-            this.attemptReconnect(token);
+            
+            // Don't reconnect if it was a semi-controlled close or unauthorized
+            if (event.code !== 1000 && event.code !== 1001) {
+                this.attemptReconnect(token);
+            }
         };
 
         this.ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
+            console.error('WebSocket Error Object:', error);
         };
     }
 
     attemptReconnect(token) {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
-            const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-            console.log(`Attempting reconnect ${this.reconnectAttempts} in ${delay}ms`);
-            setTimeout(() => this.connect(token), delay);
+            // Exponential backoff with a minimum of 3 seconds to avoid flapping
+            const delay = Math.max(3000, Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000));
+            console.log(`Attempting reconnect #${this.reconnectAttempts} in ${delay}ms...`);
+            if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = setTimeout(() => this.connect(token), delay);
+        } else {
+            console.error('Max WebSocket reconnect attempts reached.');
         }
     }
 

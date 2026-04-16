@@ -25,13 +25,14 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
     const s = 1.0;
     this.sprite.setScale(Number.isFinite(s) && s > 0 ? s : 1.0);
 
-    // Add name tag
-    this.nameTag = scene.add.text(0, -110, username, {
-      fontSize: '20px',
+    // Add name tag - Unified style with NPCs but with white color
+    this.nameTag = scene.add.text(0, 18, username, {
+      fontSize: '14px',
       fill: '#ffffff',
       stroke: '#000000',
       strokeThickness: 4,
-      align: 'center'
+      fontFamily: '"Outfit", sans-serif',
+      fontWeight: 'bold'
     }).setOrigin(0.5);
 
     this.add([this.sprite, this.nameTag]);

@@ -17,7 +17,18 @@ const getUserFromToken = (token) => {
 };
 
 export const useAuthStore = create((set, get) => ({
-  user: JSON.parse(localStorage.getItem('user')) || (localStorage.getItem('token') ? getUserFromToken(localStorage.getItem('token')) : null),
+  user: (() => {
+    const token = localStorage.getItem('token');
+    const userJson = localStorage.getItem('user');
+    const userFromStorage = userJson ? JSON.parse(userJson) : null;
+    
+    if (token) {
+      const userFromToken = getUserFromToken(token);
+      // Merge: priority to Token payload for core identity (role, id, username)
+      return userFromToken ? { ...userFromStorage, ...userFromToken } : userFromStorage;
+    }
+    return userFromStorage;
+  })(),
   token: localStorage.getItem('token'),
   isAuthenticated: !!localStorage.getItem('token'),
   error: null,
