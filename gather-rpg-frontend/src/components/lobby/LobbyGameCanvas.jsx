@@ -7,6 +7,10 @@ import { LobbyScene } from '../../game/scenes/LobbyScene';
 import { useGameStore } from '../../store/gameStore';
 import { useRoomStore } from '../../store/roomStore';
 
+// Module-level singleton guard: prevents React StrictMode from creating two
+// Phaser instances (StrictMode mounts/unmounts effects twice in development).
+let _phaserLobbyInstance = null;
+
 export const LobbyGameCanvas = forwardRef((props, ref) => {
   const { t } = useTranslation();
   const internalGameRef = useRef(null);
@@ -188,6 +192,11 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
   }, [isConnected, fetchRooms, createRoom, joinRoom, currentRoomId, retryCount]);
 
   useEffect(() => {
+    // Guard against React StrictMode double-invocation
+    if (_phaserLobbyInstance) {
+      internalGameRef.current = _phaserLobbyInstance;
+      return;
+    }
     if (internalGameRef.current) return;
 
     const config = {
@@ -196,6 +205,7 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
       height: window.innerHeight,
       parent: 'phaser-lobby',
       backgroundColor: '#1a1a1a',
+      powerPreference: 'high-performance',
       physics: {
         default: 'arcade',
         arcade: {
@@ -207,10 +217,31 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
         mode: Phaser.Scale.RESIZE,
         autoCenter: Phaser.Scale.CENTER_BOTH
       },
+      render: {
+        pixelArt: true,
+        antialias: false,
+        antialiasGL: false,
+        roundPixels: true,
+        // desynchronized reduces input latency but REQUIRES preserveDrawingBuffer
+        // to prevent the WebGL buffer being cleared before the display reads it (flickering).
+        desynchronized: true,
+        preserveDrawingBuffer: true
+      },
       scene: [LobbyScene]
     };
 
-    internalGameRef.current = new Phaser.Game(config);
+    _phaserLobbyInstance = new Phaser.Game(config);
+    internalGameRef.current = _phaserLobbyInstance;
+
+    return () => {
+      // Only destroy on true unmount (not StrictMode's fake unmount)
+      // We clear the singleton so a real remount can recreate it.
+      if (_phaserLobbyInstance) {
+        _phaserLobbyInstance.destroy(true);
+        _phaserLobbyInstance = null;
+      }
+      internalGameRef.current = null;
+    };
   }, []);
 
   return (

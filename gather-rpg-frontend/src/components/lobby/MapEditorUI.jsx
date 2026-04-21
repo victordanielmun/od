@@ -18,6 +18,8 @@ const TILE_COLORS = {
   item: '#E91E63',
   void: '#111111',
   collider: '#FFD700',
+  store: '#556270',
+  furniture: '#FF6B6B',
 };
 
 const dispatchEditorCommand = (action, value) =>
@@ -121,7 +123,11 @@ export const MapEditorUI = ({ gameRef }) => {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // 'success'|'error'|null
   const [exportedData, setExportedData] = useState(null);
-  const [stats, setStats] = useState({ walls: 0, floors: 0, forest: 0, builds: 0, spawns: 0, npcZones: 0, pickups: 0, historySize: 0, redoSize: 0 });
+  const [stats, setStats] = useState({ 
+    walls: 0, floors: 0, forest: 0, builds: 0, spawns: 0, 
+    npcZones: 0, pickups: 0, storeTiles: 0, furniture: 0,
+    historySize: 0, redoSize: 0 
+  });
 
   // Current map settings (width, height, public, etc.)
   const [currentSettings, setCurrentSettings] = useState({
@@ -149,6 +155,8 @@ export const MapEditorUI = ({ gameRef }) => {
     { id: 'item', label: t('lobby.editor.tile_item'), color: TILE_COLORS.item },
     { id: 'void', label: t('lobby.editor.tile_void'), color: TILE_COLORS.void },
     { id: 'collider', label: t('lobby.editor.tile_collider') || 'Collider', color: TILE_COLORS.collider },
+    { id: 'store', label: t('lobby.editor.tile_store') || 'Store Tiles', color: TILE_COLORS.store },
+    { id: 'furniture', label: t('lobby.editor.tile_furniture') || 'Furniture', color: TILE_COLORS.furniture },
   ], [t]);
 
   useEffect(() => {
@@ -253,6 +261,15 @@ export const MapEditorUI = ({ gameRef }) => {
       }
     }
   }, [availableMaps, isEditorActive]);
+
+  // Sync currentSettings back to Phaser scene whenever they change
+  useEffect(() => {
+    if (!isEditorActive) return;
+    const sc = getScene();
+    if (sc && typeof sc.updateMapMetadata === 'function') {
+      sc.updateMapMetadata(currentSettings);
+    }
+  }, [currentSettings, isEditorActive]);
 
   useEffect(() => {
     if (!isEditorActive) return;
@@ -444,7 +461,7 @@ export const MapEditorUI = ({ gameRef }) => {
     e.target.value = ''; // Reset for next time
   };
 
-  const total = (stats.walls || 0) + (stats.floors || 0) + (stats.forest || 0) + (stats.builds || 0) + (stats.spawns || 0) + (stats.npcZones || 0) + (stats.pickups || 0);
+  const total = (stats.walls || 0) + (stats.floors || 0) + (stats.forest || 0) + (stats.builds || 0) + (stats.spawns || 0) + (stats.npcZones || 0) + (stats.pickups || 0) + (stats.storeTiles || 0) + (stats.furniture || 0);
 
   const TILE_TYPE_TO_STAT = {
     wall: 'stat_walls',
@@ -455,6 +472,8 @@ export const MapEditorUI = ({ gameRef }) => {
     npc: 'stat_npcs',
     item: 'stat_pickups',
     collider: 'stat_colliders',
+    store: 'stat_store',
+    furniture: 'stat_furniture',
   };
 
   /* ─── render ─── */
@@ -687,7 +706,21 @@ export const MapEditorUI = ({ gameRef }) => {
                   active={activeTexture} onSelect={selectTexture} scaleTarget={32}
                 />
               )}
-              {!['floor', 'forest', 'build', 'wall'].includes(activeTile) && (
+              {activeTile === 'store' && (
+                <SpriteJsonGrid
+                  jsonPath="/store/tiles.json"
+                  imgPath="/store/tiles.png"
+                  active={activeTexture} onSelect={selectTexture} scaleTarget={32}
+                />
+              )}
+              {activeTile === 'furniture' && (
+                <SpriteJsonGrid
+                  jsonPath="/store/furniture.json"
+                  imgPath="/store/furniture.png"
+                  active={activeTexture} onSelect={selectTexture} scaleTarget={32}
+                />
+              )}
+              {!['floor', 'forest', 'build', 'wall', 'store', 'furniture'].includes(activeTile) && (
                 <p className="text-[10px] text-gray-600 italic">{t('lobby.editor.no_texture_options')}</p>
               )}
             </Section>

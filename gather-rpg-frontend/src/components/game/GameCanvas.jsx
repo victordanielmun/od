@@ -37,6 +37,7 @@ export const GameCanvas = () => {
       height: 600,
       parent: 'phaser-game',
       backgroundColor: '#1a1a1a',
+      powerPreference: 'high-performance',
       scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -47,6 +48,13 @@ export const GameCanvas = () => {
           gravity: { y: 0 },
           debug: false
         }
+      },
+      render: {
+        pixelArt: true,
+        antialias: false,
+        antialiasGL: false,
+        roundPixels: true,
+        desynchronized: true
       },
       scene: [MainScene, CombatScene]
     };

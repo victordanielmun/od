@@ -29,9 +29,9 @@ export class LobbyScene extends Phaser.Scene {
     this.mapWidth = 800;
     this.mapHeight = 800;
     this.backgroundRect = null;
-    this.zoom = 1.2;
-    this.zoomMin = 0.6;
-    this.zoomMax = 1.5;
+    this.zoom = 1.0;
+    this.zoomMin = 0.5;
+    this.zoomMax = 2.0;
     this.zoomStep = 0.1;
     this.onResize = null;
     this.onZoomEvent = null;
@@ -114,29 +114,41 @@ export class LobbyScene extends Phaser.Scene {
     gLegacy.generateTexture('wall-texture', 100, 100);
     gLegacy.destroy();
 
-    // Load Terrain Atlas
-    this.load.atlas('terrain', '/terrain/terrain-spritesheet.png', '/terrain/terrain-sprites.json');
-    // Load Forest Atlas
-    this.load.atlas('forest', '/forest/forest-spritesheet.png', '/forest/forest-sprites.json');
-    // Load Builds Atlas
-    this.load.atlas('builds', '/builds/build-spritesheet.png', '/builds/build-sprites.json');
-    // Load Wall Atlas (from user request)
-    this.load.atlas('walls', '/wall/wall-spritesheet.png', '/wall/wall-sprites.json');
+    // Load Atlases — guard with textures.exists() to prevent 'frame already exists'
+    // warnings when the scene restarts (e.g., map portal transition).
+    if (!this.textures.exists('terrain'))
+      this.load.atlas('terrain', '/terrain/terrain-spritesheet.png', '/terrain/terrain-sprites.json');
+    if (!this.textures.exists('forest'))
+      this.load.atlas('forest', '/forest/forest-spritesheet.png', '/forest/forest-sprites.json');
+    if (!this.textures.exists('builds'))
+      this.load.atlas('builds', '/builds/build-spritesheet.png', '/builds/build-sprites.json');
+    if (!this.textures.exists('walls'))
+      this.load.atlas('walls', '/wall/wall-spritesheet.png', '/wall/wall-sprites.json');
+    if (!this.textures.exists('store-tiles'))
+      this.load.atlas('store-tiles', '/store/tiles.png', '/store/tiles.json');
+    if (!this.textures.exists('store-furniture'))
+      this.load.atlas('store-furniture', '/store/furniture.png', '/store/furniture.json');
 
-    // Load Audio (BGM)
-    this.load.audio('bgm_pixelated_prelude', '/music/Pixelated_Prelude.mp3');
-    this.load.audio('bgm_serene_village', '/music/Serene_Village.mp3');
-    this.load.audio('bgm_whispering_woods', '/music/Whispering_Woods.mp3');
-    this.load.audio('bgm_whispering_woods_past', '/music/Whispering_Woods_of_Pixel_Past.mp3');
-    this.load.audio('bgm_whispers_glitch', '/music/Whispers_in_the_Glitch_Garden.mp3');
-    this.load.audio('bgm_cave1', '/music/cave1.mp3');
-    this.load.audio('bgm_fight_level', '/music/FightLevel.mp3');
-    this.load.audio('bgm_fight_boss', '/music/FightBoss.mp3');
-    this.load.audio('bgm_pixel_pantry', '/music/Pixel_Pantry_Jingle.mp3');
-    this.load.audio('bgm_pixelated_haven', '/music/Pixelated_Haven.mp3');
+    // Load Audio (BGM) — guard to avoid re-loading on scene restart
+    const audioKeys = [
+      ['bgm_pixelated_prelude', '/music/Pixelated_Prelude.mp3'],
+      ['bgm_serene_village', '/music/Serene_Village.mp3'],
+      ['bgm_whispering_woods', '/music/Whispering_Woods.mp3'],
+      ['bgm_whispering_woods_past', '/music/Whispering_Woods_of_Pixel_Past.mp3'],
+      ['bgm_whispers_glitch', '/music/Whispers_in_the_Glitch_Garden.mp3'],
+      ['bgm_cave1', '/music/cave1.mp3'],
+      ['bgm_fight_level', '/music/FightLevel.mp3'],
+      ['bgm_fight_boss', '/music/FightBoss.mp3'],
+      ['bgm_pixel_pantry', '/music/Pixel_Pantry_Jingle.mp3'],
+      ['bgm_pixelated_haven', '/music/Pixelated_Haven.mp3'],
+    ];
+    audioKeys.forEach(([key, path]) => {
+      if (!this.cache.audio.exists(key)) this.load.audio(key, path);
+    });
 
-    // Load Item Sprites dynamically
-    this.load.json('item-sprites-list', '/api/admin/item-sprites');
+    // REMOVED: Insecure admin-only request that was causing 401 Unauthorized errors for guests.
+    // if (!this.cache.json.exists('item-sprites-list'))
+    //   this.load.json('item-sprites-list', '/api/admin/item-sprites');
   }
 
   create() {
@@ -263,18 +275,21 @@ export class LobbyScene extends Phaser.Scene {
     // Ensure playerSprites is fresh if restarting
     this.playerSprites.clear();
 
-    // Interaction Prompt Text
+    // Interaction Prompt Text (Premium Bubbles)
     this.interactionPrompt = this.add.text(0, 0, '', {
-      fontSize: '18px',
+      fontSize: '20px',
       fill: '#FFE600',
       stroke: '#000000',
-      strokeThickness: 4,
-      backgroundColor: '#00000099',
-      padding: { x: 14, y: 8 },
+      strokeThickness: 6,
+      fontFamily: '"Outfit", sans-serif',
+      fontWeight: '900',
+      backgroundColor: '#000000CC', // Slightly darker bubble
+      padding: { x: 16, y: 10 },
       align: 'center'
     });
     this.interactionPrompt.setOrigin(0.5);
-    this.interactionPrompt.setDepth(1000); // Super high z-index
+    this.interactionPrompt.setDepth(100000); // Top-most depth for UI elements
+    this.interactionPrompt.setShadow(2, 2, 'rgba(0,0,0,0.8)', 2);
     this.interactionPrompt.setVisible(false);
     this.interactionPrompt.setScrollFactor(0); // Fixed on screen
 
@@ -327,10 +342,11 @@ export class LobbyScene extends Phaser.Scene {
     window.addEventListener('npc-interaction-start', this.onNPCInteractionStart);
     window.addEventListener('npc-interaction-end', this.onNPCInteractionEnd);
 
-    // Notify React that the scene is ready (hides loading screen)
-    window.dispatchEvent(new Event('game-ready'));
+    // MOVED: dispatching 'game-ready' event moved to loadServerMapConfig.finally()
+    // window.dispatchEvent(new Event('game-ready'));
 
-    // Secondary preload for item sprites once we have the list
+    // REMOVED: Dependent code for insecure item-sprites-list fetch.
+    /*
     const spritesList = this.cache.json.get('item-sprites-list');
     if (Array.isArray(spritesList)) {
       spritesList.forEach(file => {
@@ -341,6 +357,7 @@ export class LobbyScene extends Phaser.Scene {
       });
       this.load.start();
     }
+    */
   }
 
   _onChatReceived(e) {
@@ -471,6 +488,25 @@ export class LobbyScene extends Phaser.Scene {
     this.editorGridOverlay.setVisible(true);
   }
 
+  /** Redraws the background gridGraphics for the editor (not the editorGridOverlay).
+   *  Only called when editor mode is active to avoid thousands of draw calls on large maps. */
+  _rebuildEditorGrid(width, height) {
+    if (!this.gridGraphics) return;
+    this.gridGraphics.clear();
+    this.gridGraphics.lineStyle(1, 0x333333, 0.5);
+    const G = this.GRID_SIZE;
+    for (let x = 0; x <= width; x += G) {
+      this.gridGraphics.moveTo(x, 0);
+      this.gridGraphics.lineTo(x, height);
+    }
+    for (let y = 0; y <= height; y += G) {
+      this.gridGraphics.moveTo(0, y);
+      this.gridGraphics.lineTo(width, y);
+    }
+    this.gridGraphics.strokePath();
+    this.gridGraphics.setVisible(true);
+  }
+
   _setupEditorPointer() {
     this._editorPointerMove = (pointer) => {
       if (!this.editorMode) return;
@@ -588,6 +624,7 @@ export class LobbyScene extends Phaser.Scene {
     const next = Phaser.Math.Clamp(zoom, this.zoomMin, this.zoomMax);
     if (next === cam.zoom) return;
     cam.setZoom(next);
+    this._cameraBoundsDirty = true; // Recalculate bounds on next frame
     this.configureCamera();
   }
 
@@ -599,18 +636,18 @@ export class LobbyScene extends Phaser.Scene {
     const height = Number(gameSize?.height ?? this.scale?.height ?? cam.height);
 
     if (Number.isFinite(width) && Number.isFinite(height)) {
-      const viewHalfW = (width / cam.zoom) / 2;
-      const viewHalfH = (height / cam.zoom) / 2;
-      cam.setBounds(-viewHalfW, -viewHalfH, this.mapWidth + viewHalfW * 2, this.mapHeight + viewHalfH * 2);
+      // Use strict bounds to ensure the camera never shows the area outside the map
+      cam.setBounds(0, 0, this.mapWidth, this.mapHeight);
+      
       if (this.backgroundRect) {
-        this.backgroundRect.width = this.mapWidth + viewHalfW * 2;
-        this.backgroundRect.height = this.mapHeight + viewHalfH * 2;
+        this.backgroundRect.width = this.mapWidth;
+        this.backgroundRect.height = this.mapHeight;
       }
     }
 
     cam.setFollowOffset(0, 0);
     cam.setDeadzone();
-    cam.startFollow(this.player, true, 1, 1);
+    cam.startFollow(this.player, true, 0.1, 0.1);
     cam.centerOn(this.player.x, this.player.y);
   }
 
@@ -624,18 +661,10 @@ export class LobbyScene extends Phaser.Scene {
     );
     this.backgroundRect.setDepth(-100); // FIXED: Prevent background from hiding floor tiles (-10)
 
-    // Base grid lines
+    // Base grid lines — only drawn and visible in editor mode to avoid
+    // thousands of draw calls on large maps (e.g. 2400x10400).
     this.gridGraphics = this.add.graphics();
-    this.gridGraphics.lineStyle(1, 0x333333, 0.5);
-    for (let x = 0; x <= this.mapWidth; x += G) {
-      this.gridGraphics.moveTo(x, 0);
-      this.gridGraphics.lineTo(x, this.mapHeight);
-    }
-    for (let y = 0; y <= this.mapHeight; y += G) {
-      this.gridGraphics.moveTo(0, y);
-      this.gridGraphics.lineTo(this.mapWidth, y);
-    }
-    this.gridGraphics.strokePath();
+    this.gridGraphics.setVisible(false); // Hidden until editor is enabled
 
     // Physics bounds
     this.physics.world.setBounds(0, 0, this.mapWidth, this.mapHeight);
@@ -650,6 +679,8 @@ export class LobbyScene extends Phaser.Scene {
     this.pickups = this.add.group();           // visual markers for item pickups in editor
     this.voids = this.physics.add.staticGroup(); // Solid void blocks
     this.colliders = this.physics.add.staticGroup(); // Invisible solid blocks
+    this.storeTiles = this.add.group(); // Visual store floors
+    this.storeFurniture = this.physics.add.staticGroup(); // Collidable store furniture
 
     // Default walls for first load
     for (let x = 200; x < 600; x += G) {
@@ -869,6 +900,8 @@ export class LobbyScene extends Phaser.Scene {
       case 'item': return this.pickups;
       case 'void': return this.voids;
       case 'collider': return this.colliders;
+      case 'store': return this.storeTiles;
+      case 'furniture': return this.storeFurniture;
       default: return this.walls;
     }
   }
@@ -878,12 +911,14 @@ export class LobbyScene extends Phaser.Scene {
     // ORDER MATTERS: We check interactive/topmost objects first (builds, npcs) 
     // and background objects last (floors, voids) so the 'Inspect' tool picks what the user expects.
     const searchOrder = [
+      { group: this.storeFurniture, type: 'furniture' },
       { group: this.builds, type: 'build' },
       { group: this.npcZones, type: 'npc' },
       { group: this.pickups, type: 'item' },
       { group: this.forest, type: 'forest' },
       { group: this.walls, type: 'wall' },
       { group: this.spawns, type: 'spawn' },
+      { group: this.storeTiles, type: 'store' },
       { group: this.floors, type: 'floor' },
       { group: this.voids, type: 'void' },
       { group: this.colliders, type: 'collider' }
@@ -900,8 +935,8 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   _findAllTilesAt(gx, gy) {
-    const groups = [this.walls, this.floors, this.forest, this.builds, this.spawns, this.npcZones, this.pickups, this.voids, this.colliders];
-    const types = ['wall', 'floor', 'forest', 'build', 'spawn', 'npc', 'item', 'void', 'collider'];
+    const groups = [this.walls, this.floors, this.forest, this.builds, this.spawns, this.npcZones, this.pickups, this.voids, this.colliders, this.storeTiles, this.storeFurniture];
+    const types = ['wall', 'floor', 'forest', 'build', 'spawn', 'npc', 'item', 'void', 'collider', 'store', 'furniture'];
     const found = [];
     for (let i = 0; i < groups.length; i++) {
       if (!groups[i]) continue;
@@ -962,12 +997,12 @@ export class LobbyScene extends Phaser.Scene {
     const isFloor = this.editorTileType === 'floor';
     let replacing = null;
 
-    if (isFloor) {
-      replacing = existingTiles.find(t => t.type === 'floor');
+    if (isFloor || this.editorTileType === 'store') {
+      replacing = existingTiles.find(t => t.type === 'floor' || t.type === 'store');
     } else {
-      // It's an object. It replaces any OTHER object that is NOT a floor and NOT a void.
+      // It's an object. It replaces any OTHER object that is NOT a floor/store and NOT a void.
       // E.g. placing a tree (forest) should replace an existing wall or build or npc, but not void or floor.
-      replacing = existingTiles.find(t => t.type !== 'floor' && t.type !== 'void');
+      replacing = existingTiles.find(t => t.type !== 'floor' && t.type !== 'store' && t.type !== 'void');
     }
 
     if (replacing) {
@@ -1031,12 +1066,22 @@ export class LobbyScene extends Phaser.Scene {
     if (this.editorTileType === 'wall') {
       const f = this.editorTextureFrame || 'sprite1';
       group.create(gx, gy, 'walls', f).refreshBody();
-    } else if (this.editorTileType === 'floor') {
-      // Use terrain atlas for floors
-      const sprite = this.add.image(gx, gy, 'terrain', this.editorTextureFrame);
+    } else if (this.editorTileType === 'floor' || this.editorTileType === 'store') {
+      // Use terrain atlas for floors, or store-tiles for stores
+      const atlas = this.editorTileType === 'store' ? 'store-tiles' : 'terrain';
+      const sprite = this.add.image(gx, gy, atlas, this.editorTextureFrame);
       sprite.setDisplaySize(this.GRID_SIZE, this.GRID_SIZE);
       sprite.setAlpha(1);
       group.add(sprite);
+      // Floor depth is -10
+      sprite.setDepth(-10);
+    } else if (this.editorTileType === 'furniture') {
+      const f = this.editorTextureFrame || 'sprite1';
+      const sprite = group.create(gx, gy, 'store-furniture', f);
+      // Let's use scale 1.0 for furniture by default, or build scale?
+      // For now scale 1.0 is safer as furniture varies a lot.
+      sprite.setScale(1.0);
+      this._setupFurnitureSprite(sprite);
     } else if (this.editorTileType === 'forest') {
       // Forest objects: collidable, variable size
       const f = this.editorTextureFrame || 'sprite1';
@@ -1134,6 +1179,8 @@ export class LobbyScene extends Phaser.Scene {
         pickups: this.pickups?.getChildren()?.length || 0,
         voids: this.voids?.getChildren()?.length || 0,
         colliders: this.colliders?.getChildren()?.length || 0,
+        storeTiles: this.storeTiles?.getChildren()?.length || 0,
+        furniture: this.storeFurniture?.getChildren()?.length || 0,
         historySize: this.editorHistory?.length || 0,
         redoSize: this.editorRedoStack?.length || 0,
       }
@@ -1152,7 +1199,11 @@ export class LobbyScene extends Phaser.Scene {
   setEditorTileType(type) {
     this.editorTileType = type;
     // Update cursor fill to match tile color
-    const colors = { wall: 0x666666, floor: 0x8B7355, forest: 0x228B22, build: 0xCD853F, spawn: 0x00CC66, npc: 0x4488FF, void: 0x2596be, collider: 0xFFD700 };
+    const colors = { 
+      wall: 0x666666, floor: 0x8B7355, forest: 0x228B22, build: 0xCD853F, 
+      spawn: 0x00CC66, npc: 0x4488FF, void: 0x2596be, collider: 0xFFD700,
+      store: 0x556270, furniture: 0xFF6B6B
+    };
     this.cursorPreview?.setFillStyle(colors[type] || 0xffffff, 0.3);
   }
 
@@ -1213,11 +1264,18 @@ export class LobbyScene extends Phaser.Scene {
 
     if (type === 'wall') {
       group.create(gx, gy, texture).refreshBody();
-    } else if (type === 'floor') {
+    } else if (type === 'floor' || type === 'store') {
+      const atlas = type === 'store' ? 'store-tiles' : 'terrain';
       const f = frame || 'sprite1';
-      const sprite = this.add.image(gx, gy, 'terrain', f);
+      const sprite = this.add.image(gx, gy, atlas, f);
       sprite.setDisplaySize(this.GRID_SIZE, this.GRID_SIZE);
+      sprite.setDepth(-10);
       group.add(sprite);
+    } else if (type === 'furniture') {
+      const f = frame || 'sprite1';
+      const sprite = group.create(gx, gy, 'store-furniture', f);
+      sprite.setScale(1.0);
+      this._setupFurnitureSprite(sprite);
     } else if (type === 'forest') {
       const f = frame || 'sprite1';
       const sprite = group.create(gx, gy, 'forest', f);
@@ -1313,6 +1371,20 @@ export class LobbyScene extends Phaser.Scene {
     sprite.body.setOffset((dw - bodyW) / 2, dh - bodyH);
   }
 
+  _setupFurnitureSprite(sprite) {
+    // 1. Depth Sorting: Base of the furniture
+    sprite.setDepth(sprite.y + (sprite.displayHeight * 0.5));
+
+    // 2. Physics Body
+    sprite.refreshBody();
+    const dw = sprite.displayWidth;
+    const dh = sprite.displayHeight;
+    const bodyW = dw * 0.8;
+    const bodyH = dh * 0.8;
+    sprite.body.setSize(bodyW, bodyH);
+    sprite.body.setOffset((dw - bodyW) / 2, dh - bodyH);
+  }
+
   // ===== Editor: Clear & Toggle =====
 
   clearAllTiles() {
@@ -1326,6 +1398,8 @@ export class LobbyScene extends Phaser.Scene {
     this.pickups.clear(true, true); // FIXED: Added pickups layer
     this.voids.clear(true, true);
     this.colliders.clear(true, true);
+    this.storeTiles?.clear(true, true);
+    this.storeFurniture?.clear(true, true);
 
     // Also clear the "live" sprites if we are in the editor to avoid visual clutter
     this.npcs.forEach(n => n.destroy());
@@ -1348,6 +1422,16 @@ export class LobbyScene extends Phaser.Scene {
    * Only admins can activate it.
    * @param {boolean} enabled
    */
+  updateMapMetadata(settings) {
+    if (!settings) return;
+    if (settings.defaultSpawnX !== undefined) this.mapDefaultSpawnX = Number(settings.defaultSpawnX);
+    if (settings.defaultSpawnY !== undefined) this.mapDefaultSpawnY = Number(settings.defaultSpawnY);
+    if (settings.bgmTrack !== undefined) this.currentBgmTrackId = settings.bgmTrack;
+    if (settings.isPublic !== undefined) this.mapIsPublic = !!settings.isPublic;
+    if (settings.maxUsers !== undefined) this.mapMaxUsers = Number(settings.maxUsers);
+    console.log('[LobbyScene] Map metadata updated from UI');
+  }
+
   toggleEditorMode(enabled) {
     // Admin guard
     if (enabled) {
@@ -1376,7 +1460,16 @@ export class LobbyScene extends Phaser.Scene {
     }
     this.cursorPreview?.setVisible(enabled);
     this.cursorCoordLabel?.setVisible(enabled);
-    if (this.gridGraphics) this.gridGraphics.setVisible(enabled);
+    if (this.gridGraphics) {
+      if (enabled) {
+        // Lazy-build: only draw the grid when the editor first opens
+        this._rebuildEditorGrid(this.mapWidth, this.mapHeight);
+      } else {
+        // Just hide it — no need to clear/redraw for gameplay
+        this.gridGraphics.setVisible(false);
+      }
+    }
+
 
     // Toggle visibility of editor-only marker groups
     const markerGroups = [this.spawns, this.npcZones, this.pickups, this.voids, this.colliders];
@@ -1521,6 +1614,8 @@ export class LobbyScene extends Phaser.Scene {
       })),
       voids: this.voids.getChildren().map(t => ({ x: t.x, y: t.y })),
       colliders: this.colliders.getChildren().map(t => ({ x: t.x, y: t.y })),
+      storeTiles: this.storeTiles.getChildren().map(t => ({ x: t.x, y: t.y, frame: t.frame.name })),
+      furniture: this.storeFurniture.getChildren().map(t => ({ x: t.x, y: t.y, frame: t.frame.name })),
     };
     return JSON.stringify(data, null, 2);
   }
@@ -1607,6 +1702,8 @@ export class LobbyScene extends Phaser.Scene {
       if (data.voids) data.voids.forEach(t => this._placeTileDirect('void', t.x, t.y));
       if (data.colliders) data.colliders.forEach(t => this._placeTileDirect('collider', t.x, t.y));
       if (data.collider && !data.colliders) data.collider.forEach(t => this._placeTileDirect('collider', t.x, t.y)); // Compatibility
+      if (data.storeTiles) data.storeTiles.forEach(t => this._placeTileDirect('store', t.x, t.y, t.frame));
+      if (data.furniture) data.furniture.forEach(t => this._placeTileDirect('furniture', t.x, t.y, t.frame));
 
       console.log('[LobbyScene] Map imported successfully');
       this._emitEditorStats();
@@ -1626,6 +1723,8 @@ export class LobbyScene extends Phaser.Scene {
     this.pickups.clear(true, true); 
     this.voids.clear(true, true);
     this.colliders.clear(true, true);
+    this.storeTiles?.clear(true, true);
+    this.storeFurniture?.clear(true, true);
   }
 
   loadMapConfig(jsonConfig) {
@@ -1719,6 +1818,35 @@ export class LobbyScene extends Phaser.Scene {
       colls.forEach(w => { 
         this.colliders.create(w.x, w.y, 'tile-collider').refreshBody().setVisible(this.editorMode); 
       });
+
+      (data.storeTiles || []).forEach(w => {
+        const sprite = this.add.image(w.x, w.y, 'store-tiles', w.frame || 'sprite1');
+        sprite.setDisplaySize(this.GRID_SIZE, this.GRID_SIZE);
+        sprite.setDepth(-10);
+        this.storeTiles.add(sprite);
+      });
+
+      (data.furniture || []).forEach(w => {
+        const sprite = this.storeFurniture.create(w.x, w.y, 'store-furniture', w.frame || 'sprite1');
+        this._setupFurnitureSprite(sprite);
+      });
+
+
+      (data.storeTiles || []).forEach(w => {
+        const sprite = this.add.image(w.x, w.y, 'store-tiles', w.frame || 'sprite1');
+        sprite.setDisplaySize(this.GRID_SIZE, this.GRID_SIZE);
+        sprite.setDepth(-10);
+        this.storeTiles.add(sprite);
+      });
+
+      (data.furniture || []).forEach(w => {
+        const sprite = this.storeFurniture.create(w.x, w.y, 'store-furniture', w.frame || 'sprite1');
+        this._setupFurnitureSprite(sprite);
+      });
+
+
+      // Recalculate limits after all tiles are instantiated
+      this.calculateMapLimits();
     } catch (e) {
       console.error('[MapEditor] Failed to load map config', e);
     }
@@ -1743,77 +1871,101 @@ export class LobbyScene extends Phaser.Scene {
       this.backgroundRect.setSize(width, height);
     }
 
-    // 4. Redraw Grid
-    // We need to find the existing grid graphics or clear/create new one.
-    // In createMap we used a local var 'gridGfx'. We should probably store it.
-    if (this.gridGraphics) {
-      this.gridGraphics.clear();
-      this.gridGraphics.lineStyle(1, 0x333333, 0.5);
-      const G = this.GRID_SIZE;
-      for (let x = 0; x <= width; x += G) {
-        this.gridGraphics.moveTo(x, 0);
-        this.gridGraphics.lineTo(x, height);
-      }
-      for (let y = 0; y <= height; y += G) {
-        this.gridGraphics.moveTo(0, y);
-        this.gridGraphics.lineTo(width, y);
-      }
-      this.gridGraphics.strokePath();
+    // 4. Redraw Grid — only if editor is currently active to avoid
+    // expensive path draw calls every time the map resizes.
+    if (this.gridGraphics && this.editorMode) {
+      this._rebuildEditorGrid(width, height);
     }
+    
+    // Mark camera bounds as dirty so they recalculate once
+    this._cameraBoundsDirty = true;
+    // Recalculate inner bounds whenever map is resized
+    this.calculateMapLimits();
+  }
+
+  calculateMapLimits() {
+    let minX = this.mapWidth, maxX = 0, minY = this.mapHeight, maxY = 0;
+    let found = false;
+
+    // We check all non-void groups to find the "active" play area
+    const groups = [
+      this.floors, this.walls, this.forest, this.builds, 
+      this.spawns, this.npcZones, this.pickups, this.colliders,
+      this.storeTiles, this.storeFurniture
+    ];
+
+    groups.forEach(group => {
+      if (!group) return;
+      const children = group.getChildren ? group.getChildren() : [];
+      children.forEach(child => {
+        // Assume child center-based with GRID_SIZE=100
+        const xMin = child.x - 50;
+        const xMax = child.x + 50;
+        const yMin = child.y - 50;
+        const yMax = child.y + 50;
+        
+        if (xMin < minX) minX = xMin;
+        if (xMax > maxX) maxX = xMax;
+        if (yMin < minY) minY = yMin;
+        if (yMax > maxY) maxY = yMax;
+        found = true;
+      });
+    });
+
+    if (!found) {
+      // Fallback to full map dimensions if no tiles are found
+      this.currentMapLimits = { minX: 0, maxX: this.mapWidth, minY: 0, maxY: this.mapHeight };
+    } else {
+      // Clamp to map dimensions and ensure a minimum size of 1 tile
+      this.currentMapLimits = {
+        minX: Math.max(0, Math.floor(minX)),
+        maxX: Math.min(this.mapWidth, Math.ceil(maxX)),
+        minY: Math.max(0, Math.floor(minY)),
+        maxY: Math.min(this.mapHeight, Math.ceil(maxY))
+      };
+    }
+    
+    // Mark camera bounds dirty after limits recalculate
+    this._cameraBoundsDirty = true;
   }
 
   updateCameraBounds() {
-    if (!this.player || !this.voids) return;
+    // Use a dirty flag so setBounds is NOT called every frame (60fps).
+    // It only recalculates when something actually changed (map resize / zoom).
+    if (!this._cameraBoundsDirty) return;
+    if (!this.player || !this.currentMapLimits) return;
     if (this.editorMode && this.editorMoveMode === 'camera') return;
 
-    let leftBound = 0;
-    let rightBound = this.mapWidth;
-    let topBound = 0;
-    let bottomBound = this.mapHeight;
+    const { minX, maxX, minY, maxY } = this.currentMapLimits;
+    
+    let leftBound = minX;
+    let rightBound = maxX;
+    let topBound = minY;
+    let bottomBound = maxY;
 
     const camZoom = this.cameras.main.zoom || 1;
     const camWidth = this.cameras.main.width / camZoom;
     const camHeight = this.cameras.main.height / camZoom;
 
-    // View boundaries to filter voids that are horizontally in line with the player.
-    const camHalfHeight = camHeight / 2;
-    const viewTop = this.player.y - camHalfHeight;
-    const viewBottom = this.player.y + camHalfHeight;
-
-    this.voids.getChildren().forEach(v => {
-      // Void blocks are 100x100
-      if (v.y + 50 > viewTop && v.y - 50 < viewBottom) {
-        if (v.x < this.player.x) {
-          leftBound = Math.max(leftBound, v.x + 50); // Block spans to v.x + width/2
-        } else if (v.x > this.player.x) {
-          rightBound = Math.min(rightBound, v.x - 50); // Block starts at v.x - width/2
-        }
-      }
-    });
-
-    // Ensure the bound width is not smaller than camera width to avoid zooming issues
     if (rightBound - leftBound < camWidth) {
-      // Center bounds on the X axis if the room/map is smaller than the camera width
       const midX = (leftBound + rightBound) / 2;
       leftBound = midX - camWidth / 2;
       rightBound = midX + camWidth / 2;
     }
-
-    // Ensure the bound height is not smaller than camera height to avoid the map sticking to the top
     if (bottomBound - topBound < camHeight) {
-      // Center bounds on the Y axis if the room/map is smaller than the camera height
       const midY = (topBound + bottomBound) / 2;
       topBound = midY - camHeight / 2;
       bottomBound = midY + camHeight / 2;
     }
 
-    // Set constrained camera bounds
     this.cameras.main.setBounds(
       leftBound,
       topBound,
-      Math.max(rightBound - leftBound, camWidth),
-      Math.max(bottomBound - topBound, camHeight)
+      rightBound - leftBound,
+      bottomBound - topBound
     );
+    // Clear the flag — next frame will be a no-op
+    this._cameraBoundsDirty = false;
   }
 
   loadServerMapConfig() {
@@ -1881,6 +2033,10 @@ export class LobbyScene extends Phaser.Scene {
         }
         // Force a re-sync of other players now that bounds are correct
         this.handlePlayersUpdate(useGameStore.getState().players);
+
+        // FINALLY: Notify React that the world is loaded and ready to be shown
+        console.log('[LobbyScene] World fully loaded. Dispatching game-ready.');
+        window.dispatchEvent(new Event('game-ready'));
       });
   }
 
@@ -1973,6 +2129,11 @@ export class LobbyScene extends Phaser.Scene {
     console.log(`[LobbyScene] Created self PlayerSprite (ID: ${this.myPlayerId}) at (${startX}, ${startY})`);
     this.add.existing(this.player);
 
+    // B4 FIX: Snap camera to player position IMMEDIATELY on spawn 
+    // to prevent the "slow slide-in" from (0,0) caused by camera lerp.
+    this.cameras.main.centerOn(startX, startY);
+    this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+
     // Add collision with walls and forest
     if (this.walls) {
       this.physics.add.collider(this.player, this.walls);
@@ -1988,6 +2149,9 @@ export class LobbyScene extends Phaser.Scene {
     }
     if (this.colliders) {
       this.physics.add.collider(this.player, this.colliders);
+    }
+    if (this.storeFurniture) {
+      this.physics.add.collider(this.player, this.storeFurniture);
     }
 
     const cls = user?.characterClass || this.getRandomClass();
@@ -2096,10 +2260,7 @@ export class LobbyScene extends Phaser.Scene {
       sprite.targetX = player.x;
       sprite.targetY = player.y;
 
-      console.log(`[LobbyScene] Updating remote player ${sprite.username} (ID: ${id}) to (${player.x.toFixed(1)}, ${player.y.toFixed(1)}) | Anim: ${player.anim || 'default'} | Visible: ${sprite.visible} | Depth: ${sprite.depth.toFixed(1)}`);
-
       if (sprite.alpha < 0.1 || !sprite.visible) {
-          console.warn(`[LobbyScene] WARNING: Player ${sprite.username} (ID: ${id}) is not fully visible! Alpha: ${sprite.alpha}, Visible: ${sprite.visible}`);
           sprite.setAlpha(1);
           sprite.setVisible(true);
       }
@@ -2500,19 +2661,7 @@ export class LobbyScene extends Phaser.Scene {
       this.lastSyncUpdate = time;
     }
 
-    // Diagnostic Watchdog for Admin (ID: 080d7054-0a5b-42c9-b68c-f4f716a48b48)
-    if (!this._watchdogCounter) this._watchdogCounter = 0;
-    this._watchdogCounter++;
-    if (this._watchdogCounter % 60 === 0) { // Every ~1 second at 60fps
-        const adminId = '080d7054-0a5b-42c9-b68c-f4f716a48b48';
-        const admin = this.playerSprites.get(adminId);
-        if (admin) {
-            const cam = this.cameras.main;
-            const isInsideCam = (admin.x > cam.worldView.x && admin.x < cam.worldView.right && 
-                               admin.y > cam.worldView.y && admin.y < cam.worldView.bottom);
-            console.log(`[Watchdog] Admin: Pos(${admin.x.toFixed(1)}, ${admin.y.toFixed(1)}), Visible=${admin.visible}, Alpha=${admin.alpha.toFixed(1)}, Depth=${admin.depth.toFixed(1)}, InView=${isInsideCam}`);
-        }
-    }
+    // [PERF] Watchdog eliminated — was logging every 60 frames causing GC pressure.
 
 
     // ─── Editor movement modes ───────────────────────────────────────────────
