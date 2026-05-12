@@ -102,6 +102,20 @@ export async function analyzePronunciation(
     return data;
 }
 
+// Send audio blob + expected_text to backend for pronunciation scoring (NPC Dialogue)
+export async function analyzeDialogueAudio(audioBlob: Blob, expectedText?: string): Promise<AnalysisResult> {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'recording.webm');
+    if (expectedText) {
+        formData.append('expected_text', expectedText);
+    }
+
+    const { data } = await voiceApi.post<AnalysisResult>('/api/analyze/dialogue', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+}
+
 // Send audio blob + challenge_id to backend for pronunciation scoring
 export async function analyzeAudio(audioBlob: Blob, challengeId: string): Promise<AnalysisResult> {
     const formData = new FormData();

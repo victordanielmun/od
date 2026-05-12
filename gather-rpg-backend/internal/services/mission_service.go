@@ -163,11 +163,13 @@ func (s *MissionService) checkTalkToNPC(playerID uuid.UUID, targetTmplID *uint, 
 }
 
 // UpdateTaskProgress marks a specific task as completed in the player's progress.
-func (s *MissionService) UpdateTaskProgress(userID uuid.UUID, missionID uint, taskID uint, isCompleted bool) error {
+// Returns (isNewlyCompleted, error)
+func (s *MissionService) UpdateTaskProgress(userID uuid.UUID, missionID uint, taskID uint, isCompleted bool) (bool, error) {
 	progress, err := s.GetProgress(userID, missionID)
 	if err != nil {
-		return err
+		return false, err
 	}
+	wasCompleted := progress.Status == models.StatusCompleted
 	playerID := progress.PlayerID
 
 	var tasks map[string]bool
@@ -240,5 +242,6 @@ func (s *MissionService) UpdateTaskProgress(userID uuid.UUID, missionID uint, ta
 		}
 	}
 
-	return s.Repo.CreateOrUpdateProgress(progress)
+	isNewlyCompleted := !wasCompleted && allDone
+	return isNewlyCompleted, s.Repo.CreateOrUpdateProgress(progress)
 }

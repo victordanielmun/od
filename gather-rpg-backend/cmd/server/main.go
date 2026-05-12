@@ -51,6 +51,7 @@ func main() {
 		&models.Shop{},
 		&models.NPCDefinition{},
 		&models.NPCTemplate{},
+		&models.NPCDialogueCache{},
 		&models.Mission{},
 		&models.MissionTask{},
 		&models.NPCMissionRole{},
@@ -90,8 +91,27 @@ func main() {
 	missionRepo := repository.NewMissionRepository()
 	npcService := services.NewNPCService(npcRepo, missionRepo)
 	missionService := services.NewMissionService(missionRepo, inventoryRepo)
-	deepSeekClient := services.NewDeepSeekClient(cfg.DeepSeekAPIKey, cfg.DeepSeekModel)
-	dialogueService := services.NewDialogueService(npcRepo, missionRepo, missionService, deepSeekClient)
+	
+	// AI Factory
+	var aiApiKey, aiModel string
+	switch cfg.AIProvider {
+	case "openai":
+		aiApiKey = cfg.OpenAIAPIKey
+		aiModel = cfg.OpenAIModel
+	case "mistral":
+		aiApiKey = cfg.MistralAPIKey
+		aiModel = cfg.MistralModel
+	default: // deepseek
+		aiApiKey = cfg.DeepSeekAPIKey
+		aiModel = cfg.DeepSeekModel
+	}
+	
+	llmClient, err := services.NewLLMClient(cfg.AIProvider, aiApiKey, aiModel)
+	if err != nil {
+		log.Fatalf("Failed to initialize AI Client: %v", err)
+	}
+	
+	dialogueService := services.NewDialogueService(npcRepo, missionRepo, missionService, llmClient)
 
 	// WebSocket Hub
 	hub := gameWS.NewHub(presenceService, roomService, movementService, peerService, combatService)
@@ -104,17 +124,19 @@ func main() {
 	adminHandler := handlers.NewAdminHandler(npcService)
 	friendHandler := handlers.NewFriendHandler(friendService, hub)
 	learningHandler := handlers.NewLearningHandler(learningService)
-	dialogueHandler := handlers.NewDialogueHandler(dialogueService)
+	dialogueHandler := handlers.NewDialogueHandler(dialogueService, hub)
 	missionHandler := handlers.NewMissionHandler(missionService)
-	npcHandler := handlers.NewNPCHandler(npcService, deepSeekClient)
+	npcHandler := handlers.NewNPCHandler(npcService, llmClient)
 	missionAdminHandler := handlers.NewMissionAdminHandler(missionService)
 	inventoryService := services.NewInventoryService(inventoryRepo)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	shopHandler := handlers.NewShopHandler(inventoryService)
 	pickupHandler := handlers.NewMapPickupHandler(inventoryService)
 
-	// App
-	app := fiber.New()
+	// App with customized config (50MB body limit for large map JSONs)
+	app := fiber.New(fiber.Config{
+		BodyLimit: 50 * 1024 * 1024,
+	})
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
@@ -155,9 +177,15 @@ func main() {
 	admin.Get("/maps", adminHandler.ListMapConfigs)
 	admin.Post("/maps", adminHandler.SaveMapConfig)
 	admin.Put("/maps/:id", adminHandler.UpdateMapConfig)
+	admin.Delete("/maps/:id", adminHandler.DeleteMapConfig)
 	admin.Post("/npcs", npcHandler.CreateNPCTemplate)
 	admin.Put("/npcs/:id", npcHandler.UpdateNPCTemplate)
 	admin.Delete("/npcs/:id", npcHandler.DeleteNPCTemplate)
+	admin.Get("/npc-templates", npcHandler.GetAllTemplates)
+	admin.Get("/npc-instances", npcHandler.GetTemplatesByScene)
+	admin.Get("/npc-definitions/:id/templates", npcHandler.GetTemplatesByDefinition)
+	admin.Put("/npc-templates/:id/missions", npcHandler.UpdateTemplateMissions)
+	admin.Patch("/npc-templates/:id/instructions", npcHandler.PatchTemplateInstructions)
 	admin.Get("/npc-definitions", npcHandler.GetNPCDefinitions)
 	admin.Post("/npc-definitions", npcHandler.CreateNPCDefinition)
 	admin.Put("/npc-definitions/:id", npcHandler.UpdateNPCDefinition)

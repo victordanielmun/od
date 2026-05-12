@@ -149,7 +149,8 @@
       },
       "types": {
         "other": "Otro",
-        "quest_giver": "Misiones",
+        "quest_giver": "Misiones (Juez)",
+        "quest_master": "Maestro de Misiones (Portal)",
         "quest": "Misiones",
         "merchant": "Comerciante",
         "guide": "Guía"
@@ -408,6 +409,7 @@
       "leave_challenge": "Presiona [E] para salir",
       "chat_with": "Presiona [E] para chatear con {{name}}",
       "enter": "Presiona [E] para Entrar",
+      "exit": "Teletransporte...",
       "press_e_custom": "Presiona [E]: {{text}}",
       "no_destination": "⚠ Edif. sin destino configurado"
     },
@@ -429,6 +431,7 @@
       "character": "Personaje",
       "camera_tooltip": "Cámara libre — WASD desplaza el mapa",
       "character_tooltip": "Personaje — WASD mueve al personaje",
+      "speed": "Velocidad de Prueba",
       "tools": "Herramientas",
       "tool_brush": "Pincel",
       "tool_eraser": "Borrar",
@@ -439,6 +442,7 @@
       "tile_floor": "Suelo",
       "tile_forest": "Bosque",
       "tile_build": "Edificio",
+      "tile_exit": "Teletransporte (Pisado)",
       "tile_spawn": "Spawn",
       "tile_npc": "NPC",
       "tile_item": "Objeto",
@@ -473,6 +477,7 @@
       "stat_floors": "Suelos",
       "stat_forests": "Bosques",
       "stat_builds": "Edificios",
+      "stat_exits": "Teletransportes",
       "stat_spawns": "Spawns",
       "stat_npcs": "Zonas NPC",
       "stat_pickups": "Objetos",

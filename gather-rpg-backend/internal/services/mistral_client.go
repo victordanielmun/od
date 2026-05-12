@@ -9,23 +9,23 @@ import (
 	"time"
 )
 
-type DeepSeekClient struct {
+type MistralClient struct {
 	APIKey string
 	URL    string
 	Model  string
 }
 
-func NewDeepSeekClient(apiKey string, model string) *DeepSeekClient {
-	return &DeepSeekClient{
+func NewMistralClient(apiKey string, model string) *MistralClient {
+	return &MistralClient{
 		APIKey: apiKey,
-		URL:    "https://api.deepseek.com/v1/chat/completions",
+		URL:    "https://api.mistral.ai/v1/chat/completions",
 		Model:  model,
 	}
 }
 
-func (c *DeepSeekClient) SendPrompt(systemPrompt string, userPrompt string) (string, error) {
-	if c.APIKey == "" {
-		return "", fmt.Errorf("DeepSeek API Key not configured")
+func (c *MistralClient) SendPrompt(systemPrompt string, userPrompt string) (string, error) {
+	if c.APIKey == "" || c.APIKey == "your-mistral-api-key" {
+		return "", fmt.Errorf("Mistral API Key not configured correctly")
 	}
 
 	reqBody := ChatRequest{
@@ -38,10 +38,8 @@ func (c *DeepSeekClient) SendPrompt(systemPrompt string, userPrompt string) (str
 	}
 
 	jsonBody, _ := json.Marshal(reqBody)
-	fmt.Printf("[DeepSeekClient] Sending Request to %s\n", c.URL)
-	fmt.Printf("[DeepSeekClient] System Prompt: %s\n", systemPrompt)
-	fmt.Printf("[DeepSeekClient] User Prompt: %s\n", userPrompt)
-
+	fmt.Printf("[MistralClient] Sending Request to %s (Model: %s)\n", c.URL, c.Model)
+	
 	req, err := http.NewRequest("POST", c.URL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return "", err
@@ -59,7 +57,7 @@ func (c *DeepSeekClient) SendPrompt(systemPrompt string, userPrompt string) (str
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("DeepSeek API error (status %d): %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("Mistral API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
 	var chatResp ChatResponse
@@ -68,9 +66,9 @@ func (c *DeepSeekClient) SendPrompt(systemPrompt string, userPrompt string) (str
 	}
 
 	if len(chatResp.Choices) == 0 {
-		return "", fmt.Errorf("DeepSeek API returned no choices")
+		return "", fmt.Errorf("Mistral API returned no choices")
 	}
 
-	fmt.Printf("[DeepSeekClient] Received Response: %s\n", chatResp.Choices[0].Message.Content)
+	fmt.Printf("[MistralClient] Received Response: %s\n", chatResp.Choices[0].Message.Content)
 	return chatResp.Choices[0].Message.Content, nil
 }

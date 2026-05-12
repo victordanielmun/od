@@ -191,13 +191,16 @@ async def analyze_audio(
     if not challenge:
         raise HTTPException(status_code=404, detail=f"Challenge not found: {challenge_id}")
 
+    content = await audio.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Audio file too large. Maximum size is 2MB (approx 15 seconds).")
+
     # 1. Save audio temp file
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     ext = os.path.splitext(audio.filename or "audio.webm")[1] or ".webm"
     filename = f"{uuid.uuid4()}{ext}"
     filepath = os.path.join(settings.UPLOAD_DIR, filename)
 
-    content = await audio.read()
     with open(filepath, "wb") as f:
         f.write(content)
 
@@ -233,6 +236,67 @@ async def analyze_audio(
         feedback=result["feedback"],
         new_achievements=[],
     )
+
+
+@router.post("/api/analyze/dialogue", response_model=AnalysisResult)
+async def analyze_dialogue_audio(
+    audio: UploadFile = File(...),
+    expected_text: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user),
+):
+    """
+    Receives an audio file for NPC dialogue.
+    Transcribes it locally using Whisper.
+    If expected_text is provided, analyzes pronunciation.
+    Otherwise, just returns the transcription with a score of 100.
+    """
+    content = await audio.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Audio file too large. Maximum size is 2MB (approx 15 seconds).")
+
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    ext = os.path.splitext(audio.filename or "audio.webm")[1] or ".webm"
+    filename = f"{uuid.uuid4()}{ext}"
+    filepath = os.path.join(settings.UPLOAD_DIR, filename)
+
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    transcription = ""
+    try:
+        transcription = stt_service.transcribe(filepath)
+    except Exception as e:
+        print(f"Whisper transcription error: {e}")
+        pass
+
+    clean_transcription = transcription.lower().strip()
+    import re
+    clean_transcription = re.sub(r'[^\w\s]', '', clean_transcription)
+
+    if expected_text and expected_text.strip():
+        result = analyzer.analyze(
+            expected=expected_text,
+            transcription=clean_transcription,
+            confidence=1.0,
+        )
+        return AnalysisResult(
+            transcription=clean_transcription,
+            expected_text=expected_text,
+            pronunciation_score=result["pronunciation_score"],
+            confidence_score=result["confidence_score"],
+            feedback=result["feedback"],
+            new_achievements=[],
+        )
+    else:
+        return AnalysisResult(
+            transcription=clean_transcription,
+            expected_text="",
+            pronunciation_score=100.0,
+            confidence_score=100.0,
+            feedback={"overall": "Excellent! 🌟", "similarity_ratio": 1.0, "phonetic_ratio": 1.0, "tips": [], "match": True},
+            new_achievements=[],
+        )
 
 
 @router.get("/api/recordings/{recording_id}", response_model=RecordingOut)

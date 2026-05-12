@@ -1091,6 +1091,16 @@ func (h *Hub) broadcastToRoomSimple(room *Room, msg *models.WSMessage) {
 	}
 }
 
+// BroadcastToRoom is a public wrapper to allow other services to broadcast messages
+func (h *Hub) BroadcastToRoom(roomID string, msg *models.WSMessage) {
+	h.mu.RLock()
+	room, ok := h.Rooms[roomID]
+	h.mu.RUnlock()
+	if ok {
+		h.broadcastToRoomSimple(room, msg)
+	}
+}
+
 func (h *Hub) handleChatMessage(client *Client, payload models.ChatMessagePayload) {
 	// ... (Existing logic)
 }

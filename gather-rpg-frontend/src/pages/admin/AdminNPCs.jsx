@@ -86,6 +86,7 @@ const AnimButton = ({ label, active, onClick, color }) => (
 
 // ─── NPC Preview Card ───
 const NPCCard = ({ npcDef }) => {
+    const { t } = useTranslation();
     const canvasRef = useRef(null);
     const gameRef = useRef(null);
     const sceneRef = useRef(null);

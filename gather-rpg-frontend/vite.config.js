@@ -11,10 +11,21 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:3000',
+        target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api/, '')
+        rewrite: (path) => path.replace(/^\/api/, ''),
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('[ViteProxy] error', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('[ViteProxy] sending request to:', req.url);
+          });
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            console.log('[ViteProxy] received response:', proxyRes.statusCode, req.url);
+          });
+        }
       },
       '/ws': {
         target: 'ws://127.0.0.1:3000',

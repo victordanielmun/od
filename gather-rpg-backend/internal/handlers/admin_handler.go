@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"os"
 	"path/filepath"
+	"log"
 )
 
 type AdminHandler struct {
@@ -132,14 +133,15 @@ func (h *AdminHandler) GetMapConfig(c *fiber.Ctx) error {
 // PUT /admin/maps/:id
 func (h *AdminHandler) UpdateMapConfig(c *fiber.Ctx) error {
 	id := c.Params("id")
+	log.Printf("[AdminHandler] UpdateMapConfig received for map ID: %s", id)
 	if id == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
 	}
 
 	type request struct {
-		SceneKey  string      `json:"scene_key"`
+		SceneKey  *string     `json:"scene_key"`
 		MapData   interface{} `json:"map_data"` // Can be string or object
-		WallsJSON string      `json:"walls_json"`
+		WallsJSON *string     `json:"walls_json"`
 		IsPublic  *bool       `json:"is_public"`
 		MaxUsers  *int        `json:"max_users"`
 	}
@@ -159,12 +161,12 @@ func (h *AdminHandler) UpdateMapConfig(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Map not found"})
 	}
 
-	// Update fields if present
-	if req.SceneKey != "" {
-		mapConfig.SceneKey = req.SceneKey
+	// Update fields if present in struct (pointers for optionality)
+	if req.SceneKey != nil {
+		mapConfig.SceneKey = *req.SceneKey
 	}
-	if req.WallsJSON != "" {
-		mapConfig.WallsJSON = req.WallsJSON
+	if req.WallsJSON != nil {
+		mapConfig.WallsJSON = *req.WallsJSON
 	}
 	if req.MapData != nil {
 		// Ensure it's stored as string
@@ -190,11 +192,11 @@ func (h *AdminHandler) UpdateMapConfig(c *fiber.Ctx) error {
 	updates := map[string]interface{}{
 		"updated_by": parsedUpdater,
 	}
-	if req.SceneKey != "" {
-		updates["scene_key"] = req.SceneKey
+	if req.SceneKey != nil {
+		updates["scene_key"] = *req.SceneKey
 	}
-	if req.WallsJSON != "" {
-		updates["walls_json"] = req.WallsJSON
+	if req.WallsJSON != nil {
+		updates["walls_json"] = *req.WallsJSON
 	}
 	if req.MapData != nil {
 		if str, ok := req.MapData.(string); ok {
@@ -233,12 +235,52 @@ func (h *AdminHandler) UpdateMapConfig(c *fiber.Ctx) error {
 // GET /admin/maps
 func (h *AdminHandler) ListMapConfigs(c *fiber.Ctx) error {
 	var maps []models.MapConfig
-	// Return map_data so frontend can see width/height, but omit walls_json to keep response lightweight
-	if err := database.DB.Omit("walls_json").Find(&maps).Error; err != nil {
+	// Lightweight list: Exclude walls_json and map_data to save bandwidth
+	if err := database.DB.Select("id", "scene_key", "is_public", "max_users", "updated_by", "created_at", "updated_at").Find(&maps).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.JSON(maps)
+}
+
+// DeleteMapConfig deletes a map configuration by ID and cleans up associated data.
+// DELETE /admin/maps/:id
+func (h *AdminHandler) DeleteMapConfig(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is required"})
+	}
+
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid UUID"})
+	}
+
+	// 1. Fetch map to get scene_key
+	var mapConfig models.MapConfig
+	if err := database.DB.First(&mapConfig, uid).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Map not found"})
+	}
+
+	sceneKey := mapConfig.SceneKey
+
+	// 2. Delete the map configuration
+	if err := database.DB.Delete(&mapConfig).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete map: " + err.Error()})
+	}
+
+	// 3. Clean up associated NPC Templates
+	database.DB.Where("scene_key = ?", sceneKey).Delete(&models.NPCTemplate{})
+
+	// 4. Clean up associated Pickups
+	database.DB.Where("scene_key = ?", sceneKey).Delete(&models.MapPickup{})
+
+	// 5. Clean up associated Missions (be careful, might affect other things)
+	database.DB.Where("scene_key = ?", sceneKey).Delete(&models.Mission{})
+
+	log.Printf("[AdminHandler] Map '%s' and its associations deleted by admin", sceneKey)
+
+	return c.SendStatus(fiber.StatusNoContent)
 }
 // --- Item Admin CRUD ---
 

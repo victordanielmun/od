@@ -11,10 +11,10 @@ import (
 
 type NPCHandler struct {
 	Service  *services.NPCService
-	AIClient *services.DeepSeekClient
+	AIClient services.LLMClient
 }
 
-func NewNPCHandler(service *services.NPCService, aiClient *services.DeepSeekClient) *NPCHandler {
+func NewNPCHandler(service *services.NPCService, aiClient services.LLMClient) *NPCHandler {
 	return &NPCHandler{Service: service, AIClient: aiClient}
 }
 
@@ -78,8 +78,11 @@ func (h *NPCHandler) CreateNPCDefinition(c *fiber.Ctx) error {
 	}
 
 	// Normalize type
-	if string(def.Type) == "quest" {
+	if string(def.Type) == "quest" || string(def.Type) == "quest_giver" {
 		def.Type = models.NPCTypeQuest
+	}
+	if string(def.Type) == "master" || string(def.Type) == "quest_master" {
+		def.Type = models.NPCTypeMaster
 	}
 	if def.DefaultState == "" {
 		def.DefaultState = models.NPCStateIdle
@@ -112,8 +115,11 @@ func (h *NPCHandler) UpdateNPCDefinition(c *fiber.Ctx) error {
 	def.ID = uint(id)
 
 	// Normalize type
-	if string(def.Type) == "quest" {
+	if string(def.Type) == "quest" || string(def.Type) == "quest_giver" {
 		def.Type = models.NPCTypeQuest
+	}
+	if string(def.Type) == "master" || string(def.Type) == "quest_master" {
+		def.Type = models.NPCTypeMaster
 	}
 	// We don't force DefaultState here as Updates() will skip it if empty, 
 	// preserving the existing value in the DB.
@@ -186,4 +192,87 @@ func (h *NPCHandler) GetRoomNPCs(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(instances)
+}
+
+func (h *NPCHandler) GetAllTemplates(c *fiber.Ctx) error {
+	tmpls, err := h.Service.GetAllTemplates()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(tmpls)
+}
+
+func (h *NPCHandler) GetTemplatesByScene(c *fiber.Ctx) error {
+	sceneKey := c.Query("scene_key")
+	if sceneKey == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "scene_key is required"})
+	}
+
+	tmpls, err := h.Service.GetTemplatesByScene(sceneKey)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(tmpls)
+}
+
+func (h *NPCHandler) GetTemplatesByDefinition(c *fiber.Ctx) error {
+	defID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid Definition ID"})
+	}
+
+	tmpls, err := h.Service.GetTemplatesByDefinition(uint(defID))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(tmpls)
+}
+
+func (h *NPCHandler) UpdateTemplateMissions(c *fiber.Ctx) error {
+	tmplID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid Template ID"})
+	}
+
+	var req struct {
+		MissionIDs     []uint `json:"mission_ids"`
+		Role           string `json:"role"`
+		Instructions   string `json:"instructions"`
+		SuccessMessage string `json:"success_message"`
+		Greeting       string `json:"greeting"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if err := h.Service.UpdateTemplateMissions(uint(tmplID), req.MissionIDs, req.Role, req.Instructions, req.SuccessMessage, req.Greeting); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "Missions updated successfully"})
+}
+
+// PatchTemplateInstructions updates ONLY the AI instructions and success_message
+// of an NPCTemplate without touching mission assignments.
+// PATCH /admin/npc-templates/:id/instructions
+func (h *NPCHandler) PatchTemplateInstructions(c *fiber.Ctx) error {
+	tmplID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid Template ID"})
+	}
+
+	var req struct {
+		Instructions   string `json:"instructions"`
+		SuccessMessage string `json:"success_message"`
+		Greeting       string `json:"greeting"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if err := h.Service.PatchTemplateInstructions(uint(tmplID), req.Instructions, req.SuccessMessage, req.Greeting); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "Instructions updated successfully"})
 }

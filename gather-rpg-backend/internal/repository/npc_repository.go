@@ -41,6 +41,22 @@ func (r *NPCRepository) GetTemplatesByScene(sceneKey string) ([]models.NPCTempla
 	return tmpls, nil
 }
 
+func (r *NPCRepository) GetAllTemplates() ([]models.NPCTemplate, error) {
+	var tmpls []models.NPCTemplate
+	if err := database.DB.Preload("NPCDefinition").Find(&tmpls).Error; err != nil {
+		return nil, err
+	}
+	return tmpls, nil
+}
+
+func (r *NPCRepository) GetTemplatesByDefinition(defID uint) ([]models.NPCTemplate, error) {
+	var tmpls []models.NPCTemplate
+	if err := database.DB.Preload("NPCDefinition").Where("npc_definition_id = ?", defID).Find(&tmpls).Error; err != nil {
+		return nil, err
+	}
+	return tmpls, nil
+}
+
 func (r *NPCRepository) GetTemplateByID(id uint) (*models.NPCTemplate, error) {
 	var tmpl models.NPCTemplate
 	if err := database.DB.Preload("NPCDefinition").First(&tmpl, id).Error; err != nil {
@@ -98,4 +114,33 @@ func (r *NPCRepository) UpdateDefinition(def *models.NPCDefinition) error {
 
 func (r *NPCRepository) DeleteDefinition(id uint) error {
 	return database.DB.Delete(&models.NPCDefinition{}, id).Error
+}
+
+// -- Cache --
+
+func (r *NPCRepository) GetCachedDialogue(tmplID uint, missionID *uint, taskID *uint, normalizedInput string, conditionMet bool) (*models.NPCDialogueCache, error) {
+	var cache models.NPCDialogueCache
+	
+	query := database.DB.Where("npc_template_id = ? AND normalized_input = ? AND condition_met = ?", tmplID, normalizedInput, conditionMet)
+	
+	if missionID != nil {
+		query = query.Where("mission_id = ?", *missionID)
+	} else {
+		query = query.Where("mission_id IS NULL")
+	}
+	
+	if taskID != nil {
+		query = query.Where("task_id = ?", *taskID)
+	} else {
+		query = query.Where("task_id IS NULL")
+	}
+
+	if err := query.First(&cache).Error; err != nil {
+		return nil, err
+	}
+	return &cache, nil
+}
+
+func (r *NPCRepository) SaveCachedDialogue(cache *models.NPCDialogueCache) error {
+	return database.DB.Create(cache).Error
 }

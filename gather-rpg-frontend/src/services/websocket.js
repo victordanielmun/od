@@ -114,7 +114,12 @@ class WebSocketClient {
         if (this.ws) {
             this.ws.onclose = null; // Prevent reconnect trigger
             this.ws.onerror = null; // Prevent error logging if closing while connecting
-            this.ws.close();
+            
+            // Only close if it's not already CLOSED or CLOSING
+            if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+                this.ws.close();
+            }
+            
             this.ws = null;
             this.isConnected = false;
         }

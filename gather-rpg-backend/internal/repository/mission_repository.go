@@ -115,9 +115,12 @@ func (r *MissionRepository) GetRolesByMission(missionID uint) ([]models.NPCMissi
 
 func (r *MissionRepository) GetMissionsByTemplate(tmplID uint) ([]models.Mission, error) {
 	var missions []models.Mission
+	// Search for missions where the NPC has a role OR is a target of a task
 	err := database.DB.Table("missions").
-		Joins("JOIN npc_mission_roles ON npc_mission_roles.mission_id = missions.id").
-		Where("npc_mission_roles.npc_template_id = ? AND missions.status = 'active'", tmplID).
+		Joins("LEFT JOIN npc_mission_roles ON npc_mission_roles.mission_id = missions.id").
+		Joins("LEFT JOIN mission_tasks ON mission_tasks.mission_id = missions.id").
+		Where("(npc_mission_roles.npc_template_id = ? OR mission_tasks.target_npc_template_id = ?) AND missions.status = 'active'", tmplID, tmplID).
+		Distinct("missions.*").
 		Find(&missions).Error
 	if err != nil {
 		return nil, err

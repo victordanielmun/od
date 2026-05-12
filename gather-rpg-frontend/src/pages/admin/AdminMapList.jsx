@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import { Map as MapIcon, Plus, Search, Edit2 } from 'lucide-react';
+import { Map as MapIcon, Plus, Search, Edit2, Trash2 } from 'lucide-react';
 
 export const AdminMapList = () => {
     const { t } = useTranslation();
@@ -28,6 +28,20 @@ export const AdminMapList = () => {
 
     const handleEdit = (sceneKey) => {
         navigate(`/lobby?edit_map=${sceneKey}`);
+    };
+
+    const handleDelete = async (id, sceneKey) => {
+        if (!window.confirm(`Are you sure you want to delete the map "${sceneKey}"? This will also delete all associated NPCs and Pickups.`)) {
+            return;
+        }
+
+        try {
+            await api.delete(`/admin/maps/${id}`);
+            loadMaps();
+        } catch (error) {
+            console.error("Failed to delete map:", error);
+            alert("Failed to delete map. Check console for details.");
+        }
     };
 
     const filteredMaps = maps.filter(m => 
@@ -103,9 +117,16 @@ export const AdminMapList = () => {
                                         <td className="px-6 py-4 text-right">
                                             <button
                                                 onClick={() => handleEdit(map.scene_key)}
-                                                className="text-blue-400 hover:text-white bg-blue-900/20 hover:bg-blue-600 px-3 py-1.5 rounded text-sm font-medium transition-all"
+                                                className="text-blue-400 hover:text-white bg-blue-900/20 hover:bg-blue-600 px-3 py-1.5 rounded text-sm font-medium transition-all mr-2"
                                             >
                                                 Edit Map
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(map.id, map.scene_key)}
+                                                className="text-red-400 hover:text-white bg-red-900/20 hover:bg-red-600 px-3 py-1.5 rounded text-sm font-medium transition-all"
+                                                title="Delete Map"
+                                            >
+                                                <Trash2 size={16} />
                                             </button>
                                         </td>
                                     </tr>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronDown, ShoppingBag, MapPin, Compass } from 'lucide-react';
+import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronDown, ShoppingBag, MapPin, Compass, ShieldCheck, Map } from 'lucide-react';
 import api from '../../services/api';
-import { analyzeAudio, generateTTS, getTTSAudioUrl } from '../../services/voiceApi';
+import { analyzeDialogueAudio, generateTTS, getTTSAudioUrl } from '../../services/voiceApi';
 import ShopModal from '../common/ShopModal';
 import { useAuthStore } from '../../store/authStore';
 import { useGameStore } from '../../store/gameStore';
@@ -10,7 +10,7 @@ import { STATE_TO_ANIM, NPC_CONFIG } from '../../game/config/NPCConfig';
 
 const NPCPortrait = ({ npcId, state, size = 'small' }) => {
     // Normalize ID: sprite2 -> 2
-    const cleanId = String(npcId || '2').replace('sprite', '');
+    const cleanId = String(npcId || '1').replace('sprite', '');
     const [atlasData, setAtlasData] = useState(null);
     const [frameInfo, setFrameInfo] = useState(null);
 
@@ -68,6 +68,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const [inputText, setInputText] = useState('');
     const [isRecording, setIsRecording] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [loadingMissionId, setLoadingMissionId] = useState(null);
     const [npcState, setNpcState] = useState('idle');
     const [lastTtsUrl, setLastTtsUrl] = useState(null);
     const [isTtsPlaying, setIsTtsPlaying] = useState(false);
@@ -77,56 +78,100 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const [giftInfo, setGiftInfo] = useState(null);
     const [availableMissions, setAvailableMissions] = useState([]);
     const [selectedMissionId, setSelectedMissionId] = useState(null);
+    const [resolvedType, setResolvedType] = useState(null);
+    const [autoPlay, setAutoPlay] = useState(true);
+    const hasPlayedGreeting = useRef(false);
     
     const mediaRecorderRef = useRef(null);
     const audioRef = useRef(null);
     const audioChunksRef = useRef([]);
     const scrollRef = useRef(null);
+    const recordingTimeoutRef = useRef(null);
     const user = useAuthStore(state => state.user);
     const { currentSceneKey, requestMapJoin } = useGameStore();
+
+    // Normalize NPC data (Handle nested definition if it's an instance)
+    const definition = npcData.npc_template?.npc_definition || npcData;
+    const npcType = definition.type || npcData.type;
+    const npcName = definition.name || npcData.name;
+
+    console.log("[NPCDialogue] DEBUG DATA:", {
+        rawType: npcData.type,
+        defType: definition.type,
+        finalType: npcType,
+        npcData
+    });
 
     const selectedMission = availableMissions.find(m => m.id === selectedMissionId);
     const needsTeleport = selectedMission && selectedMission.scene_key && selectedMission.scene_key !== currentSceneKey;
 
     useEffect(() => {
+        console.log("[NPCDialogue] MOUNTED. Props npcData:", npcData);
+        
         window.dispatchEvent(new CustomEvent('npc-interaction-start', {
             detail: { templateId: npcData.templateId }
         }));
 
-        const initialGreet = () => {
-            setMessages([{
-                sender: 'npc',
-                text: `Hello ${user?.username || 'traveler'}! How can I help you today?`,
-                timestamp: new Date()
-            }]);
-        };
-        initialGreet();
-
         const fetchMissions = async () => {
             try {
+                console.log("[NPCDialogue] Fetching missions for templateId:", npcData.templateId);
                 const res = await api.get(`/missions/npc/${npcData.templateId}`);
                 const data = res.data;
+                console.log("[NPCDialogue] API Response (data):", data);
                 
-                // New structure: { missions, is_merchant, shop, npc_name }
+                // Set custom greeting or default
+                const npcGreeting = data.greeting || `Hello ${user?.username || 'traveler'}! How can I help you today?`;
+                setMessages([{
+                    sender: 'npc',
+                    text: npcGreeting,
+                    timestamp: new Date()
+                }]);
+
+                // AUTO-PLAY: Play the first greeting automatically
+                if (autoPlay && !hasPlayedGreeting.current) {
+                    hasPlayedGreeting.current = true;
+                    console.log("[NPCDialogue] Playing initial greeting audio:", npcGreeting);
+                    setTimeout(() => {
+                        handleListen(npcGreeting, 'en', false);
+                    }, 500);
+                }
+                
                 if (data && data.missions) {
                     setAvailableMissions(data.missions);
-                    setHasShop(data.is_merchant);
+                    
+                    // Use the type from API if available (source of truth)
+                    const finalRoleType = data.npc_type || npcType;
+                    console.log("[NPCDialogue] Final Role Type resolved:", finalRoleType);
+                    setResolvedType(finalRoleType);
+
+                    // Priority 1: Check NPC type for role-based UI
+                    if (finalRoleType === 'merchant') {
+                        setHasShop(true);
+                        console.log("[NPCDialogue] Merchant type detected, enabling shop");
+                    } else {
+                        setHasShop(data.is_merchant);
+                    }
+
                     if (data.shop) {
-                        console.log("[NPCDialogue] Shop data received:", data.shop);
                         setShopData(data.shop);
                     }
                     
-                    // If only one mission and NOT a merchant, select it automatically
-                    if (data.missions.length === 1 && !data.is_merchant) {
+                    // AUTO-SELECT MISSION: If there is exactly one mission and NPC is not a Master/Portal,
+                    // skip the selection menu and start dialogue immediately.
+                    if (data.missions.length === 1 && finalRoleType !== 'quest_master' && finalRoleType !== 'master') {
+                        console.log("[NPCDialogue] Auto-selecting single mission:", data.missions[0].id);
                         setSelectedMissionId(data.missions[0].id);
                     }
+                    
+                    // Also update npcType state if needed for rendering
+                    // We can use a local variable or update a state if we had one for it
                 } else if (Array.isArray(data)) {
-                    // Fallback for old API format
+                    console.log("[NPCDialogue] Fallback Array. Setting availableMissions:", data.length);
                     setAvailableMissions(data);
                     if (data.length === 1) setSelectedMissionId(data[0].id);
                 }
             } catch (err) {
-                console.error("Error fetching NPC missions:", err);
+                console.error("[NPCDialogue] Error fetching NPC missions:", err);
             }
         };
 
@@ -139,40 +184,120 @@ export const NPCDialogue = ({ npcData, onClose }) => {
         };
     }, [user, npcData.templateId]);
 
-    const handleListen = async (text) => {
-        if (!text || isTtsPlaying) return;
+    const handleSelectMission = async (mission) => {
+        if (loadingMissionId) return;
+        setLoadingMissionId(mission.id);
+        
+        const currentScene = useGameStore.getState().currentMapKey;
+        const joinRoom = useGameStore.getState().joinRoom;
+        
+        // LOGIC: If mission is in a different scene, teleport the player!
+        if (mission.scene_key && mission.scene_key !== currentScene && mission.scene_key !== 'lobby') {
+            console.log(`[NPCDialogue] Mission is in different scene: ${mission.scene_key}. Teleporting...`);
+            
+            // Show a simple teleport message before switching
+            setMessages(prev => [...prev, {
+                sender: 'npc',
+                text: `¡Excelente elección! Te enviaré de inmediato a ${mission.scene_key}. ¡Buena suerte en tu aventura!`,
+                timestamp: new Date()
+            }]);
+
+            // Save the mission in global store so we can show a notice on arrival
+            useGameStore.setState({ activeMission: mission });
+
+            // Wait a moment for the player to read the message
+            setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('lobby-change-map', {
+                    detail: { 
+                        targetMap: mission.scene_key,
+                        targetX: 0,
+                        targetY: 0
+                    }
+                }));
+                onClose(); // Close dialogue after triggering teleport
+            }, 2000);
+            
+            return;
+        }
+
+        // Normal logic for same-scene missions
+        setSelectedMissionId(mission.id);
+        setLoadingMissionId(null);
+    };
+
+    const stopAudio = () => {
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+            audioRef.current = null;
+        }
+        if (window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
+        setIsTtsPlaying(false);
+    };
+
+    const handleListen = async (text, language = 'en', isManual = false) => {
+        if (!text) return;
+        console.log(`[NPCDialogue] handleListen triggered (Manual: ${isManual}) for ${language}:`, text);
+        
+        // If it's a manual click and we are already playing, stop it (Toggle behavior)
+        if (isManual && isTtsPlaying) {
+            console.log("[NPCDialogue] Manual stop requested");
+            stopAudio();
+            return;
+        }
+
+        // Always stop previous before starting new
+        stopAudio();
         setIsTtsPlaying(true);
+        
         try {
             let url = lastTtsUrl;
-            if (!url) {
+            // If the text is different from last cached TTS, fetch new
+            if (!url || text !== messages[messages.length-1]?.text) {
                 let npcVoice = NPC_CONFIG.voices[npcData.templateId] || NPC_CONFIG.voices.default;
                 
-                // Override with specific voice based on configured gender if available
-                if (npcData.voiceType === 'female') {
-                    npcVoice = 'en-US-AriaNeural';
-                } else if (npcData.voiceType === 'male') {
-                    npcVoice = 'en-US-GuyNeural';
+                if (language === 'es') {
+                    // Spanish Voices
+                    npcVoice = npcData.voiceType === 'female' ? 'es-ES-ElviraNeural' : 'es-ES-AlvaroNeural';
+                } else {
+                    // English Voices
+                    if (npcData.voiceType === 'female') {
+                        npcVoice = 'en-US-AriaNeural';
+                    } else if (npcData.voiceType === 'male') {
+                        npcVoice = 'en-US-GuyNeural';
+                    }
                 }
 
                 const tts = await generateTTS(text, npcVoice);
                 url = tts.audio_url || getTTSAudioUrl(tts.cache_key);
+                
+                if (url.includes('/audio/')) {
+                    url += `?t=${Date.now()}`;
+                }
+                
                 setLastTtsUrl(url);
             }
-            if (audioRef.current) audioRef.current.pause();
+
             const audio = new Audio(url);
             audioRef.current = audio;
             audio.onended = () => setIsTtsPlaying(false);
-            audio.onerror = () => {
+            audio.onerror = (e) => {
+                console.error("Audio playback error:", e);
                 if ('speechSynthesis' in window) {
                     const utterance = new SpeechSynthesisUtterance(text);
-                    utterance.lang = 'en-US';
+                    utterance.lang = language === 'es' ? 'es-ES' : 'en-US';
                     utterance.onend = () => setIsTtsPlaying(false);
                     speechSynthesis.speak(utterance);
                 } else {
                     setIsTtsPlaying(false);
                 }
             };
-            audio.play();
+            audio.play().catch(err => {
+                console.error("Audio.play() failed:", err);
+                setIsTtsPlaying(false);
+            });
         } catch (err) {
             console.error("TTS play failed:", err);
             setIsTtsPlaying(false);
@@ -186,7 +311,10 @@ export const NPCDialogue = ({ npcData, onClose }) => {
         const newMsg = { sender: 'player', text, timestamp: new Date(), score };
         setMessages(prev => [...prev, newMsg]);
         setInputText('');
-        setLastTtsUrl(null); // Reset when starting new turn
+        
+        // Reset TTS for the new turn
+        stopAudio();
+        setLastTtsUrl(null);
 
         try {
             const response = await api.post('/npc/dialogue', {
@@ -201,6 +329,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             setMessages(prev => [...prev, {
                 sender: 'npc',
                 text: data.npc_response,
+                translation: data.npc_response_es,
                 timestamp: new Date(),
                 eval: data.pronunciation_eval
             }]);
@@ -216,8 +345,12 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 setTimeout(() => setGiftInfo(null), 5000);
             }
             
-            if (data.npc_response) {
-                handleListen(data.npc_response);
+            // ONLY ENGLISH AUDIO: As requested, we now only play the English response
+            if (data.npc_response && autoPlay) {
+                // Short delay to ensure state is settled
+                setTimeout(() => {
+                    handleListen(data.npc_response, 'en', false);
+                }, 300);
             }
 
             if (data.is_shop) {
@@ -230,32 +363,46 @@ export const NPCDialogue = ({ npcData, onClose }) => {
         }
     };
 
-    const startRecording = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const recorder = new MediaRecorder(stream);
-            mediaRecorderRef.current = recorder;
-            audioChunksRef.current = [];
-            recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-            recorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                setIsProcessing(true);
-                try {
-                    const result = await analyzeAudio(audioBlob, "00000000-0000-0000-0000-000000000000"); 
-                    handleSend(result.transcription, result.pronunciation_score);
-                } catch (err) { console.error("Audio analysis failed:", err); }
-                finally { setIsProcessing(false); }
-            };
-            recorder.start();
-            setIsRecording(true);
-        } catch (err) { console.error("Microphone access denied:", err); }
-    };
+    const toggleRecording = async () => {
+        if (isRecording) {
+            // Stop recording
+            if (mediaRecorderRef.current) {
+                if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
+                mediaRecorderRef.current.stop();
+                setIsRecording(false);
+                mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+            }
+        } else {
+            // Start recording
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const recorder = new MediaRecorder(stream);
+                mediaRecorderRef.current = recorder;
+                audioChunksRef.current = [];
+                recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+                recorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                    setIsProcessing(true);
+                    try {
+                        const result = await analyzeDialogueAudio(audioBlob); 
+                        handleSend(result.transcription, result.pronunciation_score);
+                    } catch (err) { console.error("Audio analysis failed:", err); }
+                    finally { setIsProcessing(false); }
+                };
+                recorder.start();
+                setIsRecording(true);
+                
+                // Enforce maximum recording time of 15 seconds
+                recordingTimeoutRef.current = setTimeout(() => {
+                    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+                        console.log("Maximum recording time reached (15s). Stopping automatically.");
+                        mediaRecorderRef.current.stop();
+                        setIsRecording(false);
+                        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+                    }
+                }, 15000);
 
-    const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-            mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+            } catch (err) { console.error("Microphone access denied:", err); }
         }
     };
 
@@ -267,12 +414,12 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             {/* Main Dialogue UI */}
             <div className="relative w-full max-w-5xl px-4 pointer-events-auto">
                 
-                {/* Close Button */}
+                {/* Close Button (Fixed to viewport) */}
                 <button 
                     onClick={onClose} 
-                    className="absolute top-[-60px] right-2 p-2 bg-[var(--color-orange-vibrant)] text-white border-2 border-[var(--color-gold)] shadow-2xl hover:bg-[var(--color-accent-blue)] transition-colors"
+                    className="fixed top-6 right-6 z-[100] p-3 bg-[var(--color-orange-vibrant)] text-white border-2 border-[var(--color-gold)] shadow-2xl hover:bg-[var(--color-accent-blue)] transition-colors pointer-events-auto"
                 >
-                    <X size={20} />
+                    <X size={24} />
                 </button>
 
                 {/* NPC Portrait (Izquierda) */}
@@ -289,13 +436,13 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                             <div className="absolute -left-2 -top-2 w-4 h-4 bg-[var(--color-gold)] rotate-45 border border-[var(--color-gold-dark)]"></div>
                             <div className="absolute -right-2 -top-2 w-4 h-4 bg-[var(--color-gold)] rotate-45 border border-[var(--color-gold-dark)]"></div>
                             <span className="block font-medieval text-2xl tracking-widest uppercase drop-shadow-[2px_2px_0_rgba(0,0,0,0.5)]">
-                                {npcData.name}
+                                {npcName}
                             </span>
                         </div>
                     </div>
                     
                     {/* Dialogue Bubble */}
-                    <div className="bg-[var(--color-parchment)] border-8 border-double border-[var(--color-gold)] p-10 pb-8 shadow-[0_20px_50px_rgba(0,0,0,0.8)] relative min-h-[220px] flex flex-col overflow-hidden">
+                    <div className="bg-[var(--color-parchment)] border-8 border-double border-[var(--color-gold)] p-10 pb-8 shadow-[0_20px_50px_rgba(0,0,0,0.8)] relative min-h-[220px] max-h-[70vh] flex flex-col overflow-hidden pointer-events-auto">
                         {/* Parchment Texture */}
                         <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/parchment.png")' }}></div>
                         
@@ -314,11 +461,21 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                             </div>
                         )}
 
-                        {/* Mission Selector (If > 1 available) */}
-                        {availableMissions.length > 1 && !selectedMissionId && (
+                        {/* Mission Selector / Hub */}
+                        {((availableMissions.length > 0 && !selectedMissionId) || (resolvedType || npcType) === 'quest_master') && !selectedMissionId && (
                             <div className="absolute inset-0 z-[100] bg-[var(--color-parchment)]/95 backdrop-blur-sm p-8 flex flex-col items-center justify-start gap-4 text-center overflow-y-auto custom-scrollbar-light">
-                                <h3 className="text-3xl font-medieval text-[var(--color-base-dark)] mt-4 mb-4 drop-shadow-sm uppercase tracking-wider">¿En qué puedo ayudarte hoy?</h3>
+
+                                <h3 className="text-3xl font-medieval text-[var(--color-base-dark)] mt-12 mb-4 drop-shadow-sm uppercase tracking-wider">
+                                    {(resolvedType || npcType) === 'quest_master' ? 'Tablón de Misiones' : '¿En qué puedo ayudarte hoy?'}
+                                </h3>
                                 <div className="grid grid-cols-1 gap-4 w-full max-w-xl pb-10">
+                                    {/* Empty State for Portals */}
+                                    {(resolvedType || npcType) === 'quest_master' && availableMissions.length === 0 && (
+                                        <div className="p-10 border-4 border-dashed border-gray-400 bg-gray-100/50 rounded-lg">
+                                            <p className="text-xl font-serif text-gray-600">No hay misiones disponibles en este momento.</p>
+                                            <p className="text-sm text-gray-400 mt-2 italic">Vuelve más tarde o consulta con otro Maestro de Misiones.</p>
+                                        </div>
+                                    )}
                                     {/* Merchant Option */}
                                     {hasShop && (
                                         <button 
@@ -337,85 +494,140 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                     {availableMissions.map(m => (
                                         <div key={m.id} className="flex flex-col gap-1">
                                             <button 
-                                                onClick={() => setSelectedMissionId(m.id)}
-                                                className={`p-6 border-4 border-double transition-all flex flex-col items-start gap-2 group shadow-lg w-full ${
+                                                onClick={() => handleSelectMission(m)}
+                                                disabled={loadingMissionId !== null}
+                                                className={`p-6 border-4 border-double transition-all flex flex-col items-start gap-2 group shadow-xl w-full text-left disabled:opacity-50 disabled:cursor-not-allowed ${
                                                     selectedMissionId === m.id
-                                                        ? 'border-[var(--color-orange-vibrant)] bg-orange-50'
+                                                        ? 'border-[var(--color-orange-vibrant)] bg-orange-100 ring-4 ring-[var(--color-orange-vibrant)]/30'
                                                         : m.status === 'completed' 
-                                                            ? 'border-green-800 bg-green-100/50 opacity-80 cursor-default' 
-                                                            : 'border-[var(--color-gold)] bg-white/60 hover:bg-[var(--color-accent-blue)] hover:text-white hover:-translate-y-1'
+                                                            ? 'border-green-800 bg-green-50 hover:bg-green-700 hover:border-green-900 transition-all' 
+                                                            : m.status === 'in_progress'
+                                                                ? 'border-blue-800 bg-blue-50 hover:bg-blue-700 hover:border-blue-900 transition-all ring-2 ring-blue-500/10'
+                                                                : 'border-[var(--color-gold-dark)] bg-white hover:bg-[var(--color-accent-blue)] hover:border-[var(--color-gold)] hover:-translate-y-1'
                                                 }`}
                                             >
                                                 <div className="flex items-center justify-between w-full">
-                                                    <span className="font-medieval text-xl uppercase tracking-tighter">{m.title}</span>
-                                                    {m.status === 'completed' && (
-                                                        <span className="text-[10px] bg-green-800 text-white px-3 py-1 font-bold uppercase tracking-widest border border-green-600">
-                                                            Completada
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={`font-medieval text-2xl uppercase tracking-tighter transition-colors ${
+                                                            selectedMissionId === m.id 
+                                                                ? 'text-[var(--color-orange-vibrant)]' 
+                                                                : 'text-[var(--color-base-dark)] group-hover:text-white'
+                                                        }`}>
+                                                            {m.title}
                                                         </span>
-                                                    )}
+                                                        {m.status === 'completed' && (
+                                                            <span className="text-[10px] bg-green-800 text-white px-3 py-1 font-bold uppercase tracking-widest border border-green-600 rounded-sm">
+                                                                ✓ Completada
+                                                            </span>
+                                                        )}
+                                                        {m.status === 'in_progress' && (
+                                                            <span className="text-[10px] bg-blue-700 text-white px-3 py-1 font-bold uppercase tracking-widest border border-blue-500 rounded-sm">
+                                                                ↻ En Progreso
+                                                            </span>
+                                                        )}
+                                                        {loadingMissionId === m.id && (
+                                                            <span className="flex items-center gap-2 text-[10px] bg-gray-800 text-white px-3 py-1 font-bold uppercase tracking-widest border border-gray-600 rounded-sm animate-pulse">
+                                                                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                                Cargando...
+                                                            </span>
+                                                        )}
+                                                        {(m.status === 'not_started' || !m.status) && (
+                                                            <span className="text-[10px] bg-orange-600 text-white px-3 py-1 font-bold uppercase tracking-widest border border-orange-400 rounded-sm">
+                                                                ★ Nueva
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <span className="text-sm opacity-80 text-left font-serif leading-snug">{m.description}</span>
+                                                <span className={`text-base font-serif leading-snug transition-colors ${
+                                                    selectedMissionId === m.id
+                                                        ? 'text-[var(--color-base-dark)]'
+                                                        : 'text-[var(--color-base-dark)] font-medium group-hover:text-white'
+                                                }`}>
+                                                    {m.objective || m.current_task_instruction || m.player_instruction || m.description}
+                                                </span>
                                                 
                                                 {m.scene_key && (
-                                                    <div className="flex items-center gap-2 mt-2 text-[10px] font-bold uppercase tracking-widest text-[#8b0000]/60 group-hover:text-white/60">
-                                                        <MapPin size={10} /> Ubicación: {m.scene_key}
+                                                    <div className={`flex items-center gap-2 mt-2 text-[11px] font-bold uppercase tracking-widest transition-colors ${
+                                                        selectedMissionId === m.id
+                                                            ? 'text-[var(--color-orange-vibrant)]'
+                                                            : 'text-[var(--color-gold-dark)] group-hover:text-white/90'
+                                                    }`}>
+                                                        <MapPin size={12} /> Ubicación: {m.scene_key}
                                                     </div>
                                                 )}
                                             </button>
-
-                                            {selectedMissionId === m.id && needsTeleport && m.status !== 'completed' && (
-                                                <button
-                                                    onClick={() => {
-                                                        // Dispatch event so LobbyGameCanvas handles loading/restart
-                                                        window.dispatchEvent(new CustomEvent('lobby-change-map', {
-                                                            detail: { targetMap: m.scene_key }
-                                                        }));
-                                                        onClose();
-                                                    }}
-                                                    className="w-full mt-2 p-4 bg-[var(--color-orange-vibrant)] text-white border-4 border-[var(--color-gold)] font-medieval text-xl uppercase tracking-widest hover:bg-[var(--color-base-dark)] transition-all flex items-center justify-center gap-3 animate-bounce shadow-2xl"
-                                                >
-                                                    <Compass className="animate-spin-slow" />
-                                                    Viajar a la Misión
-                                                </button>
-                                            )}
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         )}
 
-                        {/* Speaking Status */}
-                        <h4 className="text-[var(--color-accent-blue)] text-[12px] font-medieval uppercase tracking-widest mb-3 opacity-90 flex items-center gap-2 relative z-10">
-                            {lastMessage.sender === 'npc' ? 'The Merchant speaks...' : 'You response:'}
-                            {isAudioOnly && lastMessage.sender === 'npc' && (
-                                <span className="bg-[var(--color-orange-vibrant)] text-white px-2 py-0.5 border border-[var(--color-gold)] text-[9px]">
-                                    SILENCE REQ.
+                        {/* Speaking Status / Mission Header */}
+                        <div className="flex items-center justify-between mb-3 relative z-10">
+                            <h4 className="text-[var(--color-accent-blue)] text-[12px] font-medieval uppercase tracking-widest opacity-90 flex items-center gap-2">
+                                {selectedMission 
+                                    ? <span className="text-[var(--color-orange-vibrant)] flex items-center gap-2 animate-pulse"><Map size={14} /> Misión: {selectedMission.title}</span>
+                                    : (lastMessage.sender === 'npc' ? `${npcName} speaks...` : 'You responded:')
+                                }
+                                {isAudioOnly && lastMessage.sender === 'npc' && (
+                                    <span className="bg-[var(--color-orange-vibrant)] text-white px-2 py-0.5 border border-[var(--color-gold)] text-[9px]">
+                                        SILENCE REQ.
+                                    </span>
+                                )}
+                            </h4>
+                            {selectedMission && (
+                                <span className={`text-[9px] px-2 py-0.5 font-bold uppercase tracking-widest border border-current rounded-sm ${
+                                    selectedMission.status === 'completed' ? 'text-green-700 border-green-700' : 'text-blue-700 border-blue-700'
+                                }`}>
+                                    {selectedMission.status === 'completed' ? 'Completada' : 'En Curso'}
                                 </span>
                             )}
-                        </h4>
+                        </div>
 
                         {/* Current Message */}
-                        <div className="flex-1 overflow-y-auto custom-scrollbar-light mb-6 flex items-start justify-between gap-6 relative z-10">
-                            <p className="text-2xl text-[var(--color-base-dark)] font-medieval leading-tight tracking-tight flex-1 drop-shadow-sm">
-                                {(lastMessage.sender === 'npc' && isAudioOnly) ? (
-                                    <span className="text-[var(--color-accent-blue)] italic opacity-60">Listen closely to the words...</span>
-                                ) : (
-                                    lastMessage.text
-                                )}
-                            </p>
+                        <div className="flex-1 overflow-y-auto custom-scrollbar-light mb-6 flex flex-col gap-4 relative z-10">
+                            {/* Mission Objective Helper */}
+                            {selectedMission && (
+                                <div className="bg-orange-50/50 border-l-4 border-[var(--color-orange-vibrant)] p-3 mb-2 animate-in slide-in-from-top-2 duration-500">
+                                    <p className="text-[11px] font-serif uppercase tracking-wider text-[var(--color-orange-vibrant)] font-black mb-1 flex items-center gap-2">
+                                        <Compass size={12} /> Tarea Actual
+                                    </p>
+                                    <p className="text-sm font-serif text-[var(--color-base-dark)] leading-tight italic">
+                                        "{selectedMission.current_task_instruction || selectedMission.player_instruction || selectedMission.description}"
+                                    </p>
+                                </div>
+                            )}
+                            
+                            <div className="flex items-start justify-between gap-6">
+                                <div className="flex-1 flex flex-col gap-3">
+                                    <p className="text-2xl text-[var(--color-base-dark)] font-medieval leading-tight tracking-tight drop-shadow-sm">
+                                        {(lastMessage.sender === 'npc' && isAudioOnly) ? (
+                                            <span className="text-[var(--color-accent-blue)] italic opacity-60">Listen closely to the words...</span>
+                                        ) : (
+                                            lastMessage.text
+                                        )}
+                                    </p>
+                                    {lastMessage.sender === 'npc' && lastMessage.translation && (
+                                        <div className="border-t border-[var(--color-gold)]/40 pt-4 mt-2 bg-black/5 px-6 py-3 rounded-lg shadow-inner">
+                                            <p className="text-xl text-[#1a1a1a] italic font-serif font-medium leading-relaxed drop-shadow-sm">
+                                                {lastMessage.translation}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
                             {lastMessage.sender === 'npc' && (
                                 <div className="flex flex-col gap-2">
                                     <button
-                                        onClick={() => handleListen(lastMessage.text)}
-                                        disabled={isProcessing || isRecording || isTtsPlaying}
+                                        onClick={() => handleListen(lastMessage.text, 'en', true)}
+                                        disabled={isProcessing || isRecording}
                                         className={`p-4 transition-all duration-300 border-4 border-[var(--color-gold)] shadow-xl ${
                                             isTtsPlaying 
-                                                ? 'bg-[var(--color-orange-vibrant)] text-white animate-pulse' 
+                                                ? 'bg-[var(--color-orange-vibrant)] text-white' 
                                                 : 'bg-[var(--color-accent-blue)] text-[var(--color-gold)] hover:bg-[var(--color-base-dark)] active:translate-y-1'
                                         }`}
-                                        title="Hear voice"
+                                        title={isTtsPlaying ? "Stop audio" : "Hear voice"}
                                     >
-                                        <Volume2 size={28} className={isTtsPlaying ? 'animate-bounce' : ''} />
+                                        <Volume2 size={28} className={isTtsPlaying ? 'animate-pulse' : ''} />
                                     </button>
                                     
                                     {hasShop && (
@@ -427,15 +639,47 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                             <ShoppingBag size={28} />
                                         </button>
                                     )}
+
+                                    {/* Back to Mission Menu Button (Only for Quest Masters) */}
+                                    {availableMissions.length > 0 && (resolvedType || npcType) === 'quest_master' && (
+                                        <button
+                                            onClick={() => {
+                                                setSelectedMissionId(null);
+                                                setMessages([{
+                                                    sender: 'npc',
+                                                    text: `¿En qué más puedo ayudarte?`,
+                                                    timestamp: new Date()
+                                                }]);
+                                            }}
+                                            className="p-4 bg-gray-800 text-white border-4 border-gray-600 shadow-2xl hover:bg-gray-700 transition-all active:translate-y-1 flex items-center justify-center"
+                                            title="Menú de Misiones"
+                                        >
+                                            <MapPin size={28} />
+                                        </button>
+                                    )}
+
+                                    {/* Autoplay Toggle */}
+                                    <div className="flex items-center gap-2 mt-2 px-2 py-1 bg-white/40 rounded border border-black/10 shadow-sm">
+                                        <input 
+                                            type="checkbox" 
+                                            id="autoplay-toggle"
+                                            checked={autoPlay}
+                                            onChange={(e) => setAutoPlay(e.target.checked)}
+                                            className="w-4 h-4 accent-[var(--color-orange-vibrant)] cursor-pointer"
+                                        />
+                                        <label htmlFor="autoplay-toggle" className="text-[10px] font-medieval font-bold uppercase tracking-tighter cursor-pointer text-[#1a1a1a]">
+                                            Auto-voz
+                                        </label>
+                                    </div>
                                 </div>
                             )}
                         </div>
+                    </div>
 
                         {/* Input Area (Centered within bubble) */}
                         <div className="mt-auto flex items-center gap-4 bg-[var(--color-base-dark)]/10 p-2 pl-6 border-4 border-double border-[var(--color-gold)] relative z-10">
                             <button
-                                onMouseDown={startRecording}
-                                onMouseUp={stopRecording}
+                                onClick={toggleRecording}
                                 className={`p-4 transition-all border-2 border-[var(--color-gold-dark)] shadow-md ${
                                     isRecording 
                                         ? 'bg-[var(--color-orange-vibrant)] text-white animate-pulse' 

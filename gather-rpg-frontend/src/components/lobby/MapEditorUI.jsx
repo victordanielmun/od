@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Hammer, Save, Download, Upload, X, Undo2, Redo2, Trash2,
   Paintbrush, Eraser, Square, ChevronDown, ChevronUp,
-  Camera, User, MapPin, Pipette,
+  Camera, User, MapPin, Pipette, Zap,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import api from '../../services/api';
@@ -20,6 +20,7 @@ const TILE_COLORS = {
   collider: '#FFD700',
   store: '#556270',
   furniture: '#FF6B6B',
+  exit: '#FF4500',
 };
 
 const dispatchEditorCommand = (action, value) =>
@@ -108,7 +109,7 @@ export const MapEditorUI = ({ gameRef }) => {
   const adminCheck = isAdmin;
 
   const [isEditorActive, setIsEditorActive] = useState(false);
-  const [moveMode, setMoveMode] = useState('camera'); // 'camera' | 'character'
+  const [moveMode, setMoveMode] = useState('character'); // Default to character mode as requested
   const [activeTool, setActiveTool] = useState('brush');
   const [activeTile, setActiveTile] = useState('wall');
   const [activeTexture, setActiveTexture] = useState('sprite1');
@@ -125,9 +126,10 @@ export const MapEditorUI = ({ gameRef }) => {
   const [exportedData, setExportedData] = useState(null);
   const [stats, setStats] = useState({ 
     walls: 0, floors: 0, forest: 0, builds: 0, spawns: 0, 
-    npcZones: 0, pickups: 0, storeTiles: 0, furniture: 0,
+    npcZones: 0, pickups: 0, storeTiles: 0, furniture: 0, exits: 0,
     historySize: 0, redoSize: 0 
   });
+  const [playerSpeed, setPlayerSpeed] = useState(160);
 
   // Current map settings (width, height, public, etc.)
   const [currentSettings, setCurrentSettings] = useState({
@@ -150,6 +152,7 @@ export const MapEditorUI = ({ gameRef }) => {
     { id: 'floor', label: t('lobby.editor.tile_floor'), color: TILE_COLORS.floor },
     { id: 'forest', label: t('lobby.editor.tile_forest'), color: TILE_COLORS.forest },
     { id: 'build', label: t('lobby.editor.tile_build'), color: TILE_COLORS.build },
+    { id: 'exit', label: t('lobby.editor.tile_exit'), color: TILE_COLORS.exit },
     { id: 'spawn', label: t('lobby.editor.tile_spawn'), color: TILE_COLORS.spawn },
     { id: 'npc', label: t('lobby.editor.tile_npc'), color: TILE_COLORS.npc },
     { id: 'item', label: t('lobby.editor.tile_item'), color: TILE_COLORS.item },
@@ -169,7 +172,7 @@ export const MapEditorUI = ({ gameRef }) => {
       setActiveTexture(frame);
       setBuildScale(scale);
 
-      if (type === 'build') {
+      if (type === 'build' || type === 'exit') {
         setBuildMeta({
           portalType: metadata.portalType || 'map',
           targetMap: metadata.targetMap || '',
@@ -290,7 +293,7 @@ export const MapEditorUI = ({ gameRef }) => {
   useEffect(() => {
     const onPicked = (e) => {
       const { x, y } = e.detail;
-      if (activeTile === 'build') {
+      if (activeTile === 'build' || activeTile === 'exit') {
         setBuildMeta(prev => {
           const m = { ...prev, targetX: x, targetY: y };
           dispatchEditorCommand('setBuildMetadata', m);
@@ -355,6 +358,11 @@ export const MapEditorUI = ({ gameRef }) => {
     dispatchEditorCommand('setPickupMetadata', pickupMeta);
   }, [pickupMeta]);
   const selectMoveMode = (mode) => { setMoveMode(mode); dispatchEditorCommand('setMoveMode', mode); };
+  const updatePlayerSpeed = (val) => {
+    const s = parseInt(val);
+    setPlayerSpeed(s);
+    dispatchEditorCommand('setPlayerSpeed', s);
+  };
 
   const getMapKey = () => {
     const sc = getScene();
@@ -388,6 +396,8 @@ export const MapEditorUI = ({ gameRef }) => {
       max_users: currentSettings.maxUsers,
     };
 
+    console.log(`[MapEditor] Sending save request. Payload size: ${(JSON.stringify(payload).length / 1024).toFixed(2)} KB`);
+
     // Use PUT when map already exists
     const existingMap = availableMaps.find(m => m.scene_key === sceneKey);
     const request = existingMap
@@ -402,7 +412,8 @@ export const MapEditorUI = ({ gameRef }) => {
         if (isEditorActive) api.get('/admin/maps').then(r => setAvailableMaps(r.data));
       })
       .catch((err) => {
-        console.error('[MapEditor] Save failed:', err);
+        const errorMsg = err.response?.data?.error || err.message;
+        console.error('[MapEditor] Save failed:', errorMsg, err.response?.data || err);
         setSaveStatus('error');
       })
       .finally(() => {
@@ -461,7 +472,7 @@ export const MapEditorUI = ({ gameRef }) => {
     e.target.value = ''; // Reset for next time
   };
 
-  const total = (stats.walls || 0) + (stats.floors || 0) + (stats.forest || 0) + (stats.builds || 0) + (stats.spawns || 0) + (stats.npcZones || 0) + (stats.pickups || 0) + (stats.storeTiles || 0) + (stats.furniture || 0);
+  const total = (stats.walls || 0) + (stats.floors || 0) + (stats.forest || 0) + (stats.builds || 0) + (stats.spawns || 0) + (stats.npcZones || 0) + (stats.pickups || 0) + (stats.storeTiles || 0) + (stats.furniture || 0) + (stats.exits || 0);
 
   const TILE_TYPE_TO_STAT = {
     wall: 'stat_walls',
@@ -474,6 +485,7 @@ export const MapEditorUI = ({ gameRef }) => {
     collider: 'stat_colliders',
     store: 'stat_store',
     furniture: 'stat_furniture',
+    exit: 'stat_exits',
   };
 
   /* ─── render ─── */
@@ -615,7 +627,7 @@ export const MapEditorUI = ({ gameRef }) => {
 
             {/* Move Mode toggle */}
             <Section title={t('lobby.editor.move_mode')}>
-              <div className="flex gap-1.5">
+              <div className="flex gap-1.5 mb-3">
                 <button
                   onClick={() => selectMoveMode('camera')}
                   title={t('lobby.editor.camera_tooltip')}
@@ -639,7 +651,42 @@ export const MapEditorUI = ({ gameRef }) => {
                   <span>{t('lobby.editor.character')}</span>
                 </button>
               </div>
-              <p className="text-[8px] text-gray-600 mt-1.5 leading-tight">
+
+              {/* Character Speed (Only show/relevance in character mode) */}
+              <div className="border-t border-gray-700/40 pt-2 pb-1">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1 text-[9px] font-bold text-blue-400">
+                    <Zap size={11} />
+                    <span>{t('lobby.editor.speed') || 'Test Speed'}</span>
+                  </div>
+                  <span className="text-[10px] text-gray-400 font-mono">{(playerSpeed / 160).toFixed(1)}x</span>
+                </div>
+                
+                <input 
+                  type="range" 
+                  min="160" max="800" step="160" 
+                  value={playerSpeed}
+                  onChange={e => updatePlayerSpeed(e.target.value)}
+                  className="w-full h-1 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-blue-500 mb-2"
+                />
+                
+                <div className="flex gap-1">
+                  {[160, 320, 800].map(s => (
+                    <button
+                      key={s}
+                      onClick={() => updatePlayerSpeed(s)}
+                      className={`flex-1 py-0.5 rounded text-[8px] border transition-all
+                        ${playerSpeed === s 
+                          ? 'bg-blue-600/20 border-blue-500 text-blue-400' 
+                          : 'bg-gray-900 border-gray-800 text-gray-500 hover:text-gray-300'}`}
+                    >
+                      {s === 160 ? '1x' : (s === 320 ? '2x' : '5x')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-[8px] text-gray-600 mt-2 leading-tight">
                 {moveMode === 'camera'
                   ? `🎥 ${t('lobby.editor.camera_tooltip')}`
                   : `🧍 ${t('lobby.editor.character_tooltip')}`}
@@ -682,7 +729,7 @@ export const MapEditorUI = ({ gameRef }) => {
 
             {/* Texture / Sprites */}
             <Section title={t('lobby.editor.texture')}>
-              {activeTile === 'floor' && (
+              {(activeTile === 'floor' || activeTile === 'exit') && (
                 <FloorGrid active={activeTexture} onSelect={selectTexture} />
               )}
               {activeTile === 'forest' && (
@@ -720,13 +767,13 @@ export const MapEditorUI = ({ gameRef }) => {
                   active={activeTexture} onSelect={selectTexture} scaleTarget={32}
                 />
               )}
-              {!['floor', 'forest', 'build', 'wall', 'store', 'furniture'].includes(activeTile) && (
+              {!['floor', 'forest', 'build', 'wall', 'store', 'furniture', 'exit'].includes(activeTile) && (
                 <p className="text-[10px] text-gray-600 italic">{t('lobby.editor.no_texture_options')}</p>
               )}
             </Section>
 
             {/* Build portal settings */}
-            {activeTile === 'build' && (
+            {(activeTile === 'build' || activeTile === 'exit') && (
               <Section title={t('lobby.editor.portal_config')} defaultOpen={true}>
                 {/* Scale */}
                 <div className="mb-2">
@@ -821,7 +868,7 @@ export const MapEditorUI = ({ gameRef }) => {
                     className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none">
                     <option value="">{t('lobby.editor.none')}...</option>
                     {npcDefinitions.map(d => (
-                      <option key={d.id} value={d.id}>{d.name} ({d.character_id})</option>
+                      <option key={d.id} value={d.id}>{d.name} (ID: {d.id})</option>
                     ))}
                   </select>
                 </div>
@@ -834,7 +881,9 @@ export const MapEditorUI = ({ gameRef }) => {
                     {availableMissions.length === 0 && (
                       <p className="text-[10px] text-gray-500 italic">{t('lobby.editor.no_missions_found') || 'No missions found'}</p>
                     )}
-                    {availableMissions.map(m => (
+                    {availableMissions
+                      .filter(m => m.scene_key === currentSettings.sceneKey || !currentSettings.sceneKey) // Filter by map
+                      .map(m => (
                       <label key={m.id} className="flex items-center gap-2 py-1 cursor-pointer group">
                         <input 
                           type="checkbox" 
@@ -857,6 +906,11 @@ export const MapEditorUI = ({ gameRef }) => {
                         <span className="text-[10px] text-gray-300 group-hover:text-white truncate">{m.title}</span>
                       </label>
                     ))}
+                    {availableMissions.filter(m => m.scene_key === currentSettings.sceneKey).length === 0 && (
+                      <p className="text-[10px] text-gray-500 italic p-2">
+                        {t('lobby.editor.no_missions_for_scene') || 'No hay misiones para este mapa.'}
+                      </p>
+                    )}
                   </div>
                 </div>
                 

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useGameStore } from '../../store/gameStore';
-import { Bell } from 'lucide-react';
+import { Bell, Home } from 'lucide-react';
 import SettingsMenu from '../common/SettingsMenu';
 
 export const BottomHUD = () => {
     const { t } = useTranslation();
-    const { activeChat, chatRequests } = useGameStore();
+    const { activeChat, chatRequests, currentMapKey } = useGameStore();
     const [menuOpen, setMenuOpen] = useState(false);
     const [initialTab, setInitialTab] = useState('notifications');
 
@@ -15,12 +15,36 @@ export const BottomHUD = () => {
         setMenuOpen(true);
     };
 
+    const handleReturnToLobby = () => {
+        window.dispatchEvent(new CustomEvent('lobby-change-map', {
+            detail: { 
+                targetMap: 'lobby',
+                targetX: 0,
+                targetY: 0
+            }
+        }));
+    };
+
     const hasNotifications = chatRequests.length > 0 || activeChat;
+    const isNotInLobby = currentMapKey && currentMapKey !== 'lobby';
 
     return (
         <>
-            {/* Single fixed notification bell — always visible */}
-            <div className="fixed bottom-6 right-6 z-50">
+            {/* HUD Buttons Container */}
+            <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+                {/* Return to Lobby Button - Only visible when away */}
+                {isNotInLobby && (
+                    <button
+                        onClick={handleReturnToLobby}
+                        className="relative w-14 h-14 bg-[var(--color-orange-vibrant)] border-2 border-[var(--color-gold)] hover:bg-[var(--color-accent-blue)] rounded-full text-white shadow-2xl backdrop-blur-md transition-all duration-200 hover:scale-110 active:scale-95 flex items-center justify-center group animate-in slide-in-from-bottom-5"
+                        title="Volver al Lobby"
+                    >
+                        <Home size={24} />
+                        <span className="absolute -top-1 -right-1 bg-black text-[8px] px-1 font-bold text-white uppercase border border-white/20">EXIT</span>
+                    </button>
+                )}
+
+                {/* Single fixed notification bell — always visible */}
                 <button
                     onClick={() => openMenu('notifications')}
                     className="relative w-14 h-14 bg-gray-900/90 border border-gray-700 hover:border-blue-500/60 rounded-full text-gray-400 hover:text-white shadow-2xl backdrop-blur-md transition-all duration-200 hover:scale-110 active:scale-95 flex items-center justify-center group"

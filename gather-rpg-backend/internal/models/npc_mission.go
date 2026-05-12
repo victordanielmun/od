@@ -27,6 +27,7 @@ type NPCType string
 
 const (
 	NPCTypeQuest    NPCType = "quest_giver"
+	NPCTypeMaster   NPCType = "quest_master"
 	NPCTypeShop     NPCType = "merchant"
 	NPCTypeGuide    NPCType = "guide"
 	NPCTypeAmbient  NPCType = "other"
@@ -98,6 +99,7 @@ type NPCDefinition struct {
 	ID              uint      `gorm:"primaryKey" json:"id"`
 	Name            string    `gorm:"size:100;not null" json:"name"`
 	Sprite          string    `gorm:"size:100;not null" json:"sprite"`
+	Greeting        string    `json:"greeting"`
 	Type            NPCType   `gorm:"type:npc_type;default:'other'" json:"type"`
 	DefaultState    NPCState  `gorm:"type:npc_state;default:'idle'" json:"default_state"`
 	InteractionMode string    `gorm:"size:20;default:'hybrid'" json:"interaction_mode"` // "hybrid", "audio_only", "text_only"
@@ -121,6 +123,9 @@ type NPCTemplate struct {
 	MovementType      string        `gorm:"size:20;default:'static'" json:"movement_type"`
 	MovementRange     int           `gorm:"default:0" json:"movement_range"`
 	MovementSpeed     int           `gorm:"default:50" json:"movement_speed"`
+	Instructions      string        `json:"instructions"`      // Custom AI instructions for this instance
+	SuccessMessage    string        `json:"success_message"`  // Message shown when "purpose" is fulfilled
+	Greeting          string        `json:"greeting"`         // Custom initial greeting for this instance
 	CreatedAt         time.Time     `json:"created_at"`
 }
 
@@ -190,6 +195,7 @@ type ConversationMessage struct {
 	PlayerInput      string            `json:"player_input"`
 	PronunciationScore float32         `json:"pronunciation_score"`
 	NPCResponse      string            `json:"npc_response"`
+	NPCResponseES    string            `json:"npc_response_es"`
 	NPCState         NPCState          `gorm:"type:npc_state;default:'talking'" json:"npc_state"`
 	PronunciationEval PronunciationEval `gorm:"type:pronunciation_eval;default:'none'" json:"pronunciation_eval"`
 	PronunciationMsg string            `json:"pronunciation_message"`

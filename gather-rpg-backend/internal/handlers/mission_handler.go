@@ -43,6 +43,7 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 		ID             uint             `json:"id"`
 		Title          string           `json:"title"`
 		DescriptionEn  string           `json:"description_en"`
+		ObjectiveEn    string           `json:"objective_en"`
 		Tasks          []TaskWithStatus `json:"tasks"`
 		OverallStatus  string           `json:"status"`
 	}
@@ -73,6 +74,7 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 			ID:            m.ID,
 			Title:         m.Title,
 			DescriptionEn: m.DescriptionEn,
+			ObjectiveEn:   m.ObjectiveEn,
 			OverallStatus: string(progress.Status),
 			Tasks:         taskStatuses,
 		})
@@ -85,7 +87,23 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 	uID, _ := strconv.ParseUint(tmplIDStr, 10, 32)
 	tmplID := uint(uID)
 
-	missions, err := h.Service.GetNPCMissions(tmplID)
+	// Fetch NPC info to check for Type and Shop
+	var tmpl models.NPCTemplate
+	if err := database.DB.Preload("NPCDefinition.Shop.Items").First(&tmpl, tmplID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "NPC Template not found"})
+	}
+
+	var missions []models.Mission
+	var err error
+
+	// LOGIC: If NPC is a quest_master (Portal), show ALL active missions.
+	// Otherwise, show only missions specifically linked to this NPC.
+	if tmpl.NPCDefinition.Type == models.NPCTypeMaster {
+		missions, err = h.Service.GetAllMissions()
+	} else {
+		missions, err = h.Service.GetNPCMissions(tmplID)
+	}
+
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -93,38 +111,97 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 	// Get player ID from context
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {
-		return c.JSON(missions)
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 	}
 	userID, _ := uuid.Parse(userIDStr)
 
 	type MissionSummary struct {
-		ID          uint   `json:"id"`
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		Status      string `json:"status"`
+		ID                uint   `json:"id"`
+		Title             string `json:"title"`
+		Description       string `json:"description"`
+		Objective         string `json:"objective"`
+		Status            string `json:"status"`
+		SceneKey          string `json:"scene_key"`
+		PlayerInstruction string `json:"player_instruction"`
 	}
 
 	type NPCMissionHub struct {
 		NPCName    string           `json:"npc_name"`
+		NPCType    string           `json:"npc_type"`
+		Greeting   string           `json:"greeting"`
 		IsMerchant bool             `json:"is_merchant"`
 		Shop       *models.Shop     `json:"shop"`
 		Missions   []MissionSummary `json:"missions"`
 	}
 
-	// Fetch NPC info to check for Shop
-	var tmpl models.NPCTemplate
-	if err := database.DB.Preload("NPCDefinition.Shop.Items").First(&tmpl, tmplID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "NPC Template not found"})
-	}
-
 	missionSummaries := make([]MissionSummary, 0)
 	for _, m := range missions {
+		// Only show active missions
+		if m.Status != "active" {
+			continue
+		}
+		
 		progress, _ := h.Service.GetProgress(userID, m.ID)
+		tasks, _ := h.Service.GetTasks(m.ID)
+
+		var completedMap map[string]bool
+		if progress != nil && progress.TasksCompleted != nil {
+			json.Unmarshal(progress.TasksCompleted, &completedMap)
+		}
+		if completedMap == nil {
+			completedMap = make(map[string]bool)
+		}
+
+		currentInstruction := m.DescriptionEn
+		
+		// If NPC is not a master, prioritize finding a task or role SPECIFIC to this NPC
+		if tmpl.NPCDefinition.Type != models.NPCTypeMaster {
+			// 1. Try to find a specific role for this NPC/Mission
+			role, _ := h.Service.Repo.GetMissionRole(tmpl.ID, m.ID)
+			if role != nil && role.TaskDescription != "" {
+				currentInstruction = role.TaskDescription
+			}
+
+			// 2. Try to find the most relevant task for this NPC (incomplete prioritized, then any)
+			var npcTasks []models.MissionTask
+			for _, t := range tasks {
+				if t.TargetNPCTemplateID != nil && *t.TargetNPCTemplateID == tmpl.ID {
+					npcTasks = append(npcTasks, t)
+				}
+			}
+
+			if len(npcTasks) > 0 {
+				// Use first incomplete task for this NPC, otherwise use the last task they had
+				foundIncomplete := false
+				for _, nt := range npcTasks {
+					if !completedMap[fmt.Sprint(nt.ID)] {
+						currentInstruction = nt.DescriptionEn
+						foundIncomplete = true
+						break
+					}
+				}
+				if !foundIncomplete {
+					currentInstruction = npcTasks[len(npcTasks)-1].DescriptionEn
+				}
+			}
+		} else {
+			// If NPC is a Quest Master, show the first GLOBAL incomplete task
+			for _, t := range tasks {
+				if !completedMap[fmt.Sprint(t.ID)] {
+					currentInstruction = t.DescriptionEn
+					break
+				}
+			}
+		}
+
 		missionSummaries = append(missionSummaries, MissionSummary{
-			ID:          m.ID,
-			Title:       m.Title,
-			Description: m.DescriptionEn,
-			Status:      string(progress.Status),
+			ID:                m.ID,
+			Title:             m.Title,
+			Description:       m.DescriptionEn,
+			Objective:         m.ObjectiveEn,
+			Status:            string(progress.Status),
+			SceneKey:          m.SceneKey,
+			PlayerInstruction: currentInstruction,
 		})
 	}
 
@@ -133,8 +210,15 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		shopPtr = &tmpl.NPCDefinition.Shop
 	}
 
+	greeting := tmpl.NPCDefinition.Greeting
+	if tmpl.Greeting != "" {
+		greeting = tmpl.Greeting
+	}
+
 	return c.JSON(NPCMissionHub{
 		NPCName:    tmpl.NPCDefinition.Name,
+		NPCType:    string(tmpl.NPCDefinition.Type),
+		Greeting:   greeting,
 		IsMerchant: tmpl.NPCDefinition.ShopID != nil,
 		Shop:       shopPtr,
 		Missions:   missionSummaries,

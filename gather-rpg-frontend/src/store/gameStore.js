@@ -54,7 +54,7 @@ export const useGameStore = create((set, get) => ({
                     // Notify other users
                     const myId = String(useAuthStore.getState().user?.id || '');
                     const id = String(player.id);
-                    
+
                     if (myId && id === myId) {
                         return; // Ignore self-join in players map
                     }
@@ -66,8 +66,8 @@ export const useGameStore = create((set, get) => ({
 
                     set(state => {
                         const newPlayers = new Map(state.players);
-                        newPlayers.set(id, { 
-                            ...player, 
+                        newPlayers.set(id, {
+                            ...player,
                             id,
                             character_id: player.character_id || '1'
                         });
@@ -98,7 +98,7 @@ export const useGameStore = create((set, get) => ({
                 wsClient.on('positions_snapshot', ({ positions }) => {
                     const myId = String(useAuthStore.getState().user?.id || '');
                     console.log(`[gameStore] Received positions_snapshot for ${positions?.length || 0} players`);
-                    
+
                     set(state => {
                         const newPlayers = new Map(state.players);
                         if (positions && Array.isArray(positions)) {
@@ -114,11 +114,11 @@ export const useGameStore = create((set, get) => ({
 
                                 const existing = newPlayers.get(id);
                                 if (existing) {
-                                    newPlayers.set(id, { 
-                                        ...existing, 
-                                        x, 
-                                        y, 
-                                        anim: pos.anim || 'idle', 
+                                    newPlayers.set(id, {
+                                        ...existing,
+                                        x,
+                                        y,
+                                        anim: pos.anim || 'idle',
                                         direction: pos.direction || existing.direction,
                                         character_id: pos.character_id || existing.character_id || '1'
                                     });
@@ -165,10 +165,10 @@ export const useGameStore = create((set, get) => ({
                         const player = newPlayers.get(id);
                         if (player) {
                             console.log(`[gameStore] Position update for ${player.username} (ID: ${id}): (${Number(x).toFixed(1)}, ${Number(y).toFixed(1)}) | State: ${payload.anim || player.anim} | Dir: ${payload.direction || player.direction}`);
-                            newPlayers.set(id, { 
-                                ...player, 
-                                x: Number(x), 
-                                y: Number(y), 
+                            newPlayers.set(id, {
+                                ...player,
+                                x: Number(x),
+                                y: Number(y),
                                 anim: payload.anim || player.anim,
                                 direction: payload.direction || player.direction,
                                 character_id: payload.character_id || player.character_id || '1'
@@ -193,7 +193,7 @@ export const useGameStore = create((set, get) => ({
                     // payload is { positions: [ {user_id, x, y, ...}, ... ] }
                     const updates = payload.positions;
                     if (!updates || !Array.isArray(updates)) return;
-                    
+
                     console.log(`[gameStore] Received batched update for ${updates.length} players`);
 
                     const myId = String(useAuthStore.getState().user?.id || '');
@@ -370,6 +370,29 @@ export const useGameStore = create((set, get) => ({
                     // Send event to Phaser LobbyScene to show bubble
                     window.dispatchEvent(new CustomEvent('player-emoji-received', { detail: payload }));
                 });
+
+                wsClient.on('mission_completed', (payload) => {
+                    console.log("[gameStore] Mission completed event received:", payload);
+                    
+                    const { addNotification } = useNotificationStore.getState();
+                    const title = payload.title || "Misión";
+                    addNotification('success', `🏆 ¡MISIÓN COMPLETADA: ${title}!`);
+                    
+                    // Clear active mission state
+                    set({ activeMission: null });
+
+                    // Auto-redirect to lobby after a few seconds to let players see the success message
+                    setTimeout(() => {
+                        console.log("[gameStore] Auto-redirecting to lobby after mission completion");
+                        window.dispatchEvent(new CustomEvent('lobby-change-map', {
+                            detail: { 
+                                targetMap: 'lobby',
+                                targetX: 0,
+                                targetY: 0
+                            }
+                        }));
+                    }, 4000);
+                });
             }
 
             wsClient.connect(token);
@@ -382,7 +405,7 @@ export const useGameStore = create((set, get) => ({
         // fully re-registers all WebSocket event handlers. Without this, a
         // logout + login cycle silently drops all server events.
         wsClient.removeAllListeners();
-        set({ 
+        set({
             isConnected: false,
             listenersInitialized: false,
             players: new Map(),
@@ -440,8 +463,8 @@ export const useGameStore = create((set, get) => ({
             wsClient.send('player_emoji', { emoji_id: emojiId, room_id: roomId });
             // Show bubble above OUR own sprite immediately (optimistic)
             const myId = useAuthStore.getState().user?.id;
-            window.dispatchEvent(new CustomEvent('player-emoji-received', { 
-                detail: { user_id: myId, emoji_id: emojiId } 
+            window.dispatchEvent(new CustomEvent('player-emoji-received', {
+                detail: { user_id: myId, emoji_id: emojiId }
             }));
         }
     },
@@ -463,7 +486,7 @@ export const useGameStore = create((set, get) => ({
 
     movePlayer: (x, y, direction = 'right', anim = 'idle') => {
         const timestamp = Date.now();
-        console.log(`[gameStore] Sending update_position (self): (${x.toFixed(1)}, ${y.toFixed(1)}) | State: ${anim} | Dir: ${direction}`);
+        /* console.log(`[gameStore] Sending update_position (self): (${x.toFixed(1)}, ${y.toFixed(1)}) | State: ${anim} | Dir: ${direction}`); */
         wsClient.send('update_position', { x, y, direction, anim, is_moving: anim !== 'idle', timestamp });
 
         // Optimistic update for self
@@ -556,18 +579,18 @@ export const useGameStore = create((set, get) => ({
             const response = await api.post('/shop/buy', { item_id: itemId, quantity });
             if (response.data.status === 'success') {
                 get().fetchInventory();
-                
+
                 // Update gold and stats in authStore for UI reactivity
                 const { user } = useAuthStore.getState();
                 if (user && response.data.player_stats) {
-                    useAuthStore.setState({ 
-                        user: { 
-                            ...user, 
-                            stats: response.data.player_stats 
-                        } 
+                    useAuthStore.setState({
+                        user: {
+                            ...user,
+                            stats: response.data.player_stats
+                        }
                     });
                 }
-                
+
                 useNotificationStore.getState().addNotification('success', '¡Compra realizada con éxito!');
                 return true;
             }

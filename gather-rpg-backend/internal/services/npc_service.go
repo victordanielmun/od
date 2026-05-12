@@ -23,24 +23,25 @@ func NewNPCService(repo *repository.NPCRepository, missionRepo *repository.Missi
 // EnsureRoomInstances checks if the NPCs for a scene have been instantiated in the room.
 // If not, it creates them from the templates.
 func (s *NPCService) EnsureRoomInstances(roomID uuid.UUID, sceneKey string) ([]models.NPCRoomInstance, error) {
-	// 1. Get existing instances
-	instances, err := s.Repo.GetRoomInstancesByRoom(roomID)
+	// 1. Get ALL existing instances for this room
+	allInstances, err := s.Repo.GetRoomInstancesByRoom(roomID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Get templates for this scene
+	// 2. Get templates for THIS specific scene
 	templates, err := s.Repo.GetTemplatesByScene(sceneKey)
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. Compare and create missing instances
+	// 3. Map to keep track of what's already instantiated
 	instanceMap := make(map[uint]bool)
-	for _, inst := range instances {
+	for _, inst := range allInstances {
 		instanceMap[inst.NPCTemplateID] = true
 	}
 
+	// 4. Compare and create missing instances ONLY for the templates in this scene
 	for _, tmpl := range templates {
 		if _, exists := instanceMap[tmpl.ID]; !exists {
 			newInst := &models.NPCRoomInstance{
@@ -53,11 +54,29 @@ func (s *NPCService) EnsureRoomInstances(roomID uuid.UUID, sceneKey string) ([]m
 			}
 			// Preload the template info for the returned list
 			newInst.NPCTemplate = tmpl
-			instances = append(instances, *newInst)
+			allInstances = append(allInstances, *newInst)
 		}
 	}
 
-	return instances, nil
+	// 5. CRITICAL FIX: Filter allInstances to only return those belonging to the CURRENT sceneKey
+	// Previously, we were returning instances from other scenes if they were in the same room.
+	filteredInstances := make([]models.NPCRoomInstance, 0)
+	for _, inst := range allInstances {
+		// Preload template if missing (GORM sometimes doesn't if it was already in allInstances)
+		if inst.NPCTemplate.ID == 0 {
+			// More efficient: GORM auto-preload is better handled in the repository, 
+			// but here we filter by the pre-loaded template's scene_key.
+			var fullTmpl models.NPCTemplate
+			database.DB.Preload("NPCDefinition").First(&fullTmpl, inst.NPCTemplateID)
+			inst.NPCTemplate = fullTmpl
+		}
+
+		if inst.NPCTemplate.SceneKey == sceneKey {
+			filteredInstances = append(filteredInstances, inst)
+		}
+	}
+
+	return filteredInstances, nil
 }
 
 func (s *NPCService) GetRoomInstance(roomID uuid.UUID, tmplID uint) (*models.NPCRoomInstance, error) {
@@ -94,6 +113,43 @@ func (s *NPCService) DeleteNPCTemplate(id uint) error {
 	return s.Repo.DeleteTemplate(id)
 }
 
+func (s *NPCService) GetAllTemplates() ([]models.NPCTemplate, error) {
+	return s.Repo.GetAllTemplates()
+}
+
+func (s *NPCService) GetTemplatesByScene(sceneKey string) ([]models.NPCTemplate, error) {
+	return s.Repo.GetTemplatesByScene(sceneKey)
+}
+
+func (s *NPCService) GetTemplatesByDefinition(defID uint) ([]models.NPCTemplate, error) {
+	return s.Repo.GetTemplatesByDefinition(defID)
+}
+
+func (s *NPCService) UpdateTemplateMissions(tmplID uint, missionIDs []uint, role string, instructions string, successMsg string, greeting string) error {
+	// 1. Update Template metadata
+	var tmpl models.NPCTemplate
+	if err := database.DB.First(&tmpl, tmplID).Error; err == nil {
+		tmpl.Instructions = instructions
+		tmpl.SuccessMessage = successMsg
+		tmpl.Greeting = greeting
+		database.DB.Save(&tmpl)
+	}
+
+	// 2. Sync Missions
+	s.syncMissionsForTemplate(tmplID, missionIDs, role)
+	return nil
+}
+
+// PatchTemplateInstructions updates ONLY instructions, success_message and greeting,
+// preserving any existing mission role assignments.
+func (s *NPCService) PatchTemplateInstructions(tmplID uint, instructions string, successMsg string, greeting string) error {
+	return database.DB.Model(&models.NPCTemplate{}).Where("id = ?", tmplID).Updates(map[string]interface{}{
+		"instructions":   instructions,
+		"success_message": successMsg,
+		"greeting":        greeting,
+	}).Error
+}
+
 func (s *NPCService) GetNPCDefinitions() ([]models.NPCDefinition, error) {
 	return s.Repo.GetAllDefinitions()
 }
@@ -113,12 +169,13 @@ func (s *NPCService) DeleteNPCDefinition(id uint) error {
 // SyncTemplatesFromMap parses the walls JSON and ensures NPCTemplates exist for each npcZone.
 func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) error {
 	type mapObject struct {
-		X            int    `json:"x"`
-		Y            int    `json:"y"`
-		DefinitionID string `json:"definitionId"`
-		Role         string `json:"role"`
-		MissionID    string `json:"missionId"`
-		TemplateID   string `json:"templateId"`
+		X            int      `json:"x"`
+		Y            int      `json:"y"`
+		DefinitionID string   `json:"definitionId"`
+		Role         string   `json:"role"`
+		MissionID    string   `json:"missionId"`
+		MissionIDs   []string `json:"missionIds"`
+		TemplateID   string   `json:"templateId"`
 	}
 	type mapConfig struct {
 		NPCZones []mapObject `json:"npcZones"`
@@ -126,8 +183,11 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 
 	var config mapConfig
 	if err := json.Unmarshal([]byte(wallsJSON), &config); err != nil {
+		log.Printf("[NPCService] Error unmarshaling walls_json: %v", err)
 		return err
 	}
+
+	log.Printf("[NPCService] Syncing Map '%s'. Found %d NPC zones.", sceneKey, len(config.NPCZones))
 
 	// 1. Get current templates for this scene
 	existing, err := s.Repo.GetTemplatesByScene(sceneKey)
@@ -141,25 +201,22 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 	for _, zone := range config.NPCZones {
 		defID, _ := strconv.ParseUint(zone.DefinitionID, 10, 32)
 		if defID == 0 {
+			log.Printf("[NPCService] Skipping zone with missing definitionId")
 			continue
 		}
 
 		// 0. Fetch definition to check Role
 		var def models.NPCDefinition
 		if err := database.DB.First(&def, defID).Error; err != nil {
-			log.Printf("[NPCService] Skipping sync for unknown NPC definition: %d", defID)
+			log.Printf("[NPCService] CRITICAL: Skipping sync for unknown NPC definition ID: %d", defID)
 			continue
 		}
 		
-		missionID := uint(0)
-		if zone.MissionID != "" && def.Type == models.NPCTypeQuest {
-			mid, _ := strconv.ParseUint(zone.MissionID, 10, 32)
-			missionID = uint(mid)
-		}
+		log.Printf("[NPCService] Processing Zone for NPC: %s (ID: %d) at [%d, %d]", def.Name, def.ID, zone.X, zone.Y)
 
-		roleStr := ""
-		if def.Type == models.NPCTypeQuest {
-			roleStr = zone.Role
+		roleStr := zone.Role
+		if def.Type == models.NPCTypeQuest && roleStr == "" {
+			roleStr = string(models.NPCRoleTask)
 		}
 
 		tID := uint(0)
@@ -191,32 +248,61 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 			}
 		}
 
-			if foundTmpl != nil {
-				// Update
-				foundTmpl.PositionX = zone.X
-				foundTmpl.PositionY = zone.Y
-				s.Repo.UpdateTemplate(foundTmpl)
-				matchedTemplateIDs[foundTmpl.ID] = true
-				
-				// Sync Mission Role if provided AND NPC is Quest Giver
-				if missionID > 0 || roleStr != "" {
-					s.syncMissionRole(foundTmpl.ID, missionID, roleStr)
+		var finalTmplID uint
+		if foundTmpl != nil {
+			// Update
+			foundTmpl.PositionX = zone.X
+			foundTmpl.PositionY = zone.Y
+			s.Repo.UpdateTemplate(foundTmpl)
+			matchedTemplateIDs[foundTmpl.ID] = true
+			finalTmplID = foundTmpl.ID
+		} else {
+			// Create
+			newTmpl := &models.NPCTemplate{
+				SceneKey:        sceneKey,
+				NPCDefinitionID: uint(defID),
+				PositionX:       zone.X,
+				PositionY:       zone.Y,
+			}
+			if err := s.Repo.CreateTemplate(newTmpl); err == nil {
+				matchedTemplateIDs[newTmpl.ID] = true
+				finalTmplID = newTmpl.ID
+			}
+		}
+
+		// SYNC MISSIONS (v2): Handle plural missionIds and orphan cleanup
+		if finalTmplID > 0 && def.Type == models.NPCTypeQuest {
+			// Collect all missions for this zone
+			targetMissions := make([]uint, 0)
+			
+			// 1. Support plural missionIds (handle both string and numeric via struct)
+			for _, midStr := range zone.MissionIDs {
+				mid, _ := strconv.ParseUint(midStr, 10, 32)
+				if mid > 0 {
+					targetMissions = append(targetMissions, uint(mid))
 				}
-			} else {
-				// Create
-				newTmpl := &models.NPCTemplate{
-					SceneKey:        sceneKey,
-					NPCDefinitionID: uint(defID),
-					PositionX:       zone.X,
-					PositionY:       zone.Y,
-				}
-				if err := s.Repo.CreateTemplate(newTmpl); err == nil {
-					matchedTemplateIDs[newTmpl.ID] = true
-					if missionID > 0 || roleStr != "" {
-						s.syncMissionRole(newTmpl.ID, missionID, roleStr)
+			}
+			
+			// 2. Backward compatibility: single missionId
+			if zone.MissionID != "" {
+				mid, _ := strconv.ParseUint(zone.MissionID, 10, 32)
+				if mid > 0 {
+					exists := false
+					for _, m := range targetMissions {
+						if m == uint(mid) {
+							exists = true
+							break
+						}
+					}
+					if !exists {
+						targetMissions = append(targetMissions, uint(mid))
 					}
 				}
 			}
+
+			// Sync the list to database
+			s.syncMissionsForTemplate(finalTmplID, targetMissions, roleStr)
+		}
 	}
 
 	// 3. Delete orphans
@@ -229,16 +315,23 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 	return nil
 }
 
+func (s *NPCService) syncMissionsForTemplate(templateID uint, missionIDs []uint, role string) {
+	log.Printf("[NPCService] Cleaning and Syncing Missions for Tmpl=%d: Count=%d", templateID, len(missionIDs))
+	
+	// 1. Delete ALL existing roles for this template (Reset)
+	database.DB.Where("npc_template_id = ?", templateID).Delete(&models.NPCMissionRole{})
+	
+	// 2. Insert new ones
+	for _, mID := range missionIDs {
+		newRole := &models.NPCMissionRole{
+			NPCTemplateID: templateID,
+			MissionID:     mID,
+			Role:          models.NPCRole(role),
+		}
+		s.MissionRepo.CreateOrUpdateMissionRole(newRole)
+	}
+}
+
 func (s *NPCService) syncMissionRole(templateID uint, missionID uint, role string) {
-	log.Printf("[NPCService] Syncing Mission Role: Tmpl=%d, Mission=%d, Role=%s", templateID, missionID, role)
-	
-	newRole := &models.NPCMissionRole{
-		NPCTemplateID: templateID,
-		MissionID:     missionID,
-		Role:          models.NPCRole(role),
-	}
-	
-	if err := s.MissionRepo.CreateOrUpdateMissionRole(newRole); err != nil {
-		log.Printf("[NPCService] Error syncing mission role: %v", err)
-	}
+	s.syncMissionsForTemplate(templateID, []uint{missionID}, role)
 }

@@ -25,6 +25,7 @@ export const LobbyLayout = () => {
   const [pendingChallengeId, setPendingChallengeId] = useState(null);
   const [challengeChatInput, setChallengeChatInput] = useState('');
   const [npcData, setNpcData] = useState(null);
+  const [showMissionBanner, setShowMissionBanner] = useState(false);
   const challengeMessagesEndRef = useRef(null);
 
   const activeChallengeId = useGameStore(state => state.activeChallengeId);
@@ -139,6 +140,21 @@ export const LobbyLayout = () => {
     window.dispatchEvent(new CustomEvent('phaser-camera-zoom', { detail: { sceneKey: 'LobbyScene', direction: 'out' } }));
   };
 
+  useEffect(() => {
+    const handleGameReady = () => {
+      // If we have an active mission but haven't shown the banner yet, show it!
+      const mission = useGameStore.getState().activeMission;
+      if (mission) {
+        setShowMissionBanner(true);
+        // Hide after 6 seconds
+        setTimeout(() => setShowMissionBanner(false), 6000);
+      }
+    };
+
+    window.addEventListener('game-ready', handleGameReady);
+    return () => window.removeEventListener('game-ready', handleGameReady);
+  }, []);
+
   const gameRef = useRef(null); // Add ref to control game from UI
   const [isEditorMode, setIsEditorMode] = useState(false);
 
@@ -166,8 +182,24 @@ export const LobbyLayout = () => {
       {/* Notification Layer (Z-Index 100) */}
       <NotificationContainer />
 
+      {/* Mission Welcome Banner */}
+      {showMissionBanner && activeMission && (
+        <div className="absolute top-10 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-top-10 duration-1000 pointer-events-none">
+          <div className="bg-black/60 backdrop-blur-xl border-t-4 border-b-4 border-yellow-500/50 p-8 shadow-[0_0_50px_rgba(234,179,8,0.3)] flex flex-col items-center min-w-[500px]">
+            <div className="text-yellow-500 font-medieval text-xs uppercase tracking-[0.5em] mb-2 opacity-80">Aventura Iniciada</div>
+            <h1 className="text-white font-medieval text-5xl uppercase tracking-tighter drop-shadow-2xl mb-4">
+              {activeMission.title}
+            </h1>
+            <div className="h-0.5 w-32 bg-gradient-to-r from-transparent via-yellow-500 to-transparent"></div>
+            <div className="mt-4 text-yellow-200/70 font-serif italic text-lg tracking-wide">
+              {activeMission.scene_key || 'Misión Desconocida'}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Private Map PIN Toast (Z-Index 200) — appears when a new private room is created */}
-      <PrivateMapPINToast />
+      {/* <PrivateMapPINToast /> */}
 
       {/* HUD & Tracker */}
       {!isEditorMode && (

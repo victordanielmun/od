@@ -59,4 +59,7 @@ const (
 	// Emojis
 	MsgPlayerEmoji    = "player_emoji"
 	MsgEmojiBroadcast = "emoji_broadcast"
+
+	// Missions
+	MsgMissionCompleted = "mission_completed"
 )

@@ -7,7 +7,7 @@ export class NPCSprite extends Phaser.GameObjects.Container {
     
     // NORMALIZE ID: If it comes as 'sprite2' or '2', we want just '2'
     // to match the keys in NPCConfig.js and the loaded assets.
-    this.npcId = String(charId || '2').replace('sprite', '');
+    this.npcId = String(charId || '1').replace('sprite', '');
     this.username = username;
 
     // Usamos el ID normalizado para cargar la textura de cuerpo
@@ -37,7 +37,7 @@ export class NPCSprite extends Phaser.GameObjects.Container {
     this.add([this.sprite, this.nameTag]);
     
     // Animación inicial
-    this.playAnimation('body-idle');
+    this.playAnimation('idle-waiting');
   }
 
   playAnimation(animName) {
@@ -47,13 +47,22 @@ export class NPCSprite extends Phaser.GameObjects.Container {
     // Fallback: si la animación no existe, intentamos con la 'body-idle' básica
     if (!this.scene.anims.exists(key)) {
         console.warn(`[NPCSprite] Animación no encontrada: ${key}. Usando fallback idle.`);
-        key = `npc-${this.npcId}-body-idle`;
+        key = `npc-${this.npcId}-idle-waiting`;
     }
 
-    if (this.scene.anims.exists(key)) {
+    // Final safety check before playing
+    const anim = this.scene.anims.get(key);
+    if (anim && anim.frames && anim.frames.length > 0) {
       if (this.currentAnim === key && this.sprite.anims.isPlaying) return;
       this.sprite.play(key, true);
       this.currentAnim = key;
+    } else {
+      console.warn(`[NPCSprite] Animation ${key} is invalid or has no frames.`);
+      // If we can't play, at least try to set a static frame if possible
+      const texture = this.scene.textures.get(this.sprite.texture.key);
+      if (texture && texture.has('idle')) {
+          this.sprite.setFrame('idle');
+      }
     }
   }
 

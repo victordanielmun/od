@@ -26,6 +26,12 @@ type Config struct {
 
 	DeepSeekAPIKey string
 	DeepSeekModel  string
+
+	AIProvider     string
+	OpenAIAPIKey   string
+	OpenAIModel    string
+	MistralAPIKey  string
+	MistralModel   string
 }
 
 func LoadConfig() *Config {
@@ -53,6 +59,12 @@ func LoadConfig() *Config {
 
 		DeepSeekAPIKey: getEnv("DEEPSEEK_API_KEY", ""),
 		DeepSeekModel:  getEnv("DEEPSEEK_MODEL", "deepseek-chat"),
+
+		AIProvider:     getEnv("AI_PROVIDER", "deepseek"),
+		OpenAIAPIKey:   getEnv("OPENAI_API_KEY", ""),
+		OpenAIModel:    getEnv("OPENAI_MODEL", "gpt-4o"),
+		MistralAPIKey:  getEnv("MISTRAL_API_KEY", ""),
+		MistralModel:   getEnv("MISTRAL_MODEL", "mistral-large-latest"),
 	}
 
 	log.Printf("Config Loaded: DB_HOST=%s, DB_PORT=%s, DB_NAME=%s", cfg.DBHost, cfg.DBPort, cfg.DBName)

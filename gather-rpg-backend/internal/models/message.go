@@ -161,3 +161,11 @@ type EmojiBroadcast struct {
 	EmojiID  string    `json:"emoji_id"`
 	RoomID   string    `json:"room_id"`
 }
+
+type MissionCompletedBroadcast struct {
+	MissionID     uint   `json:"mission_id"`
+	Title         string `json:"title"`
+	DescriptionEn string `json:"description_en"`
+	RewardGold    int    `json:"reward_gold"`
+	RoomID        string `json:"room_id"`
+}

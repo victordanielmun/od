@@ -1,7 +1,7 @@
 // ⚙️  AUTO-GENERADO por map_npc_frames.cjs
 // Para regenerar: node map_npc_frames.cjs
 export const animationsByNPC = {
-  "2": {
+  "1": {
     "portrait-idle": {
       "type": "portrait",
       "frames": [
