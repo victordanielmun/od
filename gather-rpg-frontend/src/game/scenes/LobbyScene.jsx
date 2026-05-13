@@ -116,17 +116,30 @@ export class LobbyScene extends Phaser.Scene {
 
     // Load Atlases — guard with textures.exists() to prevent 'frame already exists'
     // warnings when the scene restarts (e.g., map portal transition).
+    // --- Optimized Asset Loading ---
+    // Only load what's needed for the current map, or everything if admin (for editor)
+    const sceneKey = this.initData?.map || 'lobby';
+    const isStoreMap = sceneKey.toLowerCase().includes('store') || sceneKey.toLowerCase().includes('pantry') || sceneKey.toLowerCase().includes('shop');
+    const isNatureMap = sceneKey.toLowerCase().includes('forest') || sceneKey.toLowerCase().includes('woods') || sceneKey.toLowerCase().includes('garden') || sceneKey === 'lobby';
+    const isAdmin = useAuthStore.getState().isAdmin();
+
+    // Core Atlases — always needed
     if (!this.textures.exists('terrain'))
       this.load.atlas('terrain', '/terrain/terrain-spritesheet.png', '/terrain/terrain-sprites.json');
-    if (!this.textures.exists('forest'))
-      this.load.atlas('forest', '/forest/forest-spritesheet.png', '/forest/forest-sprites.json');
-    if (!this.textures.exists('builds'))
-      this.load.atlas('builds', '/builds/build-spritesheet.png', '/builds/build-sprites.json');
     if (!this.textures.exists('walls'))
       this.load.atlas('walls', '/wall/wall-spritesheet.png', '/wall/wall-sprites.json');
-    if (!this.textures.exists('store-tiles'))
+
+    // Conditional Atlases
+    if ((isNatureMap || isAdmin) && !this.textures.exists('forest'))
+      this.load.atlas('forest', '/forest/forest-spritesheet.png', '/forest/forest-sprites.json');
+    
+    if ((isNatureMap || isAdmin) && !this.textures.exists('builds'))
+      this.load.atlas('builds', '/builds/build-spritesheet.png', '/builds/build-sprites.json');
+
+    if ((isStoreMap || isAdmin) && !this.textures.exists('store-tiles'))
       this.load.atlas('store-tiles', '/store/tiles.png', '/store/tiles.json');
-    if (!this.textures.exists('store-furniture'))
+    
+    if ((isStoreMap || isAdmin) && !this.textures.exists('store-furniture'))
       this.load.atlas('store-furniture', '/store/furniture.png', '/store/furniture.json');
 
     // Load Audio (BGM) — guard to avoid re-loading on scene restart
@@ -816,7 +829,6 @@ export class LobbyScene extends Phaser.Scene {
         case 'clearAll': this.clearAllTiles(); break;
         case 'importMap': this.importMapConfig(value); break;
         case 'applyBuildMetadata': this.applyBuildMetadataToAll(); break;
-        case 'setTool': this.setEditorTool(value); break;
       }
     };
     window.addEventListener('editor-command', this.onEditorEvent);
@@ -2154,6 +2166,14 @@ export class LobbyScene extends Phaser.Scene {
       this.physics.add.collider(this.player, this.storeFurniture);
     }
 
+    // Add collision with existing NPCs and Other Players
+    if (this.npcs) {
+      this.npcs.forEach(npc => this.physics.add.collider(this.player, npc));
+    }
+    if (this.playerSprites) {
+      this.playerSprites.forEach(sprite => this.physics.add.collider(this.player, sprite));
+    }
+
     const cls = user?.characterClass || this.getRandomClass();
 
     // Camera follow (Round pixels = true, lerp = 0.1 for smooth)
@@ -2241,6 +2261,11 @@ export class LobbyScene extends Phaser.Scene {
 
     // Store in map
     this.playerSprites.set(id, newPlayer);
+
+    // Add collision between local player and this remote player
+    if (this.player && this.player.body) {
+      this.physics.add.collider(this.player, newPlayer);
+    }
   }
 
   updateOtherPlayer(id, player) {
@@ -2461,6 +2486,11 @@ export class LobbyScene extends Phaser.Scene {
     }
     this.npcs.push(container);
     this.npcSprites.set(tmpl.id, container);
+
+    // Add collision between local player and this NPC
+    if (this.player && this.player.body) {
+      this.physics.add.collider(this.player, container);
+    }
   }
 
   handleMissionUpdate(mission) {
@@ -2772,20 +2802,20 @@ export class LobbyScene extends Phaser.Scene {
         const data = npc.npcData;
         if (!data || data.movementType === 'static' || data.isTalking) {
             if (npc.body) npc.body.setVelocity(0);
-            // Ensure child PlayerSprite is idle
-            const sprite = npc.list.find(item => item instanceof PlayerSprite);
-            if (sprite) sprite.playAnimation('idle');
+            // Ensure child NPCSprite is idle
+            const sprite = npc.list.find(item => item instanceof NPCSprite);
+            if (sprite) sprite.playAnimation('idle-waiting');
             return;
         }
 
         if (data.movementType === 'wander') {
             const distToTarget = Phaser.Math.Distance.Between(npc.x, npc.y, data.targetX, data.targetY);
-            const sprite = npc.list.find(item => item instanceof PlayerSprite);
+            const sprite = npc.list.find(item => item instanceof NPCSprite);
 
             if (distToTarget < 5) {
                 // We reached the target
                 if (npc.body) npc.body.setVelocity(0);
-                if (sprite) sprite.playAnimation('idle');
+                if (sprite) sprite.playAnimation('idle-waiting');
 
                 // Wait before picking next target
                 if (time > data.moveTimer) {
@@ -2799,7 +2829,7 @@ export class LobbyScene extends Phaser.Scene {
                 // Move towards target
                 this.physics.moveTo(npc, data.targetX, data.targetY, data.movementSpeed);
                 if (sprite) {
-                    sprite.playAnimation('walk');
+                    sprite.playAnimation('walking');
                     // Flip sprite based on velocity
                     if (npc.body.velocity.x < 0) sprite.sprite.setFlipX(true);
                     else if (npc.body.velocity.x > 0) sprite.sprite.setFlipX(false);

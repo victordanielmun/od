@@ -37,12 +37,15 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
 
     this.add([this.sprite, this.nameTag]);
 
-    // Physics: Only add bodies for ourselves to prevent remote players 
-    // from colliding with each other or pushing the local player.
+    // Physics: Add bodies for everyone to enable collision.
+    scene.physics.add.existing(this);
+    this.body.setCircle(40, -40, -40); // Consistent hitbox
+    
     if (this.isSelf) {
-      scene.physics.add.existing(this);
-      this.body.setCircle(40, -40, -40); // Larger hitbox
       this.body.setCollideWorldBounds(true);
+    } else {
+      // Remote players should be solid but immovable by the local player
+      this.body.setImmovable(true);
     }
 
     this.currentAnim = `char-${this.characterId}-idle`;

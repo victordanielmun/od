@@ -58,7 +58,7 @@ class NPCPreviewScene extends Phaser.Scene {
         this.animSprite.setOrigin(0.5, 0.5);
 
         // Start with idle body
-        this.playAnim('body-idle');
+        this.playAnim('idle-waiting');
     }
 
     playAnim(animName) {
@@ -90,7 +90,7 @@ const NPCCard = ({ npcDef }) => {
     const canvasRef = useRef(null);
     const gameRef = useRef(null);
     const sceneRef = useRef(null);
-    const [activeAnim, setActiveAnim] = useState('body-idle');
+    const [activeAnim, setActiveAnim] = useState('idle-waiting');
 
     useEffect(() => {
         if (!canvasRef.current) return;
@@ -99,7 +99,7 @@ const NPCCard = ({ npcDef }) => {
         sceneRef.current = scene;
 
         const game = new Phaser.Game({
-            type: Phaser.AUTO,
+            type: Phaser.CANVAS,
             width: 300,
             height: 300,
             parent: canvasRef.current,
@@ -132,12 +132,12 @@ const NPCCard = ({ npcDef }) => {
     ];
 
     const bodyAnims = [
-        { key: 'body-idle', label: 'B-Idle', color: 'bg-indigo-600' },
-        { key: 'body-walk', label: 'B-Walk', color: 'bg-cyan-600' },
-        { key: 'body-talking', label: 'B-Talk', color: 'bg-teal-600' },
-        { key: 'body-happy', label: 'B-Happy', color: 'bg-orange-600' },
-        { key: 'body-sad', label: 'B-Sad', color: 'bg-pink-600' },
-        { key: 'body-die', label: 'B-Die', color: 'bg-red-900' },
+        { key: 'idle-waiting', label: 'B-Idle', color: 'bg-indigo-600' },
+        { key: 'walking', label: 'B-Walk', color: 'bg-cyan-600' },
+        { key: 'talking', label: 'B-Talk', color: 'bg-teal-600' },
+        { key: 'happy-grateful', label: 'B-Happy', color: 'bg-orange-600' },
+        { key: 'sad', label: 'B-Sad', color: 'bg-pink-600' },
+        { key: 'dying', label: 'B-Die', color: 'bg-red-900' },
     ];
 
     return (

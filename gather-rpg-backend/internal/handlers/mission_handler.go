@@ -224,3 +224,28 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		Missions:   missionSummaries,
 	})
 }
+
+func (h *MissionHandler) ValidateMissionCompletion(c *fiber.Ctx) error {
+	missionIDStr := c.Params("id")
+	mID, err := strconv.ParseUint(missionIDStr, 10, 32)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid Mission ID"})
+	}
+	missionID := uint(mID)
+
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+	userID, _ := uuid.Parse(userIDStr)
+
+	completed, mission, err := h.Service.IsMissionFullyCompleted(userID, missionID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"completed": completed,
+		"mission":   mission,
+	})
+}

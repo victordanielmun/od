@@ -1,1 +1,203 @@
-{"frames":[{"filename":"sprite1","frame":{"x":87,"y":1,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite2","frame":{"x":86,"y":3,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite3","frame":{"x":12,"y":4,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite4","frame":{"x":131,"y":7,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite5","frame":{"x":24,"y":8,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite6","frame":{"x":141,"y":11,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite7","frame":{"x":246,"y":14,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite8","frame":{"x":48,"y":16,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite9","frame":{"x":330,"y":18,"w":159,"h":145},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":159,"h":145},"sourceSize":{"w":159,"h":145}},{"filename":"sprite11","frame":{"x":19,"y":19,"w":141,"h":144},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":141,"h":144},"sourceSize":{"w":141,"h":144}},{"filename":"sprite12","frame":{"x":178,"y":19,"w":144,"h":144},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":144,"h":144},"sourceSize":{"w":144,"h":144}},{"filename":"sprite14","frame":{"x":326,"y":27,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite24","frame":{"x":411,"y":164,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite25","frame":{"x":286,"y":171,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite26","frame":{"x":19,"y":175,"w":142,"h":145},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":142,"h":145},"sourceSize":{"w":142,"h":145}},{"filename":"sprite29","frame":{"x":340,"y":176,"w":142,"h":144},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":142,"h":144},"sourceSize":{"w":142,"h":144}},{"filename":"sprite33","frame":{"x":178,"y":177,"w":144,"h":143},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":144,"h":143},"sourceSize":{"w":144,"h":143}},{"filename":"sprite36","frame":{"x":162,"y":213,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite47","frame":{"x":162,"y":322,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite48","frame":{"x":265,"y":325,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite49","frame":{"x":431,"y":326,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite50","frame":{"x":58,"y":329,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite51","frame":{"x":254,"y":329,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite52","frame":{"x":366,"y":330,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite53","frame":{"x":19,"y":335,"w":141,"h":147},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":141,"h":147},"sourceSize":{"w":141,"h":147}},{"filename":"sprite54","frame":{"x":401,"y":335,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite55","frame":{"x":178,"y":337,"w":144,"h":145},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":144,"h":145},"sourceSize":{"w":144,"h":145}},{"filename":"sprite56","frame":{"x":335,"y":337,"w":146,"h":144},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":146,"h":144},"sourceSize":{"w":146,"h":144}},{"filename":"sprite63","frame":{"x":331,"y":356,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite65","frame":{"x":497,"y":418,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite66","frame":{"x":10,"y":425,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite72","frame":{"x":157,"y":486,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite73","frame":{"x":47,"y":489,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite74","frame":{"x":383,"y":490,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite75","frame":{"x":212,"y":492,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}},{"filename":"sprite76","frame":{"x":96,"y":496,"w":1,"h":1},"rotated":false,"trimmed":false,"spriteSourceSize":{"x":0,"y":0,"w":1,"h":1},"sourceSize":{"w":1,"h":1}}],"meta":{"app":"https://www.leshylabs.com/apps/sstool/","version":"Leshy SpriteSheet Tool v0.9.1","image":"spritesheet.png","size":{"w":500,"h":500},"scale":1}}
+{
+  "frames": [
+    {
+      "filename": "portrait-idle",
+      "frame": {
+        "x": 330,
+        "y": 18,
+        "w": 159,
+        "h": 145
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 159,
+        "h": 145
+      },
+      "sourceSize": {
+        "w": 159,
+        "h": 145
+      }
+    },
+    {
+      "filename": "portrait-talking",
+      "frame": {
+        "x": 19,
+        "y": 19,
+        "w": 141,
+        "h": 144
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 141,
+        "h": 144
+      },
+      "sourceSize": {
+        "w": 141,
+        "h": 144
+      }
+    },
+    {
+      "filename": "portrait-happy",
+      "frame": {
+        "x": 178,
+        "y": 19,
+        "w": 144,
+        "h": 144
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 144,
+        "h": 144
+      },
+      "sourceSize": {
+        "w": 144,
+        "h": 144
+      }
+    },
+    {
+      "filename": "portrait-angry",
+      "frame": {
+        "x": 19,
+        "y": 175,
+        "w": 142,
+        "h": 145
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 142,
+        "h": 145
+      },
+      "sourceSize": {
+        "w": 142,
+        "h": 145
+      }
+    },
+    {
+      "filename": "portrait-sad",
+      "frame": {
+        "x": 340,
+        "y": 176,
+        "w": 142,
+        "h": 144
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 142,
+        "h": 144
+      },
+      "sourceSize": {
+        "w": 142,
+        "h": 144
+      }
+    },
+    {
+      "filename": "portrait-surprised",
+      "frame": {
+        "x": 178,
+        "y": 177,
+        "w": 144,
+        "h": 143
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 144,
+        "h": 143
+      },
+      "sourceSize": {
+        "w": 144,
+        "h": 143
+      }
+    },
+    {
+      "filename": "portrait-thinking",
+      "frame": {
+        "x": 19,
+        "y": 335,
+        "w": 141,
+        "h": 147
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 141,
+        "h": 147
+      },
+      "sourceSize": {
+        "w": 141,
+        "h": 147
+      }
+    },
+    {
+      "filename": "portrait-grateful",
+      "frame": {
+        "x": 178,
+        "y": 337,
+        "w": 144,
+        "h": 145
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 144,
+        "h": 145
+      },
+      "sourceSize": {
+        "w": 144,
+        "h": 145
+      }
+    },
+    {
+      "filename": "portrait-waiting",
+      "frame": {
+        "x": 335,
+        "y": 337,
+        "w": 146,
+        "h": 144
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 146,
+        "h": 144
+      },
+      "sourceSize": {
+        "w": 146,
+        "h": 144
+      }
+    }
+  ],
+  "meta": {
+    "app": "https://www.leshylabs.com/apps/sstool/",
+    "version": "Leshy SpriteSheet Tool v0.9.1",
+    "image": "spritesheet.png",
+    "size": {
+      "w": 500,
+      "h": 500
+    },
+    "scale": 1
+  }
+}

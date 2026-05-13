@@ -1,0 +1,182 @@
+{
+  "frames": [
+    {
+      "filename": "portrait-idle_1",
+      "frame": {
+        "x": 168,
+        "y": 8,
+        "w": 164,
+        "h": 157
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 164,
+        "h": 157
+      },
+      "sourceSize": {
+        "w": 164,
+        "h": 157
+      }
+    },
+    {
+      "filename": "portrait-idle_0",
+      "frame": {
+        "x": 6,
+        "y": 9,
+        "w": 159,
+        "h": 154
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 159,
+        "h": 154
+      },
+      "sourceSize": {
+        "w": 159,
+        "h": 154
+      }
+    },
+    {
+      "filename": "portrait-idle_2",
+      "frame": {
+        "x": 332,
+        "y": 9,
+        "w": 159,
+        "h": 156
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 159,
+        "h": 156
+      },
+      "sourceSize": {
+        "w": 159,
+        "h": 156
+      }
+    },
+    {
+      "filename": "portrait-talking_0",
+      "frame": {
+        "x": 4,
+        "y": 169,
+        "w": 162,
+        "h": 155
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 162,
+        "h": 155
+      },
+      "sourceSize": {
+        "w": 162,
+        "h": 155
+      }
+    },
+    {
+      "filename": "portrait-talking_1",
+      "frame": {
+        "x": 168,
+        "y": 169,
+        "w": 161,
+        "h": 155
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 161,
+        "h": 155
+      },
+      "sourceSize": {
+        "w": 161,
+        "h": 155
+      }
+    },
+    {
+      "filename": "portrait-talking_2",
+      "frame": {
+        "x": 330,
+        "y": 169,
+        "w": 163,
+        "h": 156
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 163,
+        "h": 156
+      },
+      "sourceSize": {
+        "w": 163,
+        "h": 156
+      }
+    },
+    {
+      "filename": "portrait-happy_0",
+      "frame": {
+        "x": 1,
+        "y": 330,
+        "w": 165,
+        "h": 161
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 165,
+        "h": 161
+      },
+      "sourceSize": {
+        "w": 165,
+        "h": 161
+      }
+    },
+    {
+      "filename": "portrait-happy_1",
+      "frame": {
+        "x": 166,
+        "y": 330,
+        "w": 325,
+        "h": 162
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 325,
+        "h": 162
+      },
+      "sourceSize": {
+        "w": 325,
+        "h": 162
+      }
+    }
+  ],
+  "meta": {
+    "app": "https://www.leshylabs.com/apps/sstool/",
+    "version": "Leshy SpriteSheet Tool v0.9.1",
+    "image": "spritesheet.png",
+    "size": {
+      "w": 500,
+      "h": 500
+    },
+    "scale": 1
+  }
+}

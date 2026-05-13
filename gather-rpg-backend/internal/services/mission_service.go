@@ -218,15 +218,16 @@ func (s *MissionService) UpdateTaskProgress(userID uuid.UUID, missionID uint, ta
 		if err := database.DB.First(&mission, missionID).Error; err == nil {
 			// 1. Add Gold
 			var stats models.PlayerStats
-			if err := database.DB.First(&stats, "user_id = ?", playerID).Error; err == nil {
+			if err := database.DB.First(&stats, "id = ?", playerID).Error; err == nil {
 				stats.Gold += mission.RewardGold
 				database.DB.Save(&stats)
+				fmt.Printf("[MissionService] Delivered %d Gold to player %s for mission %d\n", mission.RewardGold, playerID, missionID)
 			}
 
 			// 2. Add Item
 			if mission.RewardItemID != nil && mission.RewardQuantity > 0 {
 				inv := &models.Inventory{
-					PlayerID: stats.ID,
+					PlayerID: playerID,
 					ItemID:   *mission.RewardItemID,
 					Quantity: mission.RewardQuantity,
 				}
@@ -238,10 +239,35 @@ func (s *MissionService) UpdateTaskProgress(userID uuid.UUID, missionID uint, ta
 				} else {
 					database.DB.Create(inv)
 				}
+				fmt.Printf("[MissionService] Delivered %d of item %s to player %s for mission %d\n", mission.RewardQuantity, mission.RewardItemID, playerID, missionID)
 			}
 		}
 	}
 
 	isNewlyCompleted := !wasCompleted && allDone
 	return isNewlyCompleted, s.Repo.CreateOrUpdateProgress(progress)
+}
+
+func (s *MissionService) IsMissionFullyCompleted(userID uuid.UUID, missionID uint) (bool, *models.Mission, error) {
+	var stats models.PlayerStats
+	if err := database.DB.First(&stats, "user_id = ?", userID).Error; err != nil {
+		return false, nil, fmt.Errorf("Player stats not found: %w", err)
+	}
+	playerID := stats.ID
+
+	progress, err := s.Repo.GetPlayerProgress(playerID, missionID)
+	if err != nil {
+		return false, nil, err
+	}
+
+	if progress.Status != models.StatusCompleted {
+		return false, nil, nil
+	}
+
+	mission, err := s.Repo.GetMissionByID(missionID)
+	if err != nil {
+		return true, nil, err
+	}
+
+	return true, mission, nil
 }

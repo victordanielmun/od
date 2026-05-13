@@ -28,11 +28,20 @@ const NPCPortrait = ({ npcId, state, size = 'small' }) => {
         
         const animConfig = STATE_TO_ANIM[state] || STATE_TO_ANIM.idle;
         const npcAnims = NPC_CONFIG.animationsByNPC[cleanId];
-        const animName = npcAnims ? npcAnims[animConfig.portrait].frames[0] : null;
+        
+        // Safety check: ensure the specific animation exists for this NPC
+        const animation = npcAnims ? npcAnims[animConfig.portrait] : null;
+        const animName = (animation && animation.frames) ? animation.frames[0] : null;
         
         if (animName) {
             const frame = atlasData.frames.find(f => f.filename === animName);
             if (frame) setFrameInfo(frame.frame);
+        } else {
+            console.warn(`[NPCPortrait] No portrait frame found for NPC ${cleanId} in state ${state}`);
+            // Optional: fallback to first available frame in atlas if everything fails
+            if (atlasData.frames.length > 0 && !frameInfo) {
+                setFrameInfo(atlasData.frames[0].frame);
+            }
         }
     }, [atlasData, state, cleanId]);
 
@@ -80,6 +89,8 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const [selectedMissionId, setSelectedMissionId] = useState(null);
     const [resolvedType, setResolvedType] = useState(null);
     const [autoPlay, setAutoPlay] = useState(true);
+    const [isMissionComplete, setIsMissionComplete] = useState(false);
+    const [completedMissionData, setCompletedMissionData] = useState(null);
     const hasPlayedGreeting = useRef(false);
     
     const mediaRecorderRef = useRef(null);
@@ -353,6 +364,12 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 }, 300);
             }
 
+            if (data.mission_newly_completed) {
+                console.log("[NPCDialogue] Mission Completed detected!", data.mission_details);
+                setCompletedMissionData(data.mission_details);
+                setIsMissionComplete(true);
+            }
+
             if (data.is_shop) {
                  setHasShop(true);
             }
@@ -409,8 +426,81 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const lastMessage = messages[messages.length - 1] || { text: '...', sender: 'npc' };
     const isAudioOnly = npcData.interactionMode === 'audio_only';
 
+    const handleAcceptMissionComplete = () => {
+        console.log("[NPCDialogue] Accepting mission completion, returning to lobby...");
+        window.dispatchEvent(new CustomEvent('lobby-change-map', {
+            detail: { 
+                targetMap: 'lobby',
+                targetX: 0,
+                targetY: 0
+            }
+        }));
+        onClose();
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex flex-col justify-end items-center pb-20 pointer-events-none bg-black/20 backdrop-blur-sm">
+            {/* Mission Complete Overlay */}
+            {isMissionComplete && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto p-4 animate-in fade-in duration-500">
+                    <div className="relative w-full max-w-2xl bg-[var(--color-parchment)] border-8 border-double border-[var(--color-gold)] p-12 text-center shadow-[0_0_100px_rgba(255,191,0,0.3)] animate-in zoom-in-95 duration-500">
+                        {/* Decorative corners */}
+                        <div className="absolute -top-4 -left-4 w-12 h-12 border-t-8 border-l-8 border-[var(--color-gold)]"></div>
+                        <div className="absolute -top-4 -right-4 w-12 h-12 border-t-8 border-r-8 border-[var(--color-gold)]"></div>
+                        <div className="absolute -bottom-4 -left-4 w-12 h-12 border-b-8 border-l-8 border-[var(--color-gold)]"></div>
+                        <div className="absolute -bottom-4 -right-4 w-12 h-12 border-b-8 border-r-8 border-[var(--color-gold)]"></div>
+
+                        <div className="mb-8">
+                            <ShieldCheck size={80} className="mx-auto text-green-700 mb-4 animate-bounce" />
+                            <h2 className="text-5xl font-medieval text-[var(--color-base-dark)] uppercase tracking-widest drop-shadow-md">
+                                ¡Misión Completada!
+                            </h2>
+                            <div className="h-1 w-48 bg-gradient-to-r from-transparent via-[var(--color-gold)] to-transparent mx-auto mt-4"></div>
+                        </div>
+
+                        <div className="mb-10 space-y-4">
+                            <p className="text-2xl font-serif italic text-gray-700">
+                                Has demostrado gran valentía y destreza al completar:
+                            </p>
+                            <p className="text-3xl font-medieval text-[var(--color-orange-vibrant)] font-black uppercase">
+                                {completedMissionData?.title || "La Aventura"}
+                            </p>
+                        </div>
+
+                        <div className="bg-white/50 border-2 border-[var(--color-gold-dark)]/30 p-6 rounded-lg mb-10 shadow-inner">
+                            <h4 className="text-sm font-medieval uppercase tracking-tighter text-gray-500 mb-4">Recompensas Obtenidas</h4>
+                            <div className="flex items-center justify-center gap-12">
+                                {completedMissionData?.reward_gold > 0 && (
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="w-16 h-16 bg-yellow-400 rounded-full border-4 border-yellow-600 flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform">
+                                            <span className="text-2xl font-black text-yellow-900">$</span>
+                                        </div>
+                                        <span className="font-medieval text-xl font-bold">+{completedMissionData.reward_gold} Oro</span>
+                                    </div>
+                                )}
+                                {completedMissionData?.reward_item_id && (
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="w-16 h-16 bg-blue-100 rounded-lg border-4 border-blue-600 flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform overflow-hidden">
+                                            {/* We don't have the item object here directly, so we use a generic icon or the reward name if we had it */}
+                                            <ShoppingBag size={32} className="text-blue-700" />
+                                        </div>
+                                        <span className="font-medieval text-xl font-bold">Objeto Especial</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={handleAcceptMissionComplete}
+                            className="group relative px-12 py-5 bg-[var(--color-orange-vibrant)] text-white font-medieval text-2xl uppercase tracking-[0.2em] border-4 border-[var(--color-gold)] shadow-[0_10px_0_rgb(180,60,0)] hover:shadow-[0_5px_0_rgb(180,60,0)] hover:translate-y-[5px] active:translate-y-[10px] active:shadow-none transition-all overflow-hidden"
+                        >
+                            <span className="relative z-10">Reclamar y Volver al Lobby</span>
+                            <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500"></div>
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Main Dialogue UI */}
             <div className="relative w-full max-w-5xl px-4 pointer-events-auto">
                 

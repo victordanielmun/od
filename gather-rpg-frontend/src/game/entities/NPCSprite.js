@@ -41,12 +41,19 @@ export class NPCSprite extends Phaser.GameObjects.Container {
   }
 
   playAnimation(animName) {
+    // Alias mapping to support common short names
+    const aliases = {
+        'idle': 'idle-waiting',
+        'walk': 'walking'
+    };
+    const realName = aliases[animName] || animName;
+
     // Si no empieza por 'npc-', le añadimos el prefijo del ID
-    let key = animName.startsWith('npc-') ? animName : `npc-${this.npcId}-${animName}`;
+    let key = realName.startsWith('npc-') ? realName : `npc-${this.npcId}-${realName}`;
     
-    // Fallback: si la animación no existe, intentamos con la 'body-idle' básica
+    // Fallback: si la animación no existe, intentamos con la 'idle-waiting' básica
     if (!this.scene.anims.exists(key)) {
-        console.warn(`[NPCSprite] Animación no encontrada: ${key}. Usando fallback idle.`);
+        if (this.currentAnim === `npc-${this.npcId}-idle-waiting`) return;
         key = `npc-${this.npcId}-idle-waiting`;
     }
 

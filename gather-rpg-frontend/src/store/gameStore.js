@@ -534,6 +534,7 @@ export const useGameStore = create((set, get) => ({
     },
 
     fetchActiveMission: async (sceneKey) => {
+        set({ activeMission: null }); // Clear previous mission state
         try {
             const response = await api.get(`/missions/scene/${sceneKey}`);
             if (response.data && response.data.length > 0) {

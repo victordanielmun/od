@@ -1,0 +1,203 @@
+{
+  "frames": [
+    {
+      "filename": "portrait-idle",
+      "frame": {
+        "x": 337,
+        "y": 18,
+        "w": 154,
+        "h": 145
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 154,
+        "h": 145
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 145
+      }
+    },
+    {
+      "filename": "portrait-talking",
+      "frame": {
+        "x": 14,
+        "y": 19,
+        "w": 149,
+        "h": 144
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 149,
+        "h": 144
+      },
+      "sourceSize": {
+        "w": 149,
+        "h": 144
+      }
+    },
+    {
+      "filename": "portrait-happy",
+      "frame": {
+        "x": 176,
+        "y": 19,
+        "w": 148,
+        "h": 144
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 148,
+        "h": 144
+      },
+      "sourceSize": {
+        "w": 148,
+        "h": 144
+      }
+    },
+    {
+      "filename": "portrait-angry",
+      "frame": {
+        "x": 14,
+        "y": 175,
+        "w": 149,
+        "h": 150
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 149,
+        "h": 150
+      },
+      "sourceSize": {
+        "w": 149,
+        "h": 150
+      }
+    },
+    {
+      "filename": "portrait-sad",
+      "frame": {
+        "x": 176,
+        "y": 176,
+        "w": 148,
+        "h": 149
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 148,
+        "h": 149
+      },
+      "sourceSize": {
+        "w": 148,
+        "h": 149
+      }
+    },
+    {
+      "filename": "portrait-surprised",
+      "frame": {
+        "x": 337,
+        "y": 176,
+        "w": 149,
+        "h": 149
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 149,
+        "h": 149
+      },
+      "sourceSize": {
+        "w": 149,
+        "h": 149
+      }
+    },
+    {
+      "filename": "portrait-thinking",
+      "frame": {
+        "x": 14,
+        "y": 335,
+        "w": 151,
+        "h": 151
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 151,
+        "h": 151
+      },
+      "sourceSize": {
+        "w": 151,
+        "h": 151
+      }
+    },
+    {
+      "filename": "portrait-grateful",
+      "frame": {
+        "x": 176,
+        "y": 335,
+        "w": 153,
+        "h": 151
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 153,
+        "h": 151
+      },
+      "sourceSize": {
+        "w": 153,
+        "h": 151
+      }
+    },
+    {
+      "filename": "portrait-waiting",
+      "frame": {
+        "x": 337,
+        "y": 337,
+        "w": 149,
+        "h": 149
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 149,
+        "h": 149
+      },
+      "sourceSize": {
+        "w": 149,
+        "h": 149
+      }
+    }
+  ],
+  "meta": {
+    "app": "https://www.leshylabs.com/apps/sstool/",
+    "version": "Leshy SpriteSheet Tool v0.9.1",
+    "image": "spritesheet.png",
+    "size": {
+      "w": 500,
+      "h": 500
+    },
+    "scale": 1
+  }
+}

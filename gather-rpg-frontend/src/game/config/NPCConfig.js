@@ -1,6 +1,6 @@
 import { animationsByNPC as generatedAnims } from '../../../public/npcs/_animationsByNPC_generated.js';
 
-export const AVAILABLE_NPCS = ['1']; // IDs de templateId en DB (NPC 2 deshabilitado por falta de assets)
+export const AVAILABLE_NPCS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13']; // IDs de templateId en DB
 
 export const NPC_CONFIG = {
   npcs: AVAILABLE_NPCS.map(id => ({
@@ -24,8 +24,19 @@ export const NPC_CONFIG = {
   // Mapeo de voces de alta calidad (edge-tts) para cada NPC
   voices: {
     '1': 'en-US-GuyNeural',
-    '2': 'en-US-AriaNeural', // Trainer (Female)
-    'default': 'en-US-GuyNeural' // Default Male
+    '2': 'en-US-AriaNeural',
+    '3': 'en-US-GuyNeural',
+    '4': 'en-GB-SoniaNeural',
+    '5': 'en-US-GuyNeural',
+    '6': 'en-US-AriaNeural',
+    '7': 'en-US-GuyNeural',
+    '8': 'en-GB-SoniaNeural',
+    '9': 'en-US-GuyNeural',
+    '10': 'en-US-AriaNeural',
+    '11': 'en-US-GuyNeural',
+    '12': 'en-GB-SoniaNeural',
+    '13': 'en-US-GuyNeural',
+    'default': 'en-US-GuyNeural'
   }
 };
 

@@ -42,6 +42,7 @@ export const LobbyLayout = () => {
 
   const activeMission = useGameStore(state => state.activeMission);
   const fetchActiveMission = useGameStore(state => state.fetchActiveMission);
+  const currentSceneKey = useGameStore(state => state.currentSceneKey);
 
   const scrollChallengeToBottom = useCallback(() => {
     challengeMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -120,10 +121,11 @@ export const LobbyLayout = () => {
   }, [activeChallengeId, activeOverlay]);
 
   useEffect(() => {
-    if (currentRoomId) {
-      fetchActiveMission('LobbyScene');
+    if (currentRoomId && currentSceneKey) {
+      console.log(`[LobbyLayout] Fetching mission for scene: ${currentSceneKey}`);
+      fetchActiveMission(currentSceneKey);
     }
-  }, [currentRoomId, fetchActiveMission]);
+  }, [currentRoomId, currentSceneKey, fetchActiveMission]);
 
   const handleSendChallengeChat = (e) => {
     e.preventDefault();
@@ -140,20 +142,18 @@ export const LobbyLayout = () => {
     window.dispatchEvent(new CustomEvent('phaser-camera-zoom', { detail: { sceneKey: 'LobbyScene', direction: 'out' } }));
   };
 
+  // Improved Mission Banner Logic: Show when mission data arrives AND game is ready
   useEffect(() => {
-    const handleGameReady = () => {
-      // If we have an active mission but haven't shown the banner yet, show it!
-      const mission = useGameStore.getState().activeMission;
-      if (mission) {
-        setShowMissionBanner(true);
-        // Hide after 6 seconds
-        setTimeout(() => setShowMissionBanner(false), 6000);
-      }
+    let timer;
+    if (activeMission && !activeOverlay) {
+      setShowMissionBanner(true);
+      timer = setTimeout(() => setShowMissionBanner(false), 6000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
     };
+  }, [activeMission, activeOverlay]);
 
-    window.addEventListener('game-ready', handleGameReady);
-    return () => window.removeEventListener('game-ready', handleGameReady);
-  }, []);
 
   const gameRef = useRef(null); // Add ref to control game from UI
   const [isEditorMode, setIsEditorMode] = useState(false);

@@ -235,6 +235,7 @@ func main() {
 	missions := app.Group("/missions", middleware.Protected(cfg))
 	missions.Get("/scene/:key", missionHandler.GetMissionsByScene)
 	missions.Get("/npc/:id", missionHandler.GetMissionsByNPC)
+	missions.Get("/:id/validate", missionHandler.ValidateMissionCompletion)
 
 	// Inventory Routes
 	inventory := app.Group("/inventory", middleware.Protected(cfg))
