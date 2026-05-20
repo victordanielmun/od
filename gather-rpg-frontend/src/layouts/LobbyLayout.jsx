@@ -212,6 +212,53 @@ export const LobbyLayout = () => {
         </>
       )}
 
+      {/* Kill Mission HUD Widget — visible durante misiones de eliminar enemigos */}
+      {activeMission && !isEditorMode && (() => {
+        const killTasks = (activeMission.tasks || []).filter(t =>
+          (t.type === 'defeat_enemy' || t.type === 'kill_boss') &&
+          t.required_kills > 0
+        );
+        if (killTasks.length === 0) return null;
+        return (
+          <div className="absolute top-32 right-4 z-20 pointer-events-none space-y-2">
+            {killTasks.map(task => {
+              const done = task.kills_done || 0;
+              const req = task.required_kills || 1;
+              const pct = Math.min(100, (done / req) * 100);
+              const isComplete = task.is_completed || done >= req;
+              return (
+                <div
+                  key={task.id}
+                  className="bg-black/70 backdrop-blur border border-red-900/50 rounded-xl px-4 py-2.5 min-w-[200px] shadow-lg"
+                  style={{ boxShadow: isComplete ? '0 0 16px rgba(239,68,68,0.4)' : undefined }}
+                >
+                  <div className="text-[10px] text-red-400 uppercase tracking-widest font-bold mb-1 truncate">
+                    {task.description || (isComplete ? '✅ Completado' : '⚔️ Objetivo')}
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${pct}%`,
+                          background: isComplete
+                            ? 'linear-gradient(90deg, #22c55e, #16a34a)'
+                            : 'linear-gradient(90deg, #ef4444, #dc2626)'
+                        }}
+                      />
+                    </div>
+                    <span className="text-white font-mono text-xs font-bold whitespace-nowrap">
+                      {done}/{req}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+
       {/* Sidebar Layer — hidden in editor mode */}
       {!isEditorMode && (
         <div className="absolute top-0 left-0 h-full z-30 pointer-events-none">

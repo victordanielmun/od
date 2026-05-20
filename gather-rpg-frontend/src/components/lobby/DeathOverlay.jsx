@@ -2,22 +2,34 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Skull, Eye, Home } from 'lucide-react';
 import { useGameStore } from '../../store/gameStore';
+import { useAuthStore } from '../../store/authStore';
 
 export const DeathOverlay = () => {
     const { t } = useTranslation();
     const [isVisible, setIsVisible] = useState(false);
-    const players = useGameStore(state => state.players);
-    const otherPlayersCount = players ? players.size : 0;
-
-    const otherPlayersCountRef = useRef(otherPlayersCount);
-
-    useEffect(() => {
-        otherPlayersCountRef.current = otherPlayersCount;
-    }, [otherPlayersCount]);
+    // Snapshot del conteo de otros jugadores tomado en el momento exacto de la muerte
+    // para evitar race conditions con actualizaciones posteriores del store.
+    const [otherPlayersCount, setOtherPlayersCount] = useState(0);
 
     useEffect(() => {
         const handlePlayerDead = () => {
-            console.log(`[DeathOverlay] Player dead event received. Players in room: ${otherPlayersCountRef.current}`);
+            // Capturar snapshot en el momento del evento, excluyendo al propio jugador
+            const players = useGameStore.getState().players;
+            const myId = String(useAuthStore.getState().user?.id || '');
+            let count = 0;
+            if (players) {
+                players.forEach((_, id) => {
+                    if (id !== myId) count++;
+                });
+            }
+
+            if (count === 0) {
+                console.log('[DeathOverlay] Player dead. Solo en la sala — solo se muestra "Regresar".');
+            } else {
+                console.log(`[DeathOverlay] Player dead. Hay ${count} jugador(es) más en la sala — se muestra "Observar".`);
+            }
+
+            setOtherPlayersCount(count);
             setIsVisible(true);
         };
 
@@ -28,17 +40,18 @@ export const DeathOverlay = () => {
     const handleSpectate = () => {
         console.log('[DeathOverlay] Spectate clicked');
         setIsVisible(false);
-        // Dispatch event to Phaser to switch to spectator mode
         window.dispatchEvent(new CustomEvent('spectate-player'));
     };
 
     const handleReturnToLobby = () => {
         console.log('[DeathOverlay] Return to lobby clicked');
-        // Dispatch event to change map back to lobby
+        setIsVisible(false);
+        // Primero resetear el estado de muerte en la escena Phaser,
+        // luego solicitar el cambio de mapa
+        window.dispatchEvent(new CustomEvent('reset-player-state'));
         window.dispatchEvent(new CustomEvent('lobby-change-map', {
             detail: { targetMap: 'lobby' }
         }));
-        setIsVisible(false);
     };
 
     if (!isVisible) return null;

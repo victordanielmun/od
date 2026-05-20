@@ -155,6 +155,7 @@ type MissionTask struct {
 	TargetNPCTemplateID   *uint     `json:"target_npc_template_id"`
 	RequiredItem         string    `gorm:"size:100" json:"required_item"`
 	RequiredEnemy        string    `gorm:"size:100" json:"required_enemy"`
+	RequiredKills        int       `gorm:"default:0" json:"required_kills"` // 0 = no aplica / matar cualquier cantidad
 	PronunciationMinScore int       `gorm:"default:80" json:"pronunciation_min_score"`
 	TargetPhraseEn        string    `json:"target_phrase_en"`
 	MessageToDeliver      string    `json:"message_to_deliver"`
@@ -212,6 +213,9 @@ type PlayerMissionProgress struct {
 	RoomID         *uuid.UUID     `gorm:"type:uuid" json:"room_id"`
 	Status         ProgressStatus `gorm:"type:progress_status;default:'not_started'" json:"status"`
 	TasksCompleted json.RawMessage `gorm:"type:jsonb" json:"tasks_completed"`
+	// KillCounts: map[taskIdStr]int — conteo acumulativo de kills por tarea.
+	// Separado de TasksCompleted para no romper el esquema booleano existente.
+	KillCounts    json.RawMessage `gorm:"type:jsonb" json:"kill_counts"`
 	StartedAt      time.Time      `json:"started_at"`
 	CompletedAt    *time.Time     `json:"completed_at"`
 }

@@ -78,6 +78,7 @@ export const AdminMissions = () => {
         target_npc_template_id: '',
         required_item: '',
         required_enemy: '',
+        required_kills: 1,
         pronunciation_min_score: 80,
         target_phrase_en: '',
         message_to_deliver: ''
@@ -725,12 +726,30 @@ export const AdminMissions = () => {
                                 )}
 
                                 {(taskFormData.type === 'defeat_enemy' || taskFormData.type === 'kill_boss') && (
-                                    <div className="space-y-1 md:col-span-2">
-                                        <label className="text-[10px] font-bold text-red-500 uppercase tracking-widest pl-1">{t('admin.missions.tasks.select_enemy')}</label>
-                                        <select value={taskFormData.required_enemy} onChange={e => setTaskFormData({...taskFormData, required_enemy: e.target.value})} className="w-full bg-gray-950 border border-red-500/20 rounded-2xl px-5 py-3 text-red-100 outline-none">
-                                            <option value="">{t('admin.missions.form.objective_enemy_placeholder')}</option>
-                                            {enemies.map(enemy => <option key={enemy.id} value={enemy.name}>{enemy.name}</option>)}
-                                        </select>
+                                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-red-500 uppercase tracking-widest pl-1">{t('admin.missions.tasks.select_enemy')}</label>
+                                            <select value={taskFormData.required_enemy} onChange={e => setTaskFormData({...taskFormData, required_enemy: e.target.value})} className="w-full bg-gray-950 border border-red-500/20 rounded-2xl px-5 py-3 text-red-100 outline-none">
+                                                <option value="">{t('admin.missions.form.objective_enemy_placeholder')}</option>
+                                                {enemies.map(enemy => <option key={enemy.id} value={enemy.name}>{enemy.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-red-400 uppercase tracking-widest pl-1">
+                                                Kills requeridos
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={taskFormData.required_kills}
+                                                onChange={e => setTaskFormData({...taskFormData, required_kills: parseInt(e.target.value) || 1})}
+                                                className="w-full bg-gray-950 border border-red-500/20 rounded-2xl px-5 py-3 text-white outline-none focus:border-red-500/50 transition-all"
+                                                placeholder="Ej: 3"
+                                            />
+                                            <p className="text-[10px] text-gray-600 italic px-1">
+                                                Cuántos de este enemigo debe matar el jugador para completar la tarea.
+                                            </p>
+                                        </div>
                                     </div>
                                 )}
 

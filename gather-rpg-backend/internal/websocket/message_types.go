@@ -61,7 +61,8 @@ const (
 	MsgEmojiBroadcast = "emoji_broadcast"
 
 	// Missions
-	MsgMissionCompleted = "mission_completed"
+	MsgMissionCompleted   = "mission_completed"
+	MsgEnemyKillProgress  = "enemy_kill_progress" // Progreso de kills enviado al jugador atacante
 
 	// Real-time Combat
 	MsgEnemyUpdate      = "enemy_update"

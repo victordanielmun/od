@@ -114,6 +114,15 @@ export class LobbyScene extends Phaser.Scene {
     const user = useAuthStore.getState().user;
     this.myPlayerId = user?.id ? String(user.id) : null;
     console.log(`[LobbyScene] Initialized with myPlayerId: ${this.myPlayerId}`);
+
+    // TAREA 2 FIX: Resetear estado de muerte en cada reinicio de escena.
+    // scene.restart() llama init() pero NO el constructor, por lo que sin este reset
+    // el jugador quedaba muerto después de hacer 'Regresar' desde el DeathOverlay.
+    this.isDead = false;
+    this.isSpectating = false;
+    this.spectatorTarget = null;
+    this.playerHp = 100;
+    this.playerMaxHp = 100;
   }
 
   preload() {
@@ -430,6 +439,20 @@ export class LobbyScene extends Phaser.Scene {
     this.onSpectate = () => this._onSpectate();
     window.addEventListener('spectate-player', this.onSpectate);
 
+    // TAREA 2 FIX: Listener para reset explícito de estado de muerte
+    // (disparado por DeathOverlay antes de solicitar cambio de mapa)
+    this.onResetPlayerState = () => {
+      console.log('[LobbyScene] reset-player-state received — resetting death state');
+      this.isDead = false;
+      this.isSpectating = false;
+      this.spectatorTarget = null;
+      if (this.player) {
+        this.player.setAlpha(1);
+        this.player.clearTint && this.player.clearTint();
+      }
+    };
+    window.addEventListener('reset-player-state', this.onResetPlayerState);
+
     // Player Health Bar (Local UI in Canvas)
     this.hpBar = this.add.graphics();
     this.hpBar.setScrollFactor(0);
@@ -581,6 +604,7 @@ export class LobbyScene extends Phaser.Scene {
     window.removeEventListener('enemies-update', this.onEnemyUpdate);
     window.removeEventListener('enemy-died-broadcast', this.onEnemyDied);
     window.removeEventListener('spectate-player', this.onSpectate);
+    window.removeEventListener('reset-player-state', this.onResetPlayerState);
     
     // Cleanup editor controller listeners
     if (this.editorController) {

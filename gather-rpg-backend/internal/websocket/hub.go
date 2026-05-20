@@ -771,9 +771,37 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 
 		// Update Mission Progress
 		go func() {
-			err := h.MissionService.UpdateKillProgress(client.ID, enemy.EnemyID, roomID)
+			progressResults, err := h.MissionService.UpdateKillProgress(client.ID, enemy.EnemyID, roomID)
 			if err != nil {
 				log.Printf("[Combat] Failed to update kill progress for user %s: %v", client.ID, err)
+			}
+
+			// Notificar al cliente atacante sobre el progreso de kills
+			for _, res := range progressResults {
+				if res.MissionDone {
+					// La misión se completó: emitir mission_completed
+					if mission, dbErr := h.MissionService.Repo.GetMissionByID(res.MissionID); dbErr == nil {
+						h.SendToUser(client.ID.String(), &models.WSMessage{
+							Type: MsgMissionCompleted,
+							Payload: map[string]interface{}{
+								"mission_id": res.MissionID,
+								"title":      mission.Title,
+							},
+						})
+					}
+				} else {
+					// Progreso parcial: notificar cuántos kills van
+					h.SendToUser(client.ID.String(), &models.WSMessage{
+						Type: MsgEnemyKillProgress,
+						Payload: map[string]interface{}{
+							"mission_id":     res.MissionID,
+							"task_id":        res.TaskID,
+							"kills_done":     res.KillsDone,
+							"required_kills": res.RequiredKills,
+							"task_completed": res.TaskCompleted,
+						},
+					})
+				}
 			}
 
 			// Special case for "Kill All": check if all enemies are dead in this room
@@ -792,13 +820,12 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 				// Find and complete "kill_all" tasks for ALL players in the room
 				room.mu.RLock()
 				for c := range room.Clients {
-					// We reuse UpdateKillProgress which might need a special flag or we just trigger another check
-					// A more direct way:
 					h.MissionService.UpdateKillAllProgress(c.ID, roomID)
 				}
 				room.mu.RUnlock()
 			}
 		}()
+
 	} else {
 		room.mu.Unlock()
 	}

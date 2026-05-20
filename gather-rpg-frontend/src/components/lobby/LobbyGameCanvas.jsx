@@ -107,14 +107,16 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
         });
       }
 
-      // Restore focus to canvas so keyboard works
+      // Restore focus to canvas so keyboard works.
+      // 500ms delay gives LobbyScene enough time to complete restart()
+      // and re-register all keyboard listeners before receiving focus.
       setTimeout(() => {
         const canvas = document.querySelector('canvas');
         if (canvas) {
             canvas.tabIndex = 0;
-            canvas.focus();
+            canvas.focus({ preventScroll: true });
         }
-      }, 100);
+      }, 500);
 
       // 3. Update URL silently
       const url = new URL(window.location);

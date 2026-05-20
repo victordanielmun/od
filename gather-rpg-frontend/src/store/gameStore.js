@@ -412,6 +412,33 @@ export const useGameStore = create((set, get) => ({
                         }
                     }
                 });
+
+                wsClient.on('enemy_kill_progress', (payload) => {
+                    const { mission_id, task_id, kills_done, required_kills, task_completed } = payload;
+                    console.log(`[gameStore] Kill progress: task ${task_id} → ${kills_done}/${required_kills}`);
+                    
+                    // Mostrar notificación de progreso
+                    const { addNotification } = useNotificationStore.getState();
+                    if (task_completed) {
+                        addNotification('success', `✅ ¡Tarea completada! ${kills_done}/${required_kills} enemigos eliminados`);
+                    } else {
+                        addNotification('info', `⚔️ ${kills_done}/${required_kills} enemigos eliminados`);
+                    }
+
+                    // Actualizar el conteo de kills en la misión activa para el HUD
+                    set(state => {
+                        const mission = state.activeMission;
+                        if (!mission || mission.id !== mission_id) return {};
+                        const updatedTasks = (mission.tasks || []).map(t => {
+                            if (t.id === task_id) {
+                                return { ...t, kills_done, required_kills, is_completed: task_completed };
+                            }
+                            return t;
+                        });
+                        return { activeMission: { ...mission, tasks: updatedTasks } };
+                    });
+                });
+
             }
 
             wsClient.connect(token);
