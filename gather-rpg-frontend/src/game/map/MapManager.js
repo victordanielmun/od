@@ -243,6 +243,7 @@ export class MapManager {
         if (w.hp !== undefined) s.data.set('hp', w.hp);
         if (w.speed !== undefined) s.data.set('speed', w.speed);
         if (w.damage !== undefined) s.data.set('damage', w.damage);
+        if (w.attackRate !== undefined) s.data.set('attackRate', w.attackRate);
         this.enemySpawns.add(s);
       });
       (data.pickups || []).forEach(w => {
@@ -428,7 +429,8 @@ export class MapManager {
         waveNum: t.data?.get('waveNum') || 1,
         hp: t.data?.get('hp'),
         speed: t.data?.get('speed'),
-        damage: t.data?.get('damage')
+        damage: t.data?.get('damage'),
+        attackRate: t.data?.get('attackRate')
       })),
     };
     return JSON.stringify(data, null, 2);
@@ -504,6 +506,7 @@ export class MapManager {
           waveNum: t.waveNum,
           hp: t.hp,
           speed: t.speed,
+          attackRate: t.attackRate,
           damage: t.damage
         };
         this._placeTileDirect('enemy', t.x, t.y, null, metadata);

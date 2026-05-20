@@ -116,7 +116,7 @@ export const MapEditorUI = ({ gameRef }) => {
   const [activeTexture, setActiveTexture] = useState('sprite1');
   const [buildMeta, setBuildMeta] = useState({ portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '' });
   const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [] });
-  const [enemyMeta, setEnemyMeta] = useState({ npcId: '', waveNum: 1, hp: 50, speed: 120, damage: 10 });
+  const [enemyMeta, setEnemyMeta] = useState({ npcId: '', waveNum: 1, hp: 50, speed: 120, damage: 10, attackRate: 1000 });
   const [buildScale, setBuildScale] = useState(2);
   const [availableMaps, setAvailableMaps] = useState([]);
   const [npcDefinitions, setNpcDefinitions] = useState([]);
@@ -200,6 +200,7 @@ export const MapEditorUI = ({ gameRef }) => {
           npcId: metadata.npcId || '',
           waveNum: metadata.waveNum || 1,
           hp: metadata.hp || 50,
+          attackRate: metadata.attackRate || 1000,
           speed: metadata.speed || 120,
           damage: metadata.damage || 10
         });
@@ -781,6 +782,26 @@ export const MapEditorUI = ({ gameRef }) => {
                     </select>
                   </div>
 
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    <div>
+                      <label className="block text-[9px] text-gray-500 mb-0.5">Speed</label>
+                      <input type="number" min="1" value={enemyMeta.speed}
+                        onChange={e => setEnemyMeta(p => ({ ...p, speed: parseInt(e.target.value) || 120 }))}
+                        className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50" />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] text-gray-500 mb-0.5">Damage</label>
+                      <input type="number" min="1" value={enemyMeta.damage}
+                        onChange={e => setEnemyMeta(p => ({ ...p, damage: parseInt(e.target.value) || 10 }))}
+                        className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50" />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] text-gray-500 mb-0.5">Attack Rate</label>
+                      <input type="number" min="100" value={enemyMeta.attackRate}
+                        onChange={e => setEnemyMeta(p => ({ ...p, attackRate: parseInt(e.target.value) || 1000 }))}
+                        className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50" />
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.wave_num') || 'Oleada'}</label>

@@ -616,6 +616,10 @@ func (h *AdminHandler) syncMapEnemies(wallsJSON string, currentMapDataJSON strin
 		Y       float64 `json:"y"`
 		NPCID   string  `json:"npcId"`
 		WaveNum int     `json:"waveNum"`
+		HP      int     `json:"hp"`
+		Speed   float64 `json:"speed"`
+		Damage  int     `json:"damage"`
+		AttackRate int  `json:"attackRate"`
 	}
 	type wallsConfig struct {
 		EnemySpawns []enemySpawnData `json:"enemySpawns"`
@@ -653,6 +657,10 @@ func (h *AdminHandler) syncMapEnemies(wallsJSON string, currentMapDataJSON strin
 			SpawnX:   s.X,
 			SpawnY:   s.Y,
 			WaveNum:  s.WaveNum,
+			HP:       s.HP,
+			Speed:    s.Speed,
+			Damage:   s.Damage,
+			AttackRate: s.AttackRate,
 			EnemyID:  uuid.New(), 
 			SpriteID: spriteID,
 		})
