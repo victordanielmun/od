@@ -333,7 +333,7 @@ func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uu
 				continue // ya completada
 			}
 
-			if t.Type != models.TaskTypeDefeatEnemy && t.Type != models.TaskTypeKillBoss && t.Type != models.TaskTypeKillAll {
+			if t.Type != models.TaskTypeDefeatEnemy && t.Type != models.TaskTypeKillBoss {
 				continue
 			}
 
@@ -435,15 +435,17 @@ func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uu
 
 
 
-func (s *MissionService) UpdateKillAllProgress(userID uuid.UUID, roomID string) error {
+func (s *MissionService) UpdateKillAllProgress(userID uuid.UUID, roomID string) ([]KillProgressResult, error) {
 	var stats models.PlayerStats
 	if err := database.DB.First(&stats, "user_id = ?", userID).Error; err != nil {
-		return err
+		return nil, err
 	}
 	playerID := stats.ID
 
 	var progresses []models.PlayerMissionProgress
 	database.DB.Where("player_id = ? AND status = ?", playerID, models.StatusInProgress).Find(&progresses)
+
+	var results []KillProgressResult
 
 	for _, p := range progresses {
 		tasks, _ := s.GetTasks(p.MissionID)
@@ -455,21 +457,81 @@ func (s *MissionService) UpdateKillAllProgress(userID uuid.UUID, roomID string) 
 		}
 
 		for _, t := range tasks {
-			if tasksCompleted[fmt.Sprint(t.ID)] {
+			taskKey := fmt.Sprint(t.ID)
+			if tasksCompleted[taskKey] {
 				continue
 			}
 
 			if t.Type == models.TaskTypeKillAll {
-				tasksCompleted[fmt.Sprint(t.ID)] = true
+				tasksCompleted[taskKey] = true
 				changed = true
+				fmt.Printf("[MissionService] KillAll task %d completed for player %s in room %s\n", t.ID, playerID, roomID)
+
+				results = append(results, KillProgressResult{
+					MissionID:     p.MissionID,
+					TaskID:        t.ID,
+					KillsDone:     1,
+					RequiredKills: 1,
+					TaskCompleted: true,
+				})
 			}
 		}
 
 		if changed {
 			updatedJSON, _ := json.Marshal(tasksCompleted)
 			p.TasksCompleted = updatedJSON
-			s.UpdateTaskProgress(userID, p.MissionID, 0, false)
+
+			// Verificar si la misión entera está completa
+			allDone := true
+			for _, t := range tasks {
+				if !tasksCompleted[fmt.Sprint(t.ID)] {
+					allDone = false
+					break
+				}
+			}
+
+			if allDone {
+				p.Status = models.StatusCompleted
+				now := time.Now()
+				p.CompletedAt = &now
+
+				// Entregar recompensas
+				var mission models.Mission
+				if err := database.DB.First(&mission, p.MissionID).Error; err == nil {
+					var mStats models.PlayerStats
+					if err := database.DB.First(&mStats, "id = ?", playerID).Error; err == nil {
+						mStats.Gold += mission.RewardGold
+						mStats.Experience += mission.RewardXP
+						database.DB.Save(&mStats)
+					}
+					if mission.RewardItemID != nil && mission.RewardQuantity > 0 {
+						inv := &models.Inventory{PlayerID: playerID, ItemID: *mission.RewardItemID, Quantity: mission.RewardQuantity}
+						var existing models.Inventory
+						if database.DB.Where("player_id = ? AND item_id = ?", inv.PlayerID, inv.ItemID).First(&existing).Error == nil {
+							existing.Quantity += inv.Quantity
+							database.DB.Save(&existing)
+						} else {
+							database.DB.Create(inv)
+						}
+					}
+				}
+
+				// Marcar todos los resultados de esta misión como completados
+				for i := range results {
+					if results[i].MissionID == p.MissionID {
+						results[i].MissionDone = true
+					}
+				}
+
+				fmt.Printf("[MissionService] Mission %d COMPLETED (KillAll) for player %s\n", p.MissionID, playerID)
+			} else {
+				p.Status = models.StatusInProgress
+			}
+
+			s.Repo.CreateOrUpdateProgress(&p)
 		}
 	}
-	return nil
+
+	return results, nil
 }
+

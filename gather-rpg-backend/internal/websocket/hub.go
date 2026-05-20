@@ -817,10 +817,28 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 
 			if allDead {
 				log.Printf("[Combat] Room %s fully cleared! Updating 'kill_all' missions.", roomID)
-				// Find and complete "kill_all" tasks for ALL players in the room
 				room.mu.RLock()
 				for c := range room.Clients {
-					h.MissionService.UpdateKillAllProgress(c.ID, roomID)
+					killAllResults, err := h.MissionService.UpdateKillAllProgress(c.ID, roomID)
+					if err != nil {
+						log.Printf("[Combat] KillAll progress error for user %s: %v", c.ID, err)
+						continue
+					}
+					// Notificar al jugador si su misión se completó
+					for _, res := range killAllResults {
+						if res.MissionDone {
+							if mission, dbErr := h.MissionService.Repo.GetMissionByID(res.MissionID); dbErr == nil {
+								h.SendToUser(c.ID.String(), &models.WSMessage{
+									Type: MsgMissionCompleted,
+									Payload: map[string]interface{}{
+										"mission_id": res.MissionID,
+										"title":      mission.Title,
+									},
+								})
+								log.Printf("[Combat] mission_completed sent to user %s for mission %d (kill_all)", c.ID, res.MissionID)
+							}
+						}
+					}
 				}
 				room.mu.RUnlock()
 			}
