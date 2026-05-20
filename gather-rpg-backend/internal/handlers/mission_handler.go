@@ -34,9 +34,11 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 	userID, _ := uuid.Parse(userIDStr)
 
 	type TaskWithStatus struct {
-		ID          uint   `json:"id"`
-		Description string `json:"description"`
-		IsCompleted bool   `json:"is_completed"`
+		ID            uint   `json:"id"`
+		Description   string `json:"description"`
+		IsCompleted   bool   `json:"is_completed"`
+		KillsDone     int    `json:"kills_done"`
+		RequiredKills int    `json:"required_kills"`
 	}
 
 	type MissionWithStatus struct {
@@ -61,12 +63,30 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 			completedMap = make(map[string]bool)
 		}
 
+		var killCounts map[string]int
+		if progress != nil && progress.KillCounts != nil {
+			json.Unmarshal(progress.KillCounts, &killCounts)
+		}
+		if killCounts == nil {
+			killCounts = make(map[string]int)
+		}
+
 		taskStatuses := make([]TaskWithStatus, 0)
 		for _, t := range tasks {
+			killsDone := killCounts[fmt.Sprint(t.ID)]
+			reqKills := t.RequiredKills
+			if reqKills == 0 {
+				if t.Type == models.TaskTypeDefeatEnemy || t.Type == models.TaskTypeKillAll || t.Type == models.TaskTypeKillBoss {
+					reqKills = 1
+				}
+			}
+
 			taskStatuses = append(taskStatuses, TaskWithStatus{
-				ID:          t.ID,
-				Description: t.DescriptionEn,
-				IsCompleted: completedMap[fmt.Sprint(t.ID)],
+				ID:            t.ID,
+				Description:   t.DescriptionEn,
+				IsCompleted:   completedMap[fmt.Sprint(t.ID)],
+				KillsDone:     killsDone,
+				RequiredKills: reqKills,
 			})
 		}
 

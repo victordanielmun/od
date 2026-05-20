@@ -66,6 +66,7 @@ export const AdminMissions = () => {
 
     const [mapNPCs, setMapNPCs] = useState([]);
     const [loadingMapNPCs, setLoadingMapNPCs] = useState(false);
+    const [mapEnemiesCount, setMapEnemiesCount] = useState(0);
     const [npcInstanceEdits, setNpcInstanceEdits] = useState({ instructions: '', success_message: '', greeting: '' });
 
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -119,6 +120,17 @@ export const AdminMissions = () => {
                 setLoadingMapNPCs(true);
                 const res = await api.get(`/admin/npc-instances?scene_key=${missionFormData.scene_key}`);
                 setMapNPCs(res.data || []);
+                try {
+                    const mapRes = await api.get(`/maps/config?scene_key=${missionFormData.scene_key}`);
+                    if (mapRes.data && mapRes.data.map_data) {
+                        const mapData = JSON.parse(mapRes.data.map_data);
+                        setMapEnemiesCount(mapData.enemies ? mapData.enemies.length : 0);
+                    } else {
+                        setMapEnemiesCount(0);
+                    }
+                } catch(e) {
+                    setMapEnemiesCount(0);
+                }
             } catch (err) {
                 console.error("Error fetching map NPCs:", err);
             } finally {
@@ -725,7 +737,7 @@ export const AdminMissions = () => {
                                     </div>
                                 )}
 
-                                {(taskFormData.type === 'defeat_enemy' || taskFormData.type === 'kill_boss') && (
+                                {(taskFormData.type === 'defeat_enemy' || taskFormData.type === 'kill_boss' || taskFormData.type === 'kill_all') && (
                                     <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div className="space-y-1">
                                             <label className="text-[10px] font-bold text-red-500 uppercase tracking-widest pl-1">{t('admin.missions.tasks.select_enemy')}</label>
@@ -749,6 +761,11 @@ export const AdminMissions = () => {
                                             <p className="text-[10px] text-gray-600 italic px-1">
                                                 Cuántos de este enemigo debe matar el jugador para completar la tarea.
                                             </p>
+                                            {taskFormData.type === 'kill_all' && mapEnemiesCount > 0 && (
+                                                <p className="text-[10px] text-orange-400 font-bold px-1 mt-1">
+                                                    Hint: Este mapa tiene un total de {mapEnemiesCount} enemigos.
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                 )}

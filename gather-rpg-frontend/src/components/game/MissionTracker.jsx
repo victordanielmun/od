@@ -12,18 +12,28 @@ const MissionTracker = ({ mission }) => {
       <p className="text-gray-300 text-xs mb-4">{mission.description_en}</p>
       
       <div className="space-y-3">
-        {mission.tasks?.map((task, idx) => (
-          <div key={idx} className="flex items-start gap-2">
-            <div className={`mt-1 w-3 h-3 rounded-sm border ${
-              task.completed ? 'bg-green-500 border-green-400' : 'border-gray-600'
-            } shrink-0`} />
-            <span className={`text-[11px] ${
-              task.completed ? 'text-gray-500 line-through' : 'text-gray-200'
-            }`}>
-              {task.description_en}
-            </span>
-          </div>
-        ))}
+        {mission.tasks?.map((task, idx) => {
+          const isCompleted = task.completed || task.is_completed;
+          return (
+            <div key={idx} className="flex items-start gap-2">
+              <div className={`mt-1 w-3 h-3 rounded-sm border ${
+                isCompleted ? 'bg-green-500 border-green-400' : 'border-gray-600'
+              } shrink-0`} />
+              <div className="flex flex-col">
+                <span className={`text-[11px] ${
+                  isCompleted ? 'text-gray-500 line-through' : 'text-gray-200'
+                }`}>
+                  {task.description_en}
+                </span>
+                {task.required_kills > 0 && !isCompleted && (
+                  <span className="text-[10px] text-gray-400 mt-0.5">
+                    Enemigos eliminados: {task.kills_done || 0}/{task.required_kills}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

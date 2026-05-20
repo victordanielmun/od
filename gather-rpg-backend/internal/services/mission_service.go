@@ -333,7 +333,7 @@ func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uu
 				continue // ya completada
 			}
 
-			if t.Type != models.TaskTypeDefeatEnemy && t.Type != models.TaskTypeKillBoss {
+			if t.Type != models.TaskTypeDefeatEnemy && t.Type != models.TaskTypeKillBoss && t.Type != models.TaskTypeKillAll {
 				continue
 			}
 
