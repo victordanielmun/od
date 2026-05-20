@@ -32,5 +32,9 @@ type EnemySpawn struct {
 	SpawnY  float64   `json:"spawn_y"`
 	WaveNum int       `json:"wave_num"`
 	NPCID   string    `json:"npc_id"`
-	SpriteID string   `json:"sprite_id"` // Asset ID ('1', '2', etc.)
+	SpriteID string   `json:"sprite_id"` // Asset ID (.1., .2., etc.)
+	HP       int       `json:"hp"`
+	Speed    float64   `json:"speed"`
+	Damage   int       `json:"damage"`
+	AttackRate int     `json:"attack_rate"`
 }

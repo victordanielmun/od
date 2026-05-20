@@ -96,6 +96,10 @@ type EnemyConfig struct {
 	SpawnX  float64 `json:"spawnX"`
 	SpawnY  float64 `json:"spawnY"`
 	WaveNum int     `json:"waveNum"` // en qué oleada aparece
+	SpawnHP     *int     `json:"spawnHp,omitempty"`
+	SpawnSpeed  *float64 `json:"spawnSpeed,omitempty"`
+	SpawnDamage *int     `json:"spawnDamage,omitempty"`
+	SpawnAttackRate *int `json:"spawnAttackRate,omitempty"`
 }
 // Real-time Combat Models (Websocket)
 
