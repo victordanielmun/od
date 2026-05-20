@@ -19,7 +19,7 @@ class PreviewScene extends Phaser.Scene {
         if (!charDef) return;
         charDef.sheets.forEach(sheet => {
             const key = `char-${this.charId}-${sheet.type}`;
-            if (sheet.json) {
+            if (sheet.json && !this.textures.exists(key)) {
                 this.load.atlas(key, sheet.path, sheet.json);
             }
         });

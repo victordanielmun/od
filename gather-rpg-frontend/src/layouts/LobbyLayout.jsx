@@ -8,6 +8,7 @@ import { LobbyGameCanvas } from '../components/lobby/LobbyGameCanvas';
 import { BottomHUD } from '../components/lobby/BottomHUD';
 import { Sidebar } from '../components/lobby/Sidebar';
 import { MapEditorUI } from '../components/lobby/MapEditorUI';
+import { DeathOverlay } from '../components/lobby/DeathOverlay';
 import { PrivateMapPINToast } from '../components/lobby/PrivateMapPINToast';
 import { NotificationContainer } from '../components/common/NotificationContainer';
 import { useAuthStore } from '../store/authStore';
@@ -182,6 +183,9 @@ export const LobbyLayout = () => {
       {/* Notification Layer (Z-Index 100) */}
       <NotificationContainer />
 
+      {/* Death Overlay (Z-Index 1000) */}
+      <DeathOverlay />
+
       {/* Mission Welcome Banner */}
       {showMissionBanner && activeMission && (
         <div className="absolute top-10 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-top-10 duration-1000 pointer-events-none">
@@ -191,8 +195,8 @@ export const LobbyLayout = () => {
               {activeMission.title}
             </h1>
             <div className="h-0.5 w-32 bg-gradient-to-r from-transparent via-yellow-500 to-transparent"></div>
-            <div className="mt-4 text-yellow-200/70 font-serif italic text-lg tracking-wide">
-              {activeMission.scene_key || 'Misión Desconocida'}
+            <div className="mt-4 text-yellow-200/70 font-serif italic text-lg tracking-wide text-center max-w-md">
+              {activeMission.description_en || activeMission.scene_key || 'Aventura Misteriosa'}
             </div>
           </div>
         </div>
@@ -205,7 +209,6 @@ export const LobbyLayout = () => {
       {!isEditorMode && (
         <>
           <BottomHUD />
-          <MissionTracker mission={activeMission} />
         </>
       )}
 

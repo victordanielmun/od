@@ -35,8 +35,8 @@ export const AdminMissions = () => {
         { value: 'defeat_enemy', label: t('admin.missions.types.defeat_enemy'), icon: Sword },
         { value: 'kill_boss', label: t('admin.missions.types.kill_boss'), icon: Target },
         { value: 'kill_all', label: t('admin.missions.types.kill_all'), icon: Sword },
-        { value: 'pronunciation', label: t('admin.missions.types.pronunciation'), icon: Mic },
-        { value: 'deliver_msg', label: t('admin.missions.types.deliver_msg'), icon: Send }
+        { value: 'pronunciation_threshold', label: t('admin.missions.types.pronunciation'), icon: Mic },
+        { value: 'deliver_message', label: t('admin.missions.types.deliver_msg'), icon: Send }
     ];
     const [missions, setMissions] = useState([]);
     const [loading, setLoading] = useState(true);

@@ -24,9 +24,10 @@ class DefinitionPreviewScene extends Phaser.Scene {
         }
         
         npcDef.sheets.forEach(sheet => {
-            if (sheet.json) {
+            const key = `npc-${this.npcId}-${sheet.type}`;
+            if (sheet.json && !this.textures.exists(key)) {
                 // Key format matches NPCSprite: npc-{id}-{type}
-                this.load.atlas(`npc-${this.npcId}-${sheet.type}`, sheet.path, sheet.json);
+                this.load.atlas(key, sheet.path, sheet.json);
             }
         });
     }

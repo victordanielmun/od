@@ -1,7 +1,7 @@
 import * as Phaser from 'phaser';
 
 export class NPCSprite extends Phaser.GameObjects.Container {
-  constructor(scene, x, y, charId, username) {
+  constructor(scene, x, y, charId, username, textureType = 'npc') {
     super(scene, x, y);
     this.scene = scene;
     
@@ -9,14 +9,22 @@ export class NPCSprite extends Phaser.GameObjects.Container {
     // to match the keys in NPCConfig.js and the loaded assets.
     this.npcId = String(charId || '1').replace('sprite', '');
     this.username = username;
+    this.textureType = textureType;
 
-    // Usamos el ID normalizado para cargar la textura de cuerpo
-    const textureKey = `npc-${this.npcId}-body`;
+    // Usamos el ID normalizado para cargar la textura de cuerpo del tipo especificado
+    let textureKey = `${this.textureType}-${this.npcId}-body`;
     
-    // Fallback: Si no existe, usamos tile-npc (cuadrado azul)
-    const initialTexture = scene.textures.exists(textureKey) ? textureKey : 'tile-npc';
+    // Fallback: Si no existe la textura específica, intentamos con el ID 1 de ese tipo, o tile-npc
+    if (!scene.textures.exists(textureKey)) {
+        const fallbackKey = `${this.textureType}-1-body`;
+        if (scene.textures.exists(fallbackKey)) {
+            textureKey = fallbackKey;
+        } else {
+            textureKey = 'tile-npc';
+        }
+    }
     
-    this.sprite = scene.add.sprite(0, 0, initialTexture);
+    this.sprite = scene.add.sprite(0, 0, textureKey);
     this.sprite.setOrigin(0.5, 0.85);
     // Escala ajustada para que coincida con el tamaño del jugador
     this.sprite.setScale(1.0);
@@ -48,13 +56,23 @@ export class NPCSprite extends Phaser.GameObjects.Container {
     };
     const realName = aliases[animName] || animName;
 
-    // Si no empieza por 'npc-', le añadimos el prefijo del ID
-    let key = realName.startsWith('npc-') ? realName : `npc-${this.npcId}-${realName}`;
+    // Si no empieza por el prefijo, le añadimos el prefijo del ID
+    const prefix = `${this.textureType}-`;
+    let key = realName.startsWith(prefix) ? realName : `${this.textureType}-${this.npcId}-${realName}`;
     
-    // Fallback: si la animación no existe, intentamos con la 'idle-waiting' básica
+    // Fallback: si la animación no existe, intentamos con la 'idle-waiting' (o 'idle') básica
     if (!this.scene.anims.exists(key)) {
-        if (this.currentAnim === `npc-${this.npcId}-idle-waiting`) return;
-        key = `npc-${this.npcId}-idle-waiting`;
+        const fallbackIdle = `${this.textureType}-${this.npcId}-idle-waiting`;
+        const fallbackIdle2 = `${this.textureType}-${this.npcId}-idle`;
+        const fallbackDefaultIdle = `${this.textureType}-1-idle-waiting`;
+        
+        if (this.scene.anims.exists(fallbackIdle)) {
+            key = fallbackIdle;
+        } else if (this.scene.anims.exists(fallbackIdle2)) {
+            key = fallbackIdle2;
+        } else if (this.scene.anims.exists(fallbackDefaultIdle)) {
+            key = fallbackDefaultIdle;
+        }
     }
 
     // Final safety check before playing

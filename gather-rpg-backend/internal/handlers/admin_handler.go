@@ -103,12 +103,22 @@ func (h *AdminHandler) SaveMapConfig(c *fiber.Ctx) error {
 	database.DB.Where("scene_key = ?", req.SceneKey).First(&existing)
 
 	// SYNC NPCs: Parse walls_json and update templates
-	if h.NPCService != nil {
-		h.NPCService.SyncTemplatesFromMap(req.SceneKey, req.WallsJSON)
+	// Sync NPC Templates
+	if err := h.NPCService.SyncTemplatesFromMap(req.SceneKey, req.WallsJSON); err != nil {
+		fmt.Printf("[AdminHandler] WARNING: Failed to sync NPC templates: %v\n", err)
 	}
 
-	// SYNC Pickups
-	h.syncMapPickups(req.SceneKey, req.WallsJSON)
+	// NEW: Sync Enemies from walls_json to MapData
+	updatedMapData, err := h.syncMapEnemies(req.WallsJSON, mapDataStr)
+	if err == nil {
+		mapDataStr = updatedMapData
+		database.DB.Model(&existing).Update("map_data", mapDataStr)
+	}
+
+	// Sync Pickups
+	if err := h.syncMapPickups(req.SceneKey, req.WallsJSON); err != nil {
+		fmt.Printf("[AdminHandler] WARNING: Failed to sync pickups: %v\n", err)
+	}
 
 	return c.JSON(existing)
 }
@@ -168,15 +178,20 @@ func (h *AdminHandler) UpdateMapConfig(c *fiber.Ctx) error {
 	if req.WallsJSON != nil {
 		mapConfig.WallsJSON = *req.WallsJSON
 	}
+	var mapDataStr string
 	if req.MapData != nil {
 		// Ensure it's stored as string
 		if str, ok := req.MapData.(string); ok {
+			mapDataStr = str
 			mapConfig.MapData = str
 		} else {
 			// Marshal
 			importJson, _ := json.Marshal(req.MapData)
-			mapConfig.MapData = string(importJson)
+			mapDataStr = string(importJson)
+			mapConfig.MapData = mapDataStr
 		}
+	} else {
+		mapDataStr = mapConfig.MapData
 	}
 	if req.IsPublic != nil {
 		mapConfig.IsPublic = *req.IsPublic
@@ -199,12 +214,7 @@ func (h *AdminHandler) UpdateMapConfig(c *fiber.Ctx) error {
 		updates["walls_json"] = *req.WallsJSON
 	}
 	if req.MapData != nil {
-		if str, ok := req.MapData.(string); ok {
-			updates["map_data"] = str
-		} else {
-			importJson, _ := json.Marshal(req.MapData)
-			updates["map_data"] = string(importJson)
-		}
+		updates["map_data"] = mapDataStr
 	}
 	if req.IsPublic != nil {
 		updates["is_public"] = *req.IsPublic
@@ -221,12 +231,22 @@ func (h *AdminHandler) UpdateMapConfig(c *fiber.Ctx) error {
 	database.DB.First(&mapConfig, uid)
 
 	// SYNC NPCs: Parse walls_json and update templates
-	if h.NPCService != nil {
-		h.NPCService.SyncTemplatesFromMap(mapConfig.SceneKey, mapConfig.WallsJSON)
-	}
+	wallsJSON := mapConfig.WallsJSON
+	if wallsJSON != "" {
+		if err := h.NPCService.SyncTemplatesFromMap(mapConfig.SceneKey, wallsJSON); err != nil {
+			fmt.Printf("[AdminHandler] WARNING: Failed to sync NPC templates: %v\n", err)
+		}
+		if err := h.syncMapPickups(mapConfig.SceneKey, wallsJSON); err != nil {
+			fmt.Printf("[AdminHandler] WARNING: Failed to sync pickups: %v\n", err)
+		}
 
-	// SYNC Pickups
-	h.syncMapPickups(mapConfig.SceneKey, mapConfig.WallsJSON)
+		// NEW: Sync Enemies from walls_json to MapData
+		updatedMapData, err := h.syncMapEnemies(wallsJSON, mapDataStr)
+		if err == nil {
+			mapDataStr = updatedMapData
+			database.DB.Model(&mapConfig).Update("map_data", mapDataStr)
+		}
+	}
 
 	return c.JSON(mapConfig)
 }
@@ -336,6 +356,40 @@ func (h *AdminHandler) ListEnemies(c *fiber.Ctx) error {
 	}
 	return c.JSON(enemies)
 }
+
+func (h *AdminHandler) CreateEnemy(c *fiber.Ctx) error {
+	var enemy models.Enemy
+	if err := c.BodyParser(&enemy); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+	if err := database.DB.Create(&enemy).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(enemy)
+}
+
+func (h *AdminHandler) UpdateEnemy(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var enemy models.Enemy
+	if err := database.DB.First(&enemy, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Enemy not found"})
+	}
+	if err := c.BodyParser(&enemy); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+	if err := database.DB.Save(&enemy).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(enemy)
+}
+
+func (h *AdminHandler) DeleteEnemy(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if err := database.DB.Delete(&models.Enemy{}, "id = ?", id).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
 func (h *AdminHandler) SendStatus(c *fiber.Ctx) error {
 	return c.SendStatus(204)
 }
@@ -367,7 +421,7 @@ func (h *AdminHandler) CreateShop(c *fiber.Ctx) error {
 	}
 
 	if err := database.DB.Create(&shop).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return c.Status(500).JSON(fiber.Map{"error": "Invalid request"})
 	}
 
 	if len(req.ItemIDs) > 0 {
@@ -554,4 +608,63 @@ func (h *AdminHandler) syncMapPickups(sceneKey string, wallsJSON string) error {
 	}
 
 	return nil
+}
+
+func (h *AdminHandler) syncMapEnemies(wallsJSON string, currentMapDataJSON string) (string, error) {
+	type enemySpawnData struct {
+		X       float64 `json:"x"`
+		Y       float64 `json:"y"`
+		NPCID   string  `json:"npcId"`
+		WaveNum int     `json:"waveNum"`
+	}
+	type wallsConfig struct {
+		EnemySpawns []enemySpawnData `json:"enemySpawns"`
+	}
+
+	var wCfg wallsConfig
+	if err := json.Unmarshal([]byte(wallsJSON), &wCfg); err != nil {
+		return "", err
+	}
+
+	var mData models.MapData
+	if currentMapDataJSON != "" {
+		_ = json.Unmarshal([]byte(currentMapDataJSON), &mData)
+	}
+
+	// Convert editor spawns to model spawns
+	var spawns []models.EnemySpawn
+	for _, s := range wCfg.EnemySpawns {
+		spriteID := "1" // Default
+		
+		// Attempt to look up the template to get the actual sprite/asset ID
+		var tmpl models.NPCTemplate
+		// Check if NPCID is a numeric ID (uint)
+		if id, err := strconv.Atoi(s.NPCID); err == nil {
+			if err := database.DB.Preload("NPCDefinition").Where("id = ?", id).First(&tmpl).Error; err == nil {
+				spriteID = tmpl.NPCDefinition.Sprite
+			}
+		} else {
+			// If not a number, it might be a UUID string or something else
+			fmt.Printf("[AdminHandler] WARNING: NPCID %s is not numeric, using default sprite '1'\n", s.NPCID)
+		}
+
+		spawns = append(spawns, models.EnemySpawn{
+			NPCID:    s.NPCID,
+			SpawnX:   s.X,
+			SpawnY:   s.Y,
+			WaveNum:  s.WaveNum,
+			EnemyID:  uuid.New(), 
+			SpriteID: spriteID,
+		})
+	}
+
+	mData.Enemies = spawns
+	
+	updatedBytes, err := json.Marshal(mData)
+	if err != nil {
+		return currentMapDataJSON, err
+	}
+
+	fmt.Printf("[AdminHandler] syncMapEnemies: Synced %d enemies to MapData\n", len(spawns))
+	return string(updatedBytes), nil
 }

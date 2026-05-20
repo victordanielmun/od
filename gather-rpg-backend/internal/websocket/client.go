@@ -34,6 +34,11 @@ type Client struct {
 	// Rate Limiter for position updates
 	// 20 updates per second, burst of 20
 	PosLimiter *rate.Limiter
+
+	// Current position (for AI and proximity)
+	X         float64
+	Y         float64
+	Anim      string
 }
 
 func NewClient(hub *Hub, conn *websocket.Conn, id uuid.UUID, username string) *Client {

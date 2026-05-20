@@ -24,6 +24,8 @@
         "items": "Ítems",
         "shops": "Tiendas",
         "missions": "Misiones",
+        "enemy_models": "Modelos de Enemigos",
+        "enemy_visualizer": "Visualizador de Enemigos",
         "ai_test": "IA Test",
         "characters": "Personajes",
         "back_to_game": "Volver al Juego",
@@ -122,6 +124,14 @@
         "Configura las animaciones en NPCConfig.js → animationsByNPC."
       ]
     },
+    "enemies": {
+      "title": "Visualizador de Enemigos",
+      "subtitle": "Previsualiza animaciones y estados de la IA.",
+      "empty": "No hay enemigos configurados.",
+      "animation": "Animación",
+      "state_machine": "Máquina de Estados",
+      "technical_notes": "Notas Técnicas"
+    },
     "npc_definitions": {
       "title": "Modelos de NPCs",
       "subtitle": "Gestiona los personajes base que estarán disponibles para el mapa.",
@@ -201,6 +211,34 @@
         "revive": "Revivir Jugador",
         "damage": "Daño (Arrojable)",
         "none": "Ninguno"
+      }
+    },
+    "enemies": {
+      "title": "Visualizador de Enemigos",
+      "subtitle": "Previsualiza las animaciones de los enemigos y las transiciones de la Máquina de Estados Finitos.",
+      "card_title": "ENEMIGO #{{id}}",
+      "fsm_states": "ESTADOS FSM Y ANIMACIONES",
+      "sprite_info": "INFORMACIÓN DEL SPRITESHEET",
+      "tech_notes": "Notas Técnicas",
+      "tech_note_1": "Las animaciones se mapean manualmente en EnemyConfig.js ya que los frames usan nombres genéricos spriteN.",
+      "tech_note_2": "La escala de previsualización está configurada a 2x para observar mejor los detalles de los píxeles.",
+      "tech_note_3": "La lógica FSM está integrada con BeatEmUpScene.",
+      "form": {
+        "title_new": "Crear Nuevo Modelo de Enemigo",
+        "title_edit": "Editar Modelo de Enemigo",
+        "name": "Nombre",
+        "level": "Nivel",
+        "hp_max": "HP Máximo",
+        "mp_max": "MP Máximo",
+        "attack": "Ataque",
+        "defense": "Defensa",
+        "speed": "Velocidad",
+        "exp_reward": "Recompensa EXP",
+        "gold_reward": "Recompensa Oro",
+        "ai_behavior": "Comportamiento IA",
+        "sprite_key": "Clave de Sprite",
+        "save": "Guardar Enemigo",
+        "cancel": "Cancelar"
       }
     },
     "shops": {
@@ -450,6 +488,7 @@
       "tile_collider": "Colisionador",
       "tile_store": "Tiles de Tienda",
       "tile_furniture": "Muebles",
+      "tile_enemy": "Enemigo",
       "texture": "Textura",
       "no_texture_options": "Sin opciones de textura",
       "portal_config": "Config. Portal",
@@ -472,6 +511,10 @@
       "select_item": "Seleccionar Objeto",
       "quantity": "Cantidad",
       "item_placement_hint": "Coloca este ítem en el mapa para que los jugadores puedan recogerlo.",
+      "enemy_config": "Config. Enemigo",
+      "enemy_type": "Tipo de Enemigo",
+      "wave_num": "Número de Oleada",
+      "enemy_placement_hint": "Haz clic para colocar un punto de aparición de enemigo.",
       "stats": "Estadísticas",
       "stat_walls": "Muros",
       "stat_floors": "Suelos",
@@ -484,6 +527,7 @@
       "stat_colliders": "Colisionadores",
       "stat_store": "Tiles de Tienda",
       "stat_furniture": "Muebles",
+      "stat_enemies": "Enemigos",
       "history": "Historial",
       "redo": "Rehacer",
       "undo": "Deshacer",

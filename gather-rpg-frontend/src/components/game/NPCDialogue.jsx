@@ -54,6 +54,7 @@ const NPCPortrait = ({ npcId, state, size = 'small' }) => {
     const atlasW = atlasData.meta.size.w;
     const atlasH = atlasData.meta.size.h;
 
+
     return (
         <div 
             className={isLarge 
@@ -90,6 +91,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const [resolvedType, setResolvedType] = useState(null);
     const [autoPlay, setAutoPlay] = useState(true);
     const [isMissionComplete, setIsMissionComplete] = useState(false);
+    const [hasPendingCompletion, setHasPendingCompletion] = useState(false);
     const [completedMissionData, setCompletedMissionData] = useState(null);
     const hasPlayedGreeting = useRef(false);
     
@@ -221,8 +223,8 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 window.dispatchEvent(new CustomEvent('lobby-change-map', {
                     detail: { 
                         targetMap: mission.scene_key,
-                        targetX: 0,
-                        targetY: 0
+                        targetX: null,
+                        targetY: null
                     }
                 }));
                 onClose(); // Close dialogue after triggering teleport
@@ -367,7 +369,8 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             if (data.mission_newly_completed) {
                 console.log("[NPCDialogue] Mission Completed detected!", data.mission_details);
                 setCompletedMissionData(data.mission_details);
-                setIsMissionComplete(true);
+                // DELAYED: We don't show the overlay yet so the user can read the NPC's final words
+                setHasPendingCompletion(true);
             }
 
             if (data.is_shop) {
@@ -426,6 +429,15 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const lastMessage = messages[messages.length - 1] || { text: '...', sender: 'npc' };
     const isAudioOnly = npcData.interactionMode === 'audio_only';
 
+    const handleClose = () => {
+        if (hasPendingCompletion) {
+            setIsMissionComplete(true);
+            setHasPendingCompletion(false);
+        } else {
+            onClose();
+        }
+    };
+
     const handleAcceptMissionComplete = () => {
         console.log("[NPCDialogue] Accepting mission completion, returning to lobby...");
         window.dispatchEvent(new CustomEvent('lobby-change-map', {
@@ -478,6 +490,14 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                         <span className="font-medieval text-xl font-bold">+{completedMissionData.reward_gold} Oro</span>
                                     </div>
                                 )}
+                                {completedMissionData?.reward_xp > 0 && (
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="w-16 h-16 bg-purple-100 rounded-full border-4 border-purple-600 flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform">
+                                            <span className="text-2xl font-black text-purple-900">XP</span>
+                                        </div>
+                                        <span className="font-medieval text-xl font-bold">+{completedMissionData.reward_xp} XP</span>
+                                    </div>
+                                )}
                                 {completedMissionData?.reward_item_id && (
                                     <div className="flex flex-col items-center gap-2">
                                         <div className="w-16 h-16 bg-blue-100 rounded-lg border-4 border-blue-600 flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform overflow-hidden">
@@ -506,7 +526,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 
                 {/* Close Button (Fixed to viewport) */}
                 <button 
-                    onClick={onClose} 
+                    onClick={handleClose} 
                     className="fixed top-6 right-6 z-[100] p-3 bg-[var(--color-orange-vibrant)] text-white border-2 border-[var(--color-gold)] shadow-2xl hover:bg-[var(--color-accent-blue)] transition-colors pointer-events-auto"
                 >
                     <X size={24} />

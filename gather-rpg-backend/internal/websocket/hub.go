@@ -12,7 +12,6 @@ import (
 
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/services"
-	"gather-rpg-backend/internal/spatial"
 	"gather-rpg-backend/internal/webrtc"
 
 	"github.com/google/uuid"
@@ -40,6 +39,7 @@ type Hub struct {
 	MovementService *services.MovementService
 	PeerService     *services.PeerService
 	CombatService   *services.CombatService
+	MissionService  *services.MissionService
 
 	// Batching
 	PendingUpdates map[string]map[string]models.RedisPosition
@@ -60,7 +60,7 @@ func (h *Hub) SendToUser(userID string, msg *models.WSMessage) {
 	}
 }
 
-func NewHub(presence *services.PresenceService, roomService *services.RoomService, movement *services.MovementService, peer *services.PeerService, combat *services.CombatService) *Hub {
+func NewHub(presence *services.PresenceService, roomService *services.RoomService, movement *services.MovementService, peer *services.PeerService, combat *services.CombatService, mission *services.MissionService) *Hub {
 	return &Hub{
 		Broadcast:       make(chan *models.WSMessage),
 		Register:        make(chan *Client),
@@ -73,6 +73,7 @@ func NewHub(presence *services.PresenceService, roomService *services.RoomServic
 		MovementService: movement,
 		PeerService:     peer,
 		CombatService:   combat,
+		MissionService:  mission,
 		PendingUpdates:  make(map[string]map[string]models.RedisPosition),
 	}
 }
@@ -193,6 +194,7 @@ func (h *Hub) handleUnregister(client *Client) {
 				})
 
 				if len(room.Clients) == 0 {
+					room.Close()
 					delete(h.Rooms, client.RoomID)
 				}
 			}
@@ -293,6 +295,9 @@ func (h *Hub) HandleMessage(client *Client, message []byte) {
 		var payload models.PlayerEmojiPayload
 		parsePayload(wsMsg.Payload, &payload)
 		h.handlePlayerEmoji(client, payload)
+
+	case MsgPlayerAttack:
+		h.handlePlayerAttack(client, wsMsg.Payload)
 	}
 }
 
@@ -714,6 +719,91 @@ func (h *Hub) handleCombatEnd(client *Client, state *models.CombatState) {
 	})
 }
 
+func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
+	var p struct {
+		TargetInstanceID string `json:"target_instance_id"`
+		Damage           int    `json:"damage"`
+	}
+	parsePayload(payload, &p)
+
+	roomID := client.RoomID
+	if roomID == "" {
+		return
+	}
+
+	h.mu.RLock()
+	room, ok := h.Rooms[roomID]
+	h.mu.RUnlock()
+	if !ok {
+		return
+	}
+
+	instanceUUID, err := uuid.Parse(p.TargetInstanceID)
+	if err != nil {
+		return
+	}
+
+	room.mu.Lock()
+	enemy, exists := room.ActiveEnemies[instanceUUID]
+	if !exists || enemy.FSMState == "dead" {
+		room.mu.Unlock()
+		return
+	}
+
+	enemy.HP -= p.Damage
+	log.Printf("[Combat] Enemy %s took %d damage from %s. HP: %d", instanceUUID, p.Damage, client.ID, enemy.HP)
+
+	if enemy.HP <= 0 {
+		enemy.HP = 0
+		enemy.FSMState = "dead"
+		room.mu.Unlock()
+
+		// Broadcast death
+		deathMsg := &models.WSMessage{
+			Type: MsgEnemyDied,
+			Payload: models.EnemyDiedBroadcast{
+				InstanceID: instanceUUID,
+				RoomID:     roomID,
+				KilledBy:   client.ID.String(),
+			},
+		}
+		room.broadcastToAll(deathMsg)
+
+		// Update Mission Progress
+		go func() {
+			err := h.MissionService.UpdateKillProgress(client.ID, enemy.EnemyID, roomID)
+			if err != nil {
+				log.Printf("[Combat] Failed to update kill progress for user %s: %v", client.ID, err)
+			}
+
+			// Special case for "Kill All": check if all enemies are dead in this room
+			room.mu.RLock()
+			allDead := true
+			for _, e := range room.ActiveEnemies {
+				if e.FSMState != "dead" {
+					allDead = false
+					break
+				}
+			}
+			room.mu.RUnlock()
+
+			if allDead {
+				log.Printf("[Combat] Room %s fully cleared! Updating 'kill_all' missions.", roomID)
+				// Find and complete "kill_all" tasks for ALL players in the room
+				room.mu.RLock()
+				for c := range room.Clients {
+					// We reuse UpdateKillProgress which might need a special flag or we just trigger another check
+					// A more direct way:
+					h.MissionService.UpdateKillAllProgress(c.ID, roomID)
+				}
+				room.mu.RUnlock()
+			}
+		}()
+	} else {
+		room.mu.Unlock()
+	}
+}
+
 func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 	roomID := payload.RoomID
 
@@ -775,6 +865,13 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 				oldRoom.RemoveClient(client)
 				oldRoom.Grid.RemoveUser(client.ID.String())
 				h.MovementService.ClearPosition(context.Background(), client.RoomID, client.ID.String())
+
+				// NEW: If the room is now empty, destroy it so it resets (crucial for missions)
+				if len(oldRoom.Clients) == 0 {
+					log.Printf("[Hub] Room %s is empty after client switch. Destroying.", client.RoomID)
+					oldRoom.Close()
+					delete(h.Rooms, client.RoomID)
+				}
 			}
 			// Always tell the old room peers to remove this player so no ghost persists
 			h.broadcastToRoomSimple(oldRoom, &models.WSMessage{
@@ -789,6 +886,20 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 
 	client.RoomID = roomID
 	room.AddClient(client)
+
+	// Notify others that an ally has joined (System Notification)
+	if room.Type == "cooperative" || room.Type == "mission" {
+		h.broadcastToRoomSimple(room, &models.WSMessage{
+			Type: MsgChatBroadcast,
+			Payload: models.ChatMessageBroadcast{
+				UserID:    uuid.Nil,
+				Username:  "Sistema",
+				Message:   fmt.Sprintf("¡Un aliado se ha unido al combate! Preparen sus armas, %s ha llegado.", client.Username),
+				Timestamp: time.Now().Format(time.RFC3339),
+				RoomID:    roomID,
+			},
+		})
+	}
 
 	// Fetch CharacterID from DB if not already set
 	if client.CharacterID == "" {
@@ -912,6 +1023,11 @@ func (h *Hub) handlePlayerMove(client *Client, payload models.PlayerMovePayload)
 	}
 	h.PendingUpdates[roomID][client.ID.String()] = redisPos
 	h.updatesMu.Unlock()
+
+	// Update local client position for AI
+	client.X = payload.X
+	client.Y = payload.Y
+	client.Anim = payload.Anim
 
 	// Trigger immediate proximity check if cell changed (or simply every move for now)
 	log.Printf("[Hub] User %s moving in room %s to (%.0f, %.0f)", client.ID, roomID, payload.X, payload.Y)
@@ -1579,7 +1695,39 @@ func (h *Hub) handleRequestMapJoin(client *Client, sceneKey, roomType, inviteCod
 
 	h.mu.RLock()
 
-	if isPublic {
+	// ─ COOPERATIVE LOGIC: Find active room for same mission with < 60% progress ─────
+	if roomType == "cooperative" {
+		maxCoopPlayers := 4 // Hard limit for coop balance
+		for _, room := range h.Rooms {
+			if room.SceneKey == sceneKey && room.Type == "cooperative" && len(room.Clients) < maxCoopPlayers {
+				// Calculate progress based on enemies
+				room.mu.RLock()
+				total := len(room.ActiveEnemies)
+				dead := 0
+				for _, e := range room.ActiveEnemies {
+					if e.FSMState == "dead" {
+						dead++
+					}
+				}
+				room.mu.RUnlock()
+
+				progress := 0.0
+				if total > 0 {
+					progress = float64(dead) / float64(total)
+				}
+
+				if progress < 0.6 {
+					selectedRoom = room
+					log.Printf("[Hub] Joining existing cooperative instance %s (Progress: %.1f%%)", room.ID, progress*100)
+					break
+				}
+			}
+		}
+	}
+
+	if selectedRoom != nil {
+		// Already found a cooperative room to join
+	} else if isPublic {
 		// ─ PUBLIC: find any non-full instance for this scene ───────────────────────────
 		for _, room := range h.Rooms {
 			if room.SceneKey == sceneKey && room.Type == "public" && len(room.Clients) < room.MaxUsers {
@@ -1640,6 +1788,11 @@ func (h *Hub) handleRequestMapJoin(client *Client, sceneKey, roomType, inviteCod
 		}
 
 		instanceSuffix := uuid.New().String()[:4]
+		var mapDataBytes []byte
+		if mapCfg != nil && len(mapCfg.MapData) > 0 {
+			mapDataBytes = []byte(mapCfg.MapData)
+		}
+
 		newRoom := &models.Room{
 			Name:       fmt.Sprintf("%s-%s", sceneKey, instanceSuffix),
 			SceneKey:   sceneKey,
@@ -1648,6 +1801,7 @@ func (h *Hub) handleRequestMapJoin(client *Client, sceneKey, roomType, inviteCod
 			MaxUsers:   maxUsers,
 			IsPublic:   isPublic,
 			CreatedBy:  uuid.MustParse("00000000-0000-0000-0000-000000000000"),
+			MapData:    mapDataBytes,
 		}
 		if err := h.RoomService.CreateRoom(newRoom); err != nil {
 			log.Printf("[Hub] Failed to persist new room instance: %v", err)
@@ -1655,16 +1809,12 @@ func (h *Hub) handleRequestMapJoin(client *Client, sceneKey, roomType, inviteCod
 			return
 		}
 
-		newHubRoom := &Room{
-			ID:         newRoom.ID.String(),
-			InviteCode: newRoom.InviteCode,
-			Clients:    make(map[*Client]bool),
-			Grid:       spatial.NewSpatialGrid(),
-			MapData:    &mapData,
-			MaxUsers:   newRoom.MaxUsers,
-			SceneKey:   newRoom.SceneKey,
-			Type:       newRoom.Type,
-		}
+		// Use NewRoom constructor to ensure enemies and AI loop are initialized
+		newHubRoom := NewRoom(newRoom.ID.String(), &mapData)
+		newHubRoom.InviteCode = newRoom.InviteCode
+		newHubRoom.MaxUsers = newRoom.MaxUsers
+		newHubRoom.SceneKey = newRoom.SceneKey
+		newHubRoom.Type = newRoom.Type
 
 		h.mu.Lock()
 		h.Rooms[newHubRoom.ID] = newHubRoom

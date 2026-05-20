@@ -34,14 +34,17 @@ export const loadCharacterSprites = (scene) => {
       // Key format: char-{id}-{type} -> e.g., char-1-base, char-1-combat
       const key = `char-${char.id}-${sheet.type}`;
 
-      if (sheet.json) {
-        // Carga como Atlas (Textura + JSON)
-        scene.load.atlas(key, sheet.path, sheet.json);
-      } else {
-        // Fallback a spritesheet clásico si no hay JSON (no usado actualmente)
-        scene.load.spritesheet(key, sheet.path, {
-          frameWidth: 48, frameHeight: 48
-        });
+      // Only queue load if key is not already in texture cache
+      if (!scene.textures.exists(key)) {
+        if (sheet.json) {
+          // Carga como Atlas (Textura + JSON)
+          scene.load.atlas(key, sheet.path, sheet.json);
+        } else {
+          // Fallback a spritesheet clásico si no hay JSON (no usado actualmente)
+          scene.load.spritesheet(key, sheet.path, {
+            frameWidth: 48, frameHeight: 48
+          });
+        }
       }
     });
   });

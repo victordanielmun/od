@@ -62,4 +62,9 @@ const (
 
 	// Missions
 	MsgMissionCompleted = "mission_completed"
+
+	// Real-time Combat
+	MsgEnemyUpdate      = "enemy_update"
+	MsgEnemyDied        = "enemy_died"
+	MsgPlayerAttack     = "player_attack"
 )

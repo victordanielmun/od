@@ -60,10 +60,10 @@ export const loadNPCSprites = (scene) => {
     npc.sheets.forEach(sheet => {
       const key = `npc-${npc.id}-${sheet.type}`;
       
-      // Simple check: if it's already in the texture manager, don't load again.
-      // Phaser's internal loader handles "already in queue" automatically by key.
+      // Only queue if the texture is not already in the cache.
+      // Phaser's loader automatically skips files already loaded.
       if (sheet.json && !scene.textures.exists(key)) {
-        console.log(`[NPCConfig] Loading atlas: ${key} from ${sheet.path}`);
+        console.log(`[NPCConfig] Queueing atlas: ${key}`);
         scene.load.atlas(key, sheet.path, sheet.json);
       }
     });
@@ -107,4 +107,37 @@ export const createNPCAnimations = (scene) => {
       }
     });
   });
+};
+
+/**
+ * Definiciones de ataques del jugador para el sistema de combate Beat 'em up
+ */
+export const PLAYER_ATTACKS = {
+  punch: {
+    activeFrames: [3, 4],       // frames de la animación que hacen daño
+    damage:       15,
+    offsetX:      48,           // cuánto delante del jugador aparece el hitbox
+    offsetY:      -8,
+    width:        50,
+    height:       36,
+    knockback:    { x: 1, y: -0.2 },
+  },
+  kick: {
+    activeFrames: [2, 3, 4],
+    damage:       22,
+    offsetX:      52,
+    offsetY:      0,
+    width:        58,
+    height:       40,
+    knockback:    { x: 1.2, y: -0.3 },
+  },
+  strong: {
+    activeFrames: [4, 5],
+    damage:       35,           // supera knockThreshold → estado KNOCKED
+    offsetX:      44,
+    offsetY:      -4,
+    width:        64,
+    height:       44,
+    knockback:    { x: 1.8, y: -0.5 },
+  },
 };

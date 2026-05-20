@@ -142,6 +142,7 @@ type Mission struct {
 	RewardItemID   *uuid.UUID  `gorm:"type:uuid" json:"reward_item_id"`
 	RewardQuantity int         `gorm:"default:0" json:"reward_quantity"`
 	RewardGold     int         `gorm:"default:0" json:"reward_gold"`
+	RewardXP       int         `gorm:"default:0" json:"reward_xp"`
 	CreatedAt     time.Time   `json:"created_at"`
 }
 

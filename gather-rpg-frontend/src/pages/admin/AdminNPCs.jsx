@@ -19,7 +19,7 @@ class NPCPreviewScene extends Phaser.Scene {
         if (!npcDef) return;
         npcDef.sheets.forEach(sheet => {
             const key = `npc-${this.npcId}-${sheet.type}`;
-            if (sheet.json) {
+            if (sheet.json && !this.textures.exists(key)) {
                 this.load.atlas(key, sheet.path, sheet.json);
             }
         });

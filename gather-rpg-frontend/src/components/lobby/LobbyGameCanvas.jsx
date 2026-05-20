@@ -107,6 +107,15 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
         });
       }
 
+      // Restore focus to canvas so keyboard works
+      setTimeout(() => {
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+            canvas.tabIndex = 0;
+            canvas.focus();
+        }
+      }, 100);
+
       // 3. Update URL silently
       const url = new URL(window.location);
       url.searchParams.set('map', scene_key);
@@ -144,15 +153,25 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
       return;
     }
 
-    const ensureLobby = async () => {
+    const ensureRoom = async () => {
       try {
+        const params = new URLSearchParams(window.location.search);
+        const mapKey = params.get('map') || params.get('edit_map');
+        const spX = params.get('spawnX');
+        const spY = params.get('spawnY');
+
+        if (mapKey && mapKey !== 'lobby') {
+          console.log(`[LobbyGameCanvas] URL Map detected: ${mapKey}. Requesting map join...`);
+          useGameStore.getState().requestMapJoin(mapKey, 'public');
+          return;
+        }
+
         await fetchRooms();
         const rooms = useRoomStore.getState().rooms;
         let lobby = rooms.find(r => r.name === 'Main Lobby');
 
         if (!lobby) {
           console.log("Creating Main Lobby...");
-          // Attempt create. If it fails (e.g. exists), we catch error
           lobby = await createRoom({
             name: 'Main Lobby',
             max_users: 50,
@@ -161,8 +180,6 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
           });
         }
 
-        // If create returned null (error caught inside store), try fetching one more time immediately
-        // because maybe someone else created it.
         if (!lobby) {
           await fetchRooms();
           const freshRooms = useRoomStore.getState().rooms;
@@ -171,16 +188,12 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
 
         if (lobby) {
           console.log("Joining Lobby:", lobby.id);
-          const params = new URLSearchParams(window.location.search);
-          const spX = params.get('spawnX');
-          const spY = params.get('spawnY');
           joinRoom(lobby.id, spX, spY);
         } else {
           throw new Error("Main Lobby could not be found or created.");
         }
       } catch (error) {
-        console.error("Failed to join lobby:", error);
-        // Retry after delay
+        console.error("Failed to join room:", error);
         const timer = setTimeout(() => {
           setRetryCount(c => c + 1);
         }, 3000);
@@ -188,7 +201,7 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
       }
     };
 
-    ensureLobby();
+    ensureRoom();
   }, [isConnected, fetchRooms, createRoom, joinRoom, currentRoomId, retryCount]);
 
   useEffect(() => {
@@ -222,9 +235,8 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
         antialias: false,
         antialiasGL: false,
         roundPixels: true,
-        // desynchronized reduces input latency but REQUIRES preserveDrawingBuffer
-        // to prevent the WebGL buffer being cleared before the display reads it (flickering).
-        desynchronized: true,
+        // DISABLED desynchronized to prevent "pestañeo" (flickering) on some systems
+        desynchronized: false,
         preserveDrawingBuffer: true
       },
       scene: [LobbyScene]

@@ -1,10 +1,15 @@
 package websocket
 
 import (
+	"log"
+	"math"
 	"sync"
+	"time"
 
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/spatial"
+
+	"github.com/google/uuid"
 )
 
 type Room struct {
@@ -16,18 +21,159 @@ type Room struct {
 	Type       string
 	InviteCode string
 	MaxUsers   int
+	MissionID  uint
 	Broadcast  chan *models.WSMessage // Local broadcast channel if needed, or Hub handles it
-	mu         sync.RWMutex
+
+	// Combat
+	ActiveEnemies map[uuid.UUID]*models.ActiveEnemy
+	aiTicker      *time.Ticker
+	stopAI        chan bool
+
+	mu sync.RWMutex
 }
 
 func NewRoom(id string, mapData *models.MapData) *Room {
-	return &Room{
-		ID:       id,
-		Clients:  make(map[*Client]bool),
-		Grid:     spatial.NewSpatialGrid(),
-		MapData:  mapData,
-		MaxUsers: 50, // Default
+	r := &Room{
+		ID:            id,
+		Clients:       make(map[*Client]bool),
+		Grid:          spatial.NewSpatialGrid(),
+		MapData:       mapData,
+		MaxUsers:      50, // Default
+		ActiveEnemies: make(map[uuid.UUID]*models.ActiveEnemy),
+		stopAI:        make(chan bool),
 	}
+
+	r.initializeEnemies()
+	r.startAILoop()
+
+	return r
+}
+
+func (r *Room) initializeEnemies() {
+	if r.MapData == nil || len(r.MapData.Enemies) == 0 {
+		return
+	}
+
+	for _, e := range r.MapData.Enemies {
+		instanceID := uuid.New()
+		
+		// Use e.NPCID as the primary asset identifier for the frontend.
+		// If EnemyID is Nil (not set by editor), we still have a valid instance.
+		enemyID := e.EnemyID
+		if enemyID == uuid.Nil {
+			enemyID = uuid.New()
+		}
+
+		r.ActiveEnemies[instanceID] = &models.ActiveEnemy{
+			InstanceID: instanceID,
+			EnemyID:    enemyID,
+			X:          e.SpawnX,
+			Y:          e.SpawnY,
+			HP:         100, // Default HP, could be loaded from template in the future
+			HPMax:      100,
+			FSMState:   "idle",
+			WaveNum:    e.WaveNum,
+			NPCID:      e.NPCID,
+			SpriteID:   e.SpriteID,
+		}
+	}
+	log.Printf("[Room %s] Initialized %d enemies from MapData (Enemies count: %d)", r.ID, len(r.ActiveEnemies), len(r.MapData.Enemies))
+}
+
+func (r *Room) startAILoop() {
+	r.aiTicker = time.NewTicker(100 * time.Millisecond)
+	go func() {
+		for {
+			select {
+			case <-r.aiTicker.C:
+				r.tickAI()
+			case <-r.stopAI:
+				return
+			}
+		}
+	}()
+}
+
+func (r *Room) tickAI() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if len(r.ActiveEnemies) == 0 || len(r.Clients) == 0 {
+		return
+	}
+
+	updates := make([]models.ActiveEnemy, 0)
+	for _, enemy := range r.ActiveEnemies {
+		if enemy.FSMState == "dead" {
+			continue
+		}
+
+		// Simple AI: Find nearest player
+		var nearestClient *Client
+		minDist := 500.0 // Detection range
+
+		for client := range r.Clients {
+			if client.Anim == "die" || client.Anim == "dead" {
+				continue // Ignore dead players
+			}
+			dist := math.Sqrt(math.Pow(enemy.X-client.X, 2) + math.Pow(enemy.Y-client.Y, 2))
+			if dist < minDist {
+				minDist = dist
+				nearestClient = client
+			}
+		}
+
+		// Chasing logic
+		if nearestClient != nil {
+			enemy.FSMState = "chase"
+			enemy.TargetID = nearestClient.ID.String()
+
+			// Move towards player (speed 120px/s -> 12px per tick of 100ms)
+			dx := nearestClient.X - enemy.X
+			dy := nearestClient.Y - enemy.Y
+			angle := math.Atan2(dy, dx)
+			
+			speed := 12.0
+			if minDist > 90 { // Don't overlap completely (matched with frontend 90px attackRange)
+				enemy.X += math.Cos(angle) * speed
+				enemy.Y += math.Sin(angle) * speed
+			} else {
+				enemy.FSMState = "attack"
+			}
+		} else {
+			enemy.FSMState = "idle"
+			enemy.TargetID = ""
+		}
+
+		updates = append(updates, *enemy)
+	}
+
+	if len(updates) > 0 {
+		log.Printf("[Room %s] Broadcasting updates for %d enemies to %d clients", r.ID, len(updates), len(r.Clients))
+		msg := &models.WSMessage{
+			Type: MsgEnemyUpdate,
+			Payload: models.EnemyUpdateBroadcast{
+				RoomID:  r.ID,
+				Enemies: updates,
+			},
+		}
+		r.broadcastToAll(msg)
+	}
+}
+
+func (r *Room) broadcastToAll(msg *models.WSMessage) {
+	// This is slightly inefficient if called every tick, 
+	// but ok for room-scoped events
+	for client := range r.Clients {
+		client.SendJSON(msg)
+	}
+}
+
+func (r *Room) Close() {
+	if r.aiTicker != nil {
+		r.aiTicker.Stop()
+	}
+	close(r.stopAI)
 }
 
 func (r *Room) AddClient(client *Client) {

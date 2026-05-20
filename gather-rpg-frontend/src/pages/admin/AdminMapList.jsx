@@ -3,12 +3,14 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { Map as MapIcon, Plus, Search, Edit2, Trash2 } from 'lucide-react';
+import { CreateMapModal } from '../../components/admin/CreateMapModal';
 
 export const AdminMapList = () => {
     const { t } = useTranslation();
     const [maps, setMaps] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -28,6 +30,49 @@ export const AdminMapList = () => {
 
     const handleEdit = (sceneKey) => {
         navigate(`/lobby?edit_map=${sceneKey}`);
+    };
+
+    const handleCreateMap = async (formData) => {
+        try {
+            const mapData = {
+                width: Number(formData.width),
+                height: Number(formData.height),
+                defaultSpawnX: Number(formData.spawnX),
+                defaultSpawnY: Number(formData.spawnY),
+                bgmTrack: formData.bgmTrack
+            };
+
+            await api.post('/admin/maps', {
+                scene_key: formData.sceneKey,
+                walls_json: JSON.stringify({
+                    width: mapData.width,
+                    height: mapData.height,
+                    defaultSpawnX: mapData.defaultSpawnX,
+                    defaultSpawnY: mapData.defaultSpawnY,
+                    walls: [],
+                    floors: [],
+                    forest: [],
+                    builds: [],
+                    spawns: [],
+                    npcZones: [],
+                    pickups: [],
+                    voids: [],
+                    colliders: [],
+                    enemySpawns: []
+                }),
+                map_data: mapData,
+                is_public: true,
+                max_users: 50
+            });
+
+            setIsCreateModalOpen(false);
+            loadMaps();
+            // Optional: Auto-navigate to editor
+            // navigate(`/lobby?edit_map=${formData.sceneKey}`);
+        } catch (error) {
+            console.error("Failed to create map:", error);
+            alert("Error al crear el mapa: " + (error.response?.data?.error || error.message));
+        }
     };
 
     const handleDelete = async (id, sceneKey) => {
@@ -59,12 +104,7 @@ export const AdminMapList = () => {
                     </div>
                 </div>
                 <button
-                    onClick={() => {
-                        const sceneKey = prompt(t('admin.maps.prompt_key'));
-                        if (sceneKey && sceneKey.trim()) {
-                            handleEdit(sceneKey.trim().toLowerCase());
-                        }
-                    }}
+                    onClick={() => setIsCreateModalOpen(true)}
                     className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all shadow-lg hover:shadow-green-500/20"
                 >
                     <Plus size={20} />
@@ -136,6 +176,12 @@ export const AdminMapList = () => {
                     </table>
                 </div>
             </div>
+
+            <CreateMapModal 
+                isOpen={isCreateModalOpen} 
+                onClose={() => setIsCreateModalOpen(false)} 
+                onSubmit={handleCreateMap} 
+            />
         </div>
     );
 };

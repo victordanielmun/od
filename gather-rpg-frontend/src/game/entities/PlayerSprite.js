@@ -52,7 +52,15 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
     this.playAnimation(this.currentAnim);
   }
 
-  playAnimation(key) {
+  playAnimation(key, lockDuration = 0) {
+    // If we are currently locked by a previous animation, don't play a new one
+    if (this._animLocked && this.scene.time.now < this._animLockTime) {
+      // Allow overriding a lock if we are dying
+      if (key !== 'die' && !key.endsWith('-die')) {
+        return;
+      }
+    }
+
     // If key is just 'walk' or 'slash', prepend character ID
     if (!key.startsWith('char-')) {
       key = `char-${this.characterId}-${key}`;
@@ -70,6 +78,15 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
     
     this.sprite.play(key, true);
     this.currentAnim = key;
+
+    // Apply animation lock if requested
+    if (lockDuration > 0) {
+      this._animLocked = true;
+      this._animLockTime = this.scene.time.now + lockDuration;
+    } else if (key === `char-${this.characterId}-idle` || key === `char-${this.characterId}-walk`) {
+      // Re-enable if we explicitly go back to idle/walk and no duration is passed
+      this._animLocked = false;
+    }
   }
 
   updateMovement(velocity) {

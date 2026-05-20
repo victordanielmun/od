@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Hammer, Save, Download, Upload, X, Undo2, Redo2, Trash2,
   Paintbrush, Eraser, Square, ChevronDown, ChevronUp,
-  Camera, User, MapPin, Pipette, Zap,
+  Camera, User, MapPin, Pipette, Zap, Swords
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import api from '../../services/api';
@@ -21,6 +21,7 @@ const TILE_COLORS = {
   store: '#556270',
   furniture: '#FF6B6B',
   exit: '#FF4500',
+  enemy: '#FF4444',
 };
 
 const dispatchEditorCommand = (action, value) =>
@@ -115,6 +116,7 @@ export const MapEditorUI = ({ gameRef }) => {
   const [activeTexture, setActiveTexture] = useState('sprite1');
   const [buildMeta, setBuildMeta] = useState({ portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '' });
   const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [] });
+  const [enemyMeta, setEnemyMeta] = useState({ npcId: '', waveNum: 1, hp: 50, speed: 120, damage: 10 });
   const [buildScale, setBuildScale] = useState(2);
   const [availableMaps, setAvailableMaps] = useState([]);
   const [npcDefinitions, setNpcDefinitions] = useState([]);
@@ -127,8 +129,10 @@ export const MapEditorUI = ({ gameRef }) => {
   const [stats, setStats] = useState({ 
     walls: 0, floors: 0, forest: 0, builds: 0, spawns: 0, 
     npcZones: 0, pickups: 0, storeTiles: 0, furniture: 0, exits: 0,
+    enemySpawns: 0,
     historySize: 0, redoSize: 0 
   });
+  const [availableEnemies, setAvailableEnemies] = useState([]);
   const [playerSpeed, setPlayerSpeed] = useState(160);
 
   // Current map settings (width, height, public, etc.)
@@ -160,6 +164,7 @@ export const MapEditorUI = ({ gameRef }) => {
     { id: 'collider', label: t('lobby.editor.tile_collider') || 'Collider', color: TILE_COLORS.collider },
     { id: 'store', label: t('lobby.editor.tile_store') || 'Store Tiles', color: TILE_COLORS.store },
     { id: 'furniture', label: t('lobby.editor.tile_furniture') || 'Furniture', color: TILE_COLORS.furniture },
+    { id: 'enemy', label: t('lobby.editor.tile_enemy') || 'Enemy Spawn', color: TILE_COLORS.enemy },
   ], [t]);
 
   useEffect(() => {
@@ -186,10 +191,17 @@ export const MapEditorUI = ({ gameRef }) => {
           definitionId: metadata.definitionId || '',
           missionIds: Array.isArray(metadata.missionIds) ? metadata.missionIds : (metadata.missionId ? [metadata.missionId] : [])
         });
-      } else if (type === 'item') {
         setPickupMeta({
           itemId: metadata.itemId || '',
           quantity: metadata.quantity || 1
+        });
+      } else if (type === 'enemy') {
+        setEnemyMeta({
+          npcId: metadata.npcId || '',
+          waveNum: metadata.waveNum || 1,
+          hp: metadata.hp || 50,
+          speed: metadata.speed || 120,
+          damage: metadata.damage || 10
         });
       }
 
@@ -226,6 +238,7 @@ export const MapEditorUI = ({ gameRef }) => {
         ]);
       });
       api.get('/admin/items').then(r => setAvailableItems(r.data)).catch(() => { });
+      api.get('/admin/enemies').then(r => setAvailableEnemies(r.data)).catch(() => { });
     }
   }, [isEditorActive]);
 
@@ -307,16 +320,26 @@ export const MapEditorUI = ({ gameRef }) => {
     return () => window.removeEventListener('editor-picked-coord', onPicked);
   }, [activeTile]);
 
+  // Ref guard — prevents React StrictMode from double-invoking the auto-open
+  const editorAutoOpenedRef = useRef(false);
+
   // Auto-open if URL has ?edit_map
   useEffect(() => {
     if (!isAdmin) return;
     if (!new URLSearchParams(window.location.search).get('edit_map')) return;
+    if (editorAutoOpenedRef.current) return; // already triggered
+    editorAutoOpenedRef.current = true;
+
     let n = 0;
     const tryOpen = () => {
-      const scene = gameRef.current?.scene?.getScene('LobbyScene') || gameRef.current?.scene?.scenes?.[0];
+      const scene = getScene();
       if (scene) {
         setIsEditorActive(true);
-        scene.toggleEditorMode(true);
+        if (typeof scene.toggleEditorMode === 'function') {
+          scene.toggleEditorMode(true);
+        } else {
+          console.warn('[MapEditorUI] Current scene does not support editor mode.');
+        }
         window.dispatchEvent(new CustomEvent('editor-mode-changed', { detail: { active: true } }));
       } else if (n++ < 20) setTimeout(tryOpen, 500);
     };
@@ -335,7 +358,11 @@ export const MapEditorUI = ({ gameRef }) => {
       const sc = getScene();
       if (sc) {
         setIsEditorActive(next);
-        sc.toggleEditorMode(next);
+        if (typeof sc.toggleEditorMode === 'function') {
+          sc.toggleEditorMode(next);
+        } else {
+          console.warn('[MapEditorUI] Current scene does not support editor mode.');
+        }
         window.dispatchEvent(new CustomEvent('editor-mode-changed', { detail: { active: next } }));
       } else if (n < 10) setTimeout(() => tryToggle(n + 1), 500);
     };
@@ -357,6 +384,10 @@ export const MapEditorUI = ({ gameRef }) => {
   useEffect(() => {
     dispatchEditorCommand('setPickupMetadata', pickupMeta);
   }, [pickupMeta]);
+
+  useEffect(() => {
+    dispatchEditorCommand('setEnemyMetadata', enemyMeta);
+  }, [enemyMeta]);
   const selectMoveMode = (mode) => { setMoveMode(mode); dispatchEditorCommand('setMoveMode', mode); };
   const updatePlayerSpeed = (val) => {
     const s = parseInt(val);
@@ -486,6 +517,7 @@ export const MapEditorUI = ({ gameRef }) => {
     store: 'stat_store',
     furniture: 'stat_furniture',
     exit: 'stat_exits',
+    enemy: 'stat_enemies',
   };
 
   /* ─── render ─── */
@@ -718,7 +750,9 @@ export const MapEditorUI = ({ gameRef }) => {
                   return (
                     <button key={tile.id} onClick={() => selectTile(tile.id)}
                       className={`flex items-center gap-1 px-1.5 py-1 rounded border text-[9px] transition-all truncate
-                        ${on ? 'bg-gray-700 border-gray-400 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+                        ${on 
+                          ? (tile.id === 'enemy' ? 'bg-red-600 border-red-400 text-white ring-1 ring-red-400/50' : 'bg-gray-700 border-gray-400 text-white') 
+                          : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
                       <span className="w-2 h-2 rounded-sm flex-shrink-0 border border-black/20" style={{ backgroundColor: tile.color }} />
                       {tile.label}
                     </button>
@@ -726,6 +760,48 @@ export const MapEditorUI = ({ gameRef }) => {
                 })}
               </div>
             </Section>
+
+            {/* Enemy Settings - MOVED HERE for better flow */}
+            {activeTile === 'enemy' && (
+              <div className="mx-2 mb-4 p-2 bg-red-900/10 border border-red-500/20 rounded-lg">
+                <div className="flex items-center gap-2 mb-2 text-red-400">
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">{t('lobby.editor.enemy_config') || 'Configuración de Enemigo'}</span>
+                </div>
+
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.enemy_type') || 'Tipo de Enemigo'}</label>
+                    <select value={enemyMeta.npcId} onChange={e => setEnemyMeta(p => ({ ...p, npcId: e.target.value }))}
+                      className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50 transition-colors">
+                      <option value="">{t('lobby.editor.none')}...</option>
+                      {availableEnemies.map(e => (
+                        <option key={e.id} value={e.id}>{e.name} (Lv.{e.level})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.wave_num') || 'Oleada'}</label>
+                      <input type="number" min="1" value={enemyMeta.waveNum}
+                        onChange={e => setEnemyMeta(p => ({ ...p, waveNum: parseInt(e.target.value) || 1 }))}
+                        className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50" />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] text-gray-500 mb-0.5">HP (Mult.)</label>
+                      <input type="number" min="1" value={enemyMeta.hp}
+                        onChange={e => setEnemyMeta(p => ({ ...p, hp: parseInt(e.target.value) || 1 }))}
+                        className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50" />
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[8px] text-red-400/60 italic mt-2 text-center">
+                  {t('lobby.editor.enemy_placement_hint') || 'Haz clic en el mapa para colocar puntos de spawn.'}
+                </p>
+              </div>
+            )}
 
             {/* Texture / Sprites */}
             <Section title={t('lobby.editor.texture')}>
@@ -962,7 +1038,7 @@ export const MapEditorUI = ({ gameRef }) => {
               <div className="grid grid-cols-2 gap-1">
                 {TILE_TYPES.map(t_obj => {
                   const key = TILE_TYPE_TO_STAT[t_obj.id] || `${t_obj.id}s`;
-                  const cnt = stats[t_obj.id === 'npc' ? 'npcZones' : (t_obj.id === 'item' ? 'pickups' : `${t_obj.id}s`)] || 0;
+                  const cnt = stats[t_obj.id === 'npc' ? 'npcZones' : (t_obj.id === 'item' ? 'pickups' : (t_obj.id === 'enemy' ? 'enemySpawns' : `${t_obj.id}s`))] || 0;
                   return (
                     <div key={t_obj.id} className="flex items-center gap-1.5 text-[9px] text-gray-400">
                       <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: t_obj.color }} />

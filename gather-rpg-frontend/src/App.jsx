@@ -20,6 +20,8 @@ import { AdminAITester } from './pages/admin/AdminAITester';
 import { AdminMissions } from './pages/admin/AdminMissions';
 import { AdminItems } from './pages/admin/AdminItems';
 import { AdminShops } from './pages/admin/AdminShops';
+import { AdminEnemies } from './pages/admin/AdminEnemies';
+import { AdminEnemyDefinitions } from './pages/admin/AdminEnemyDefinitions';
 import PracticePage from './pages/PracticePage';
 import { useAuthStore } from './store/authStore';
 
@@ -70,6 +72,8 @@ function App() {
           <Route path="items" element={<AdminItems />} />
           <Route path="shops" element={<AdminShops />} />
           <Route path="missions" element={<AdminMissions />} />
+          <Route path="enemies" element={<AdminEnemies />} />
+          <Route path="enemy-models" element={<AdminEnemyDefinitions />} />
           <Route path="ai-test" element={<AdminAITester />} />
         </Route>
 

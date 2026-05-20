@@ -114,7 +114,7 @@ func main() {
 	dialogueService := services.NewDialogueService(npcRepo, missionRepo, missionService, llmClient)
 
 	// WebSocket Hub
-	hub := gameWS.NewHub(presenceService, roomService, movementService, peerService, combatService)
+	hub := gameWS.NewHub(presenceService, roomService, movementService, peerService, combatService, missionService)
 	go hub.Run()
 
 	// Handlers
@@ -195,6 +195,9 @@ func main() {
 	// Item & Shop Admin Routes
 	admin.Get("/items", adminHandler.ListItems)
 	admin.Get("/enemies", adminHandler.ListEnemies)
+	admin.Post("/enemies", adminHandler.CreateEnemy)
+	admin.Put("/enemies/:id", adminHandler.UpdateEnemy)
+	admin.Delete("/enemies/:id", adminHandler.DeleteEnemy)
 	admin.Get("/item-sprites", adminHandler.ListItemSprites)
 	admin.Post("/items", adminHandler.CreateItem)
 	admin.Put("/items/:id", adminHandler.UpdateItem)

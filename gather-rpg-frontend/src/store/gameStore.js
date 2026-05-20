@@ -393,6 +393,25 @@ export const useGameStore = create((set, get) => ({
                         }));
                     }, 4000);
                 });
+
+                wsClient.on('enemy_update', (payload) => {
+                    // console.log(`[gameStore] Received enemy_update for ${payload.enemies?.length} enemies`);
+                    // Dispatch to Phaser scenes (LobbyScene)
+                    window.dispatchEvent(new CustomEvent('enemies-update', { detail: payload }));
+                });
+
+                wsClient.on('enemy_died', (payload) => {
+                    // Dispatch to Phaser scenes
+                    window.dispatchEvent(new CustomEvent('enemy-died-broadcast', { detail: payload }));
+                    
+                    // Show notification if it was a player who killed it
+                    if (payload.killed_by) {
+                        const myId = String(useAuthStore.getState().user?.id || '');
+                        if (String(payload.killed_by) === myId) {
+                            useNotificationStore.getState().addNotification('success', '⚔️ ¡Enemigo derrotado!');
+                        }
+                    }
+                });
             }
 
             wsClient.connect(token);
@@ -526,6 +545,11 @@ export const useGameStore = create((set, get) => ({
             payload.x = Number(x); // Pointer expects number
             payload.y = Number(y);
         }
+        
+        // CRITICAL: Clear local entities before joining a new room
+        // so we don't bring ghost players/enemies to the new map.
+        set({ players: new Map(), enemies: new Map() });
+        
         wsClient.send('join_room', payload);
     },
 
@@ -621,5 +645,17 @@ export const useGameStore = create((set, get) => ({
     useItem: async (inventoryId) => {
         // Placeholder for now as we need UseItem endpoint in backend
         console.log("Using item:", inventoryId);
+    },
+
+    sendPlayerAttack: (enemyInstanceId, damage = 10) => {
+        const roomId = get().currentRoomId;
+        if (roomId && enemyInstanceId) {
+            console.log(`[gameStore] Sending player_attack for enemy: ${enemyInstanceId} with damage: ${damage}`);
+            wsClient.send('player_attack', { 
+                target_instance_id: enemyInstanceId,
+                damage: damage,
+                room_id: roomId
+            });
+        }
     }
 }));

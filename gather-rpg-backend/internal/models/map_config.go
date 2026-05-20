@@ -21,6 +21,16 @@ type MapConfig struct {
 }
 
 type MapData struct {
-	Width  int `json:"width"`
-	Height int `json:"height"`
+	Width   int          `json:"width"`
+	Height  int          `json:"height"`
+	Enemies []EnemySpawn `json:"enemies"`
+}
+
+type EnemySpawn struct {
+	EnemyID uuid.UUID `json:"enemy_id"`
+	SpawnX  float64   `json:"spawn_x"`
+	SpawnY  float64   `json:"spawn_y"`
+	WaveNum int       `json:"wave_num"`
+	NPCID   string    `json:"npc_id"`
+	SpriteID string   `json:"sprite_id"` // Asset ID ('1', '2', etc.)
 }
