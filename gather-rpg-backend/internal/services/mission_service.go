@@ -487,8 +487,25 @@ func (s *MissionService) UpdateKillAllProgress(userID uuid.UUID, roomID string) 
 	}
 	playerID := stats.ID
 
+	fmt.Printf("\n[KillAllProgress] ============ INICIO UpdateKillAllProgress ============\n")
+	fmt.Printf("[KillAllProgress] userID=%s | roomID=%s | playerID=%s\n", userID, roomID, playerID)
+
+	// BUGFIX: incluir 'not_started' además de 'in_progress'
+	// La misión puede estar 'not_started' si el jugador nunca había matado un enemigo antes.
 	var progresses []models.PlayerMissionProgress
-	database.DB.Where("player_id = ? AND status = ?", playerID, models.StatusInProgress).Find(&progresses)
+	database.DB.Where("player_id = ? AND status IN ?", playerID, []string{
+		string(models.StatusInProgress),
+		string(models.StatusNotStarted),
+	}).Find(&progresses)
+	fmt.Printf("[KillAllProgress] Misiones activas encontradas: %d\n", len(progresses))
+	for _, p := range progresses {
+		fmt.Printf("[KillAllProgress]   → missionID=%d | status=%s\n", p.MissionID, p.Status)
+	}
+	if len(progresses) == 0 {
+		fmt.Printf("[KillAllProgress] ⚠️  Sin misiones activas para kill_all — revisar si la misión tiene PlayerMissionProgress creado\n")
+		fmt.Printf("[KillAllProgress] ============ FIN (sin misiones) ============\n\n")
+		return nil, nil
+	}
 
 	var results []KillProgressResult
 
@@ -504,13 +521,14 @@ func (s *MissionService) UpdateKillAllProgress(userID uuid.UUID, roomID string) 
 		for _, t := range tasks {
 			taskKey := fmt.Sprint(t.ID)
 			if tasksCompleted[taskKey] {
+				fmt.Printf("[KillAllProgress]   Task %d: SKIP (ya completada)\n", t.ID)
 				continue
 			}
 
 			if t.Type == models.TaskTypeKillAll {
 				tasksCompleted[taskKey] = true
 				changed = true
-				fmt.Printf("[MissionService] KillAll task %d completed for player %s in room %s\n", t.ID, playerID, roomID)
+				fmt.Printf("[KillAllProgress]   Task %d (kill_all): ✅ COMPLETADA — sala despejada\n", t.ID)
 
 				results = append(results, KillProgressResult{
 					MissionID:     p.MissionID,
@@ -519,6 +537,8 @@ func (s *MissionService) UpdateKillAllProgress(userID uuid.UUID, roomID string) 
 					RequiredKills: 1,
 					TaskCompleted: true,
 				})
+			} else {
+				fmt.Printf("[KillAllProgress]   Task %d: SKIP (tipo '%s' no es kill_all)\n", t.ID, t.Type)
 			}
 		}
 
@@ -573,10 +593,48 @@ func (s *MissionService) UpdateKillAllProgress(userID uuid.UUID, roomID string) 
 				p.Status = models.StatusInProgress
 			}
 
-			s.Repo.CreateOrUpdateProgress(&p)
+			if err := s.Repo.CreateOrUpdateProgress(&p); err != nil {
+				fmt.Printf("[KillAllProgress]   ERROR al guardar progreso: %v\n", err)
+			} else {
+				fmt.Printf("[KillAllProgress]   Progreso guardado OK\n")
+			}
 		}
 	}
 
+	fmt.Printf("[KillAllProgress] ============ FIN — resultados: %d ============\n\n", len(results))
 	return results, nil
 }
 
+// GetKillAllProgress retorna las tareas kill_all activas del jugador (sin modificar nada).
+// Se usa para emitir progreso incremental al HUD cuando muere un enemigo.
+func (s *MissionService) GetKillAllProgress(userID uuid.UUID) ([]KillProgressResult, error) {
+	var stats models.PlayerStats
+	if err := database.DB.First(&stats, "user_id = ?", userID).Error; err != nil {
+		return nil, err
+	}
+	playerID := stats.ID
+
+	var progresses []models.PlayerMissionProgress
+	database.DB.Where("player_id = ? AND status IN ?", playerID, []string{
+		string(models.StatusInProgress),
+		string(models.StatusNotStarted),
+	}).Find(&progresses)
+
+	var results []KillProgressResult
+	for _, p := range progresses {
+		tasks, _ := s.GetTasks(p.MissionID)
+		var tasksCompleted map[string]bool
+		if err := json.Unmarshal(p.TasksCompleted, &tasksCompleted); err != nil {
+			tasksCompleted = make(map[string]bool)
+		}
+		for _, t := range tasks {
+			if t.Type == models.TaskTypeKillAll && !tasksCompleted[fmt.Sprint(t.ID)] {
+				results = append(results, KillProgressResult{
+					MissionID: p.MissionID,
+					TaskID:    t.ID,
+				})
+			}
+		}
+	}
+	return results, nil
+}

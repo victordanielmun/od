@@ -809,13 +809,39 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 			// Special case for "Kill All": check if all enemies are dead in this room
 			room.mu.RLock()
 			allDead := true
+			totalEnemies := len(room.ActiveEnemies)
+			deadEnemies := 0
 			for _, e := range room.ActiveEnemies {
-				if e.FSMState != "dead" {
+				if e.FSMState == "dead" {
+					deadEnemies++
+				} else {
 					allDead = false
-					break
 				}
 			}
 			room.mu.RUnlock()
+
+			log.Printf("[Combat] Room %s enemy status: %d/%d dead | allDead=%v", roomID, deadEnemies, totalEnemies, allDead)
+
+			// Emitir progreso incremental de kill_all al jugador atacante
+			// para que el HUD muestre kills_done en tiempo real
+			if !allDead {
+				// Buscar si el jugador tiene alguna misión kill_all activa
+				go func(killsDone, total int) {
+					results, _ := h.MissionService.GetKillAllProgress(client.ID)
+					for _, res := range results {
+						h.SendToUser(client.ID.String(), &models.WSMessage{
+							Type: MsgEnemyKillProgress,
+							Payload: map[string]interface{}{
+								"mission_id":     res.MissionID,
+								"task_id":        res.TaskID,
+								"kills_done":     killsDone,
+								"required_kills": total,
+								"task_completed": false,
+							},
+						})
+					}
+				}(deadEnemies, totalEnemies)
+			}
 
 			if allDead {
 				log.Printf("[Combat] Room %s fully cleared! Updating 'kill_all' missions.", roomID)
