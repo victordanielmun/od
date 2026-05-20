@@ -771,9 +771,11 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 
 		// Update Mission Progress
 		go func() {
+			log.Printf("[Combat] Enemy killed → calling UpdateKillProgress | killer=%s | enemyTemplateID=%s | room=%s",
+				client.ID, enemy.EnemyID, roomID)
 			progressResults, err := h.MissionService.UpdateKillProgress(client.ID, enemy.EnemyID, roomID)
 			if err != nil {
-				log.Printf("[Combat] Failed to update kill progress for user %s: %v", client.ID, err)
+				log.Printf("[Combat] UpdateKillProgress ERROR for user %s: %v", client.ID, err)
 			}
 
 			// Notificar al cliente atacante sobre el progreso de kills

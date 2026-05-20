@@ -284,30 +284,60 @@ type KillProgressResult struct {
 }
 
 func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uuid.UUID, roomID string) ([]KillProgressResult, error) {
+	fmt.Printf("\n[KillProgress] ============ INICIO UpdateKillProgress ============\n")
+	fmt.Printf("[KillProgress] userID=%s | enemyTemplateID=%s | roomID=%s\n", userID, enemyTemplateID, roomID)
+
+	// 1. Obtener playerStats (playerID interno)
 	var stats models.PlayerStats
 	if err := database.DB.First(&stats, "user_id = ?", userID).Error; err != nil {
+		fmt.Printf("[KillProgress] ERROR: No se encontró PlayerStats para userID=%s: %v\n", userID, err)
 		return nil, err
 	}
 	playerID := stats.ID
+	fmt.Printf("[KillProgress] playerID interno = %s\n", playerID)
 
-	// Buscar misiones en progreso (o not_started para iniciarlas al primer kill)
+	// 2. Buscar misiones activas del jugador
 	var progresses []models.PlayerMissionProgress
 	database.DB.Where("player_id = ? AND status IN ?", playerID, []string{
 		string(models.StatusInProgress),
 		string(models.StatusNotStarted),
 	}).Find(&progresses)
+	fmt.Printf("[KillProgress] Misiones activas encontradas: %d\n", len(progresses))
+	for _, p := range progresses {
+		fmt.Printf("[KillProgress]   → missionID=%d | status=%s\n", p.MissionID, p.Status)
+	}
+	if len(progresses) == 0 {
+		fmt.Printf("[KillProgress] ⚠️  Sin misiones activas — no hay nada que actualizar\n")
+		fmt.Printf("[KillProgress] ============ FIN (sin misiones) ============\n\n")
+		return nil, nil
+	}
 
-	// Obtener el nombre del enemigo muerto para comparar con RequiredEnemy
+	// 3. Resolver nombre del enemigo muerto
 	var killedEnemy models.Enemy
 	enemyName := ""
-	if err := database.DB.First(&killedEnemy, "id = ?", enemyTemplateID).Error; err == nil {
+	if err := database.DB.First(&killedEnemy, "id = ?", enemyTemplateID).Error; err != nil {
+		fmt.Printf("[KillProgress] ⚠️  No se encontró Enemy con templateID=%s en la DB: %v\n", enemyTemplateID, err)
+		fmt.Printf("[KillProgress]    El kill igual continuará (RequiredEnemy vacío lo aceptará)\n")
+	} else {
 		enemyName = killedEnemy.Name
+		fmt.Printf("[KillProgress] Enemigo muerto: '%s' (id=%s)\n", enemyName, enemyTemplateID)
 	}
 
 	var results []KillProgressResult
 
 	for _, p := range progresses {
-		tasks, _ := s.GetTasks(p.MissionID)
+		fmt.Printf("[KillProgress] --- Procesando missionID=%d (status=%s) ---\n", p.MissionID, p.Status)
+
+		tasks, err := s.GetTasks(p.MissionID)
+		if err != nil {
+			fmt.Printf("[KillProgress]   ERROR al obtener tareas: %v\n", err)
+			continue
+		}
+		fmt.Printf("[KillProgress]   Tareas encontradas: %d\n", len(tasks))
+		for _, t := range tasks {
+			fmt.Printf("[KillProgress]   Tarea id=%d | type='%s' | required_enemy='%s' | required_kills=%d\n",
+				t.ID, t.Type, t.RequiredEnemy, t.RequiredKills)
+		}
 
 		// Deserializar TasksCompleted
 		var tasksCompleted map[string]bool
@@ -329,37 +359,41 @@ func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uu
 
 		for _, t := range tasks {
 			taskKey := fmt.Sprint(t.ID)
+
+			// ¿Ya está completada?
 			if tasksCompleted[taskKey] {
-				continue // ya completada
+				fmt.Printf("[KillProgress]   Task %d: SKIP (ya completada)\n", t.ID)
+				continue
 			}
 
+			// ¿Es un tipo de kill individual?
 			if t.Type != models.TaskTypeDefeatEnemy && t.Type != models.TaskTypeKillBoss {
+				fmt.Printf("[KillProgress]   Task %d: SKIP (tipo '%s' no es defeat_enemy ni kill_boss)\n", t.ID, t.Type)
 				continue
 			}
 
-			// Verificar que el enemigo muerto coincide con el requerido
-			// Si RequiredEnemy está vacío, cualquier kill cuenta
+			// ¿Coincide el enemigo?
 			if t.RequiredEnemy != "" && t.RequiredEnemy != enemyName {
+				fmt.Printf("[KillProgress]   Task %d: SKIP (required_enemy='%s' ≠ enemigo_muerto='%s')\n",
+					t.ID, t.RequiredEnemy, enemyName)
 				continue
 			}
 
-			// Incrementar kill count para esta tarea
+			// ✅ Esta tarea aplica — incrementar kill count
 			killCounts[taskKey]++
 			currentKills := killCounts[taskKey]
 			requiredKills := t.RequiredKills
 			if requiredKills <= 0 {
-				requiredKills = 1 // default: 1 kill completa la tarea
+				requiredKills = 1
 			}
 
 			taskDone := currentKills >= requiredKills
+			fmt.Printf("[KillProgress]   Task %d: ✅ MATCH — kills %d/%d | completada=%v\n",
+				t.ID, currentKills, requiredKills, taskDone)
 
 			if taskDone {
 				tasksCompleted[taskKey] = true
-				fmt.Printf("[MissionService] Task %d completed: %d/%d kills of '%s' for player %s\n",
-					t.ID, currentKills, requiredKills, t.RequiredEnemy, playerID)
-			} else {
-				fmt.Printf("[MissionService] Kill progress task %d: %d/%d kills of '%s' for player %s\n",
-					t.ID, currentKills, requiredKills, t.RequiredEnemy, playerID)
+				fmt.Printf("[KillProgress]   Task %d: 🏁 COMPLETADA\n", t.ID)
 			}
 
 			results = append(results, KillProgressResult{
@@ -373,65 +407,76 @@ func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uu
 			changed = true
 		}
 
-		if changed {
-			updatedTasksJSON, _ := json.Marshal(tasksCompleted)
-			updatedKillsJSON, _ := json.Marshal(killCounts)
-			p.TasksCompleted = updatedTasksJSON
-			p.KillCounts = updatedKillsJSON
+		if !changed {
+			fmt.Printf("[KillProgress]   Misión %d: ninguna tarea cambió\n", p.MissionID)
+			continue
+		}
 
-			// Verificar si la misión está completamente terminada
-			allDone := true
-			for _, t := range tasks {
-				if !tasksCompleted[fmt.Sprint(t.ID)] {
-					allDone = false
-					break
+		// Guardar progreso
+		updatedTasksJSON, _ := json.Marshal(tasksCompleted)
+		updatedKillsJSON, _ := json.Marshal(killCounts)
+		p.TasksCompleted = updatedTasksJSON
+		p.KillCounts = updatedKillsJSON
+
+		// Verificar si la misión está completa
+		allDone := true
+		for _, t := range tasks {
+			if !tasksCompleted[fmt.Sprint(t.ID)] {
+				allDone = false
+				break
+			}
+		}
+
+		if allDone {
+			p.Status = models.StatusCompleted
+			now := time.Now()
+			p.CompletedAt = &now
+
+			fmt.Printf("[KillProgress]   Misión %d: 🎉 COMPLETADA TOTALMENTE\n", p.MissionID)
+
+			// Entregar recompensas
+			var mission models.Mission
+			if err := database.DB.First(&mission, p.MissionID).Error; err == nil {
+				var mStats models.PlayerStats
+				if err := database.DB.First(&mStats, "id = ?", playerID).Error; err == nil {
+					mStats.Gold += mission.RewardGold
+					mStats.Experience += mission.RewardXP
+					database.DB.Save(&mStats)
+					fmt.Printf("[KillProgress]   Recompensas: +%d gold, +%d xp\n", mission.RewardGold, mission.RewardXP)
+				}
+				if mission.RewardItemID != nil && mission.RewardQuantity > 0 {
+					inv := &models.Inventory{PlayerID: playerID, ItemID: *mission.RewardItemID, Quantity: mission.RewardQuantity}
+					var existing models.Inventory
+					if database.DB.Where("player_id = ? AND item_id = ?", inv.PlayerID, inv.ItemID).First(&existing).Error == nil {
+						existing.Quantity += inv.Quantity
+						database.DB.Save(&existing)
+					} else {
+						database.DB.Create(inv)
+					}
 				}
 			}
 
-			if allDone {
-				p.Status = models.StatusCompleted
-				now := time.Now()
-				p.CompletedAt = &now
-
-				// Entregar recompensas
-				var mission models.Mission
-				if err := database.DB.First(&mission, p.MissionID).Error; err == nil {
-					var mStats models.PlayerStats
-					if err := database.DB.First(&mStats, "id = ?", playerID).Error; err == nil {
-						mStats.Gold += mission.RewardGold
-						mStats.Experience += mission.RewardXP
-						database.DB.Save(&mStats)
-					}
-					if mission.RewardItemID != nil && mission.RewardQuantity > 0 {
-						inv := &models.Inventory{PlayerID: playerID, ItemID: *mission.RewardItemID, Quantity: mission.RewardQuantity}
-						var existing models.Inventory
-						if database.DB.Where("player_id = ? AND item_id = ?", inv.PlayerID, inv.ItemID).First(&existing).Error == nil {
-							existing.Quantity += inv.Quantity
-							database.DB.Save(&existing)
-						} else {
-							database.DB.Create(inv)
-						}
-					}
+			for i := range results {
+				if results[i].MissionID == p.MissionID {
+					results[i].MissionDone = true
 				}
-
-				// Marcar resultados como missionDone
-				for i := range results {
-					if results[i].MissionID == p.MissionID {
-						results[i].MissionDone = true
-					}
-				}
-
-				fmt.Printf("[MissionService] Mission %d COMPLETED for player %s\n", p.MissionID, playerID)
-			} else {
-				p.Status = models.StatusInProgress
 			}
+		} else {
+			p.Status = models.StatusInProgress
+			fmt.Printf("[KillProgress]   Misión %d: en progreso\n", p.MissionID)
+		}
 
-			s.Repo.CreateOrUpdateProgress(&p)
+		if err := s.Repo.CreateOrUpdateProgress(&p); err != nil {
+			fmt.Printf("[KillProgress]   ERROR al guardar progreso: %v\n", err)
+		} else {
+			fmt.Printf("[KillProgress]   Progreso guardado OK\n")
 		}
 	}
 
+	fmt.Printf("[KillProgress] ============ FIN UpdateKillProgress — resultados: %d ============\n\n", len(results))
 	return results, nil
 }
+
 
 
 

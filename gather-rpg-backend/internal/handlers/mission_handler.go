@@ -36,6 +36,7 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 	type TaskWithStatus struct {
 		ID            uint   `json:"id"`
 		Description   string `json:"description"`
+		Type          string `json:"type"`
 		IsCompleted   bool   `json:"is_completed"`
 		KillsDone     int    `json:"kills_done"`
 		RequiredKills int    `json:"required_kills"`
@@ -84,10 +85,17 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 			taskStatuses = append(taskStatuses, TaskWithStatus{
 				ID:            t.ID,
 				Description:   t.DescriptionEn,
+				Type:          string(t.Type),
 				IsCompleted:   completedMap[fmt.Sprint(t.ID)],
 				KillsDone:     killsDone,
 				RequiredKills: reqKills,
 			})
+		}
+
+		// Calcular status general de forma segura (progress puede ser nil si misión nunca inició)
+		overallStatus := "not_started"
+		if progress != nil {
+			overallStatus = string(progress.Status)
 		}
 
 		result = append(result, MissionWithStatus{
@@ -95,7 +103,7 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 			Title:         m.Title,
 			DescriptionEn: m.DescriptionEn,
 			ObjectiveEn:   m.ObjectiveEn,
-			OverallStatus: string(progress.Status),
+			OverallStatus: overallStatus,
 			Tasks:         taskStatuses,
 		})
 	}

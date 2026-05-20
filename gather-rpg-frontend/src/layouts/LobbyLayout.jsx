@@ -214,9 +214,10 @@ export const LobbyLayout = () => {
 
       {/* Kill Mission HUD Widget — visible durante misiones de eliminar enemigos */}
       {activeMission && !isEditorMode && (() => {
+        // Filtra tareas de kill (type ahora viene del backend como campo 'type' en minúsculas)
         const killTasks = (activeMission.tasks || []).filter(t =>
-          (t.type === 'defeat_enemy' || t.type === 'kill_boss') &&
-          t.required_kills > 0
+          (t.type === 'defeat_enemy' || t.type === 'kill_boss' || t.type === 'kill_all') &&
+          (t.required_kills > 0 || t.type === 'kill_all')
         );
         if (killTasks.length === 0) return null;
         return (
