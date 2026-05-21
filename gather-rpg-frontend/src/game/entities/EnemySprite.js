@@ -81,12 +81,7 @@ export default class EnemySprite extends NPCSprite {
   syncFromServer(data) {
     if (this.fsm === STATES.DEAD) return;
 
-    // TAREA 6: Orientar el sprite según el movimiento
-    if (data.x < this.x) {
-        this.sprite.setFlipX(true);
-    } else if (data.x > this.x) {
-        this.sprite.setFlipX(false);
-    }
+    const oldX = this.x;
 
     // Actualizar posición (suavizado o directo)
     this.setPosition(data.x, data.y);
@@ -98,6 +93,25 @@ export default class EnemySprite extends NPCSprite {
 
     if (data.target_id) {
         this.targetId = String(data.target_id);
+        const myPlayerId = this.scene.playerManager?.myPlayerId;
+        if (this.targetId === String(myPlayerId)) {
+            this.target = this.scene.player;
+        } else if (this.scene.playerSprites && this.scene.playerSprites.has(this.targetId)) {
+            this.target = this.scene.playerSprites.get(this.targetId);
+        } else {
+            this.target = this.scene.player;
+        }
+    } else {
+        this.target = this.scene.player;
+    }
+
+    // Orientar el sprite según el objetivo o el movimiento
+    if (this.target && this.target.active && (this.fsm === STATES.CHASE || this.fsm === STATES.ATTACK)) {
+        this.setFacing(this.target.x < this.x ? 'left' : 'right');
+    } else if (data.x < oldX) {
+        this.setFacing('left');
+    } else if (data.x > oldX) {
+        this.setFacing('right');
     }
 
     // Actualizar HP
@@ -253,6 +267,10 @@ export default class EnemySprite extends NPCSprite {
 
       case STATES.ATTACK:
         if (this.body) this.body.setVelocity(0, 0);
+        // Asegurar que el enemigo mira hacia el jugador al atacar
+        if (this.target && this.target.active) {
+          this.setFacing(this.target.x < this.x ? 'left' : 'right');
+        }
         this.attackCooldown -= delta;
         if (this.attackCooldown <= 0) {
           this._doAttack();
@@ -328,7 +346,18 @@ export default class EnemySprite extends NPCSprite {
   }
 
   _doAttack() {
-    // Solo emitir el daño local si NOSOTROS somos el objetivo
+    // 1. Reproducir la animación de ataque para todos
+    const animKey = this._resolveAnim(STATES.ATTACK);
+    const fullAnimKey = `enemy-${this.npcId}-${animKey}`;
+    if (this.sprite) {
+      if (this.scene.anims.exists(fullAnimKey)) {
+        this.sprite.play(fullAnimKey, true);
+      } else {
+        this.playAnimation(animKey);
+      }
+    }
+
+    // 2. Solo emitir el daño local si NOSOTROS somos el objetivo
     const myPlayerId = this.scene.playerManager?.myPlayerId;
     if (this.targetId && myPlayerId && this.targetId !== myPlayerId) {
         return; // Solo reproducimos la animación, pero no restamos HP local
