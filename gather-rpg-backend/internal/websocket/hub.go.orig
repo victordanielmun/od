@@ -12,7 +12,6 @@ import (
 
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/services"
-	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/webrtc"
 
 	"github.com/google/uuid"
@@ -62,7 +61,7 @@ func (h *Hub) SendToUser(userID string, msg *models.WSMessage) {
 	}
 }
 
-func NewHub(presence *services.PresenceService, roomService *services.RoomService, movement *services.MovementService, peer *services.PeerService, combat *services.CombatService, mission *services.MissionService, learning *services.LearningService) *Hub {
+func NewHub(presence *services.PresenceService, roomService *services.RoomService, movement *services.MovementService, peer *services.PeerService, combat *services.CombatService, mission *services.MissionService) *Hub {
 	return &Hub{
 		Broadcast:       make(chan *models.WSMessage),
 		Register:        make(chan *Client),
@@ -76,7 +75,6 @@ func NewHub(presence *services.PresenceService, roomService *services.RoomServic
 		PeerService:     peer,
 		CombatService:   combat,
 		MissionService:  mission,
-		LearningService: learning,
 		PendingUpdates:  make(map[string]map[string]models.RedisPosition),
 	}
 }
@@ -764,7 +762,7 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 		room.mu.Unlock()
 
 		// Get a random challenge
-		challenge, err := h.LearningService.GetRandomChallenge("vocabulary", "beginner")
+		challenge, err := h.ChallengeService.GetRandomChallenge("vocabulary", "beginner")
 		if err == nil && challenge != nil {
 			client.SendJSON(&models.WSMessage{
 				Type: MsgNinjaCardTriggered,
@@ -945,12 +943,12 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 
 	challengeUUID, _ := uuid.Parse(p.ChallengeID)
 	var chal models.LearningChallenge
-	database.DB.First(&chal, "id = ?", challengeUUID)
+	h.ChallengeService.Repo.DB.First(&chal, "id = ?", challengeUUID)
 
 	isCorrect := (chal.CorrectOption == p.SelectedOption)
 	log.Printf("[NinjaCard] Answer evaluated: %v (Selected: %d, Correct: %d)", isCorrect, p.SelectedOption, chal.CorrectOption)
 
-	h.LearningService.RecordAttempt(client.ID, challengeUUID, isCorrect, p.SelectedOption, "")
+	h.ChallengeService.RecordAttempt(client.ID, challengeUUID, isCorrect, p.SelectedOption, "")
 
 	if isCorrect {
 		enemy.HP = 0

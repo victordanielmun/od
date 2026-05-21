@@ -1,0 +1,11 @@
+--- hub.go
++++ hub.go
+@@ -60,7 +60,7 @@
+	mu sync.RWMutex
+ }
+
+-func NewHub(presence *services.PresenceService, roomService *services.RoomService, movement *services.MovementService, peer *services.PeerService, combat *services.CombatService, mission *services.MissionService) *Hub {
++func NewHub(presence *services.PresenceService, roomService *services.RoomService, movement *services.MovementService, peer *services.PeerService, combat *services.CombatService, mission *services.MissionService, learning *services.LearningService) *Hub {
+	h := &Hub{
+		Clients:         make(map[*Client]bool),
+		Rooms:           make(map[string]*Room),

@@ -16,7 +16,6 @@ import { useGameStore } from '../store/gameStore';
 import { useRoomStore } from '../store/roomStore';
 import { NPCDialogue } from '../components/game/NPCDialogue';
 import MissionTracker from '../components/game/MissionTracker';
-import { NinjaCardHUD } from '../components/combat/NinjaCardHUD';
 
 export const LobbyLayout = () => {
   const { t } = useTranslation();
@@ -186,7 +185,6 @@ export const LobbyLayout = () => {
 
       {/* Death Overlay (Z-Index 1000) */}
       <DeathOverlay />
-      <NinjaCardHUD />
 
       {/* Mission Welcome Banner */}
       {showMissionBanner && activeMission && (
@@ -432,10 +430,10 @@ export const LobbyLayout = () => {
                     <CharacterSelector onSelect={() => setActiveOverlay(null)} />
                   </div>
                 )}
-                
+
                 {activeOverlay === 'npc_dialogue' && npcData && (
-                  <NPCDialogue 
-                    npcData={npcData} 
+                  <NPCDialogue
+                    npcData={npcData}
                     onClose={() => {
                       setActiveOverlay(null);
                       setNpcData(null);
@@ -444,9 +442,9 @@ export const LobbyLayout = () => {
                 )}
                 {activeOverlay === 'route' && (
                   <div className="w-full h-full flex flex-col pt-6">
-                    <iframe 
-                      src={routeUrl} 
-                      className="w-full flex-grow border-0 rounded-lg min-h-[70vh]" 
+                    <iframe
+                      src={routeUrl}
+                      className="w-full flex-grow border-0 rounded-lg min-h-[70vh]"
                       title={t('lobby.overlays.route_viewer')}
                     />
                   </div>

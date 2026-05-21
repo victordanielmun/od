@@ -1,0 +1,11 @@
+--- LobbyScene.jsx
++++ LobbyScene.jsx
+@@ -1072,7 +1073,7 @@
+
+   handlePlayerAttack() {
+     if (!this.player || this.isTyping()) return;
+-    if (this.isDead) return;
++    if (this.isDead || useGameStore.getState().ninjaCardData != null) return;
+
+     // TAREA 6: cooldown de ataque para evitar spam (500ms)
+     const now = this.time.now;

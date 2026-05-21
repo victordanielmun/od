@@ -68,4 +68,9 @@ const (
 	MsgEnemyUpdate      = "enemy_update"
 	MsgEnemyDied        = "enemy_died"
 	MsgPlayerAttack     = "player_attack"
+
+	// Ninja Cards
+	MsgNinjaCardTriggered = "ninja_card_triggered"
+	MsgNinjaCardAnswer    = "ninja_card_answer"
+	MsgNinjaCardResult    = "ninja_card_result"
 )

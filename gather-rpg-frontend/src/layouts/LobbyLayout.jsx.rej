@@ -1,0 +1,9 @@
+--- LobbyLayout.jsx
++++ LobbyLayout.jsx
+@@ -358,6 +359,7 @@
+           <MissionTracker />
+           <NPCDialogue />
+           <DeathOverlay />
++          <NinjaCardHUD />
+         </>
+       )}
