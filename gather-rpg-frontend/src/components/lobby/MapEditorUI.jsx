@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Hammer, Save, Download, Upload, X, Undo2, Redo2, Trash2,
-  Paintbrush, Eraser, Square, ChevronDown, ChevronUp,
+  Paintbrush, Eraser, Square, ChevronDown, ChevronUp, Pause, Play,
   Camera, User, MapPin, Pipette, Zap, Swords
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
@@ -134,6 +134,7 @@ export const MapEditorUI = ({ gameRef }) => {
   });
   const [availableEnemies, setAvailableEnemies] = useState([]);
   const [playerSpeed, setPlayerSpeed] = useState(160);
+  const [enemiesPaused, setEnemiesPaused] = useState(false);
 
   // Current map settings (width, height, public, etc.)
   const [currentSettings, setCurrentSettings] = useState({
@@ -223,7 +224,14 @@ export const MapEditorUI = ({ gameRef }) => {
   useEffect(() => {
     const onModeChange = e => setMoveMode(e.detail?.mode ?? 'camera');
     window.addEventListener('editor-move-mode-changed', onModeChange);
-    return () => window.removeEventListener('editor-move-mode-changed', onModeChange);
+
+    const onEnemiesPaused = e => setEnemiesPaused(e.detail?.paused ?? false);
+    window.addEventListener('editor-enemies-paused', onEnemiesPaused);
+
+    return () => {
+        window.removeEventListener('editor-move-mode-changed', onModeChange);
+        window.removeEventListener('editor-enemies-paused', onEnemiesPaused);
+    }
   }, []);
 
   useEffect(() => {
@@ -717,6 +725,19 @@ export const MapEditorUI = ({ gameRef }) => {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="flex gap-1 mt-2">
+                <button
+                  onClick={() => dispatchEditorCommand(enemiesPaused ? 'resumeEnemies' : 'pauseEnemies')}
+                  className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded border text-[9px] transition-all
+                    ${enemiesPaused
+                      ? 'bg-red-500/20 border-red-500/60 text-red-400'
+                      : 'bg-green-500/20 border-green-500/60 text-green-400'}`}
+                >
+                  {enemiesPaused ? <Play size={13} /> : <Pause size={13} />}
+                  <span>{enemiesPaused ? 'Resume Enemies' : 'Pause Enemies'}</span>
+                </button>
               </div>
 
               <p className="text-[8px] text-gray-600 mt-2 leading-tight">

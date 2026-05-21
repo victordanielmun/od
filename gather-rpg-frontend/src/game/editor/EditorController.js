@@ -35,6 +35,24 @@ export class EditorController {
     window.addEventListener('editor-command', this.onEditorEvent);
   }
 
+  pauseEnemies() {
+    if (this.scene.activeEnemies) {
+      this.scene.activeEnemies.forEach(enemy => {
+        enemy.paused = true;
+      });
+    }
+    window.dispatchEvent(new CustomEvent('editor-enemies-paused', { detail: { paused: true } }));
+  }
+
+  resumeEnemies() {
+    if (this.scene.activeEnemies) {
+      this.scene.activeEnemies.forEach(enemy => {
+        enemy.paused = false;
+      });
+    }
+    window.dispatchEvent(new CustomEvent('editor-enemies-paused', { detail: { paused: false } }));
+  }
+
   destroy() {
     window.removeEventListener('editor-command', this.onEditorEvent);
   }
@@ -171,6 +189,8 @@ export class EditorController {
       case 'clearAll': this.clearAllTiles(); break;
       case 'importMap': this.importMapConfig(value); break;
       case 'applyBuildMetadata': this.applyBuildMetadataToAll(); break;
+      case 'pauseEnemies': this.pauseEnemies(); break;
+      case 'resumeEnemies': this.resumeEnemies(); break;
     }
   }
 
@@ -243,6 +263,9 @@ export class EditorController {
       this.dragStartGrid = null;
       this.rectPreview?.clear();
       this.rectPreview?.setVisible(false);
+      this.resumeEnemies();
+    } else {
+      this.pauseEnemies();
     }
     this.emitStats();
   }

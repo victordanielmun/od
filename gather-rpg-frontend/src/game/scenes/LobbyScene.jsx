@@ -123,6 +123,7 @@ export class LobbyScene extends Phaser.Scene {
     this.spectatorTarget = null;
     this.playerHp = 100;
     this.playerMaxHp = 100;
+    this.playerAttackIFrames = 0;
   }
 
   preload() {
@@ -459,14 +460,17 @@ export class LobbyScene extends Phaser.Scene {
     this.hpBar.setDepth(200000);
     this.playerHp = 100;
     this.playerMaxHp = 100;
+    this.playerAttackIFrames = 0;
     this._updateHpBar();
 
     // Listen for enemy attacks
     this.events.on('enemy-attack', (data) => {
       if (this.isDead || this.isSpectating) return;
+      if (this.playerAttackIFrames > 0) return;
       
       console.log(`[LobbyScene] Recibiendo ataque de enemigo: ${data.damage} de daño`);
       this.playerHp = Math.max(0, this.playerHp - data.damage);
+      this.playerAttackIFrames = 800; // 0.8s iFrames
       this._updateHpBar();
       
       if (this.playerHp <= 0) {
@@ -1289,6 +1293,10 @@ export class LobbyScene extends Phaser.Scene {
 
   update(time, delta) {
     if (!this.player) return;
+
+    if (this.playerAttackIFrames > 0) {
+      this.playerAttackIFrames -= delta;
+    }
 
     // 1. Spectator Camera Tracking
     if (this.isSpectating && this.spectatorTarget) {
