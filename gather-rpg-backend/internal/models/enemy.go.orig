@@ -112,7 +112,6 @@ type ActiveEnemy struct {
 	HPMax      int       `json:"hp_max"`
 	FSMState   string    `json:"fsm_state"` // "idle", "chase", "attack", "dead", "ninja_card"
 	TargetID   string    `json:"target_id"` // UserID of the targeted player
-	PendingNinjaCard string `json:"pending_ninja_card,omitempty"` // Player ID that triggered the ninja card
 	WaveNum    int       `json:"wave_num"`
 	NPCID      string    `json:"npc_id"`    // From template config
 	SpriteID   string    `json:"sprite_id"` // Asset ID ('1', '2', etc.)

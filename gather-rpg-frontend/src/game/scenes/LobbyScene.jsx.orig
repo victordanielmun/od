@@ -174,7 +174,7 @@ export class LobbyScene extends Phaser.Scene {
       rt.draw(g);
       rt.draw(t);
       rt.saveTexture(key);
-      
+
       rt.destroy();
       g.destroy();
       t.destroy();
@@ -196,10 +196,10 @@ export class LobbyScene extends Phaser.Scene {
     // --- Optimized Asset Loading ---
     // Only load what's needed for the current map, or everything if admin (for editor)
     const sceneKey = this.initData?.map || 'lobby';
-    
+
     // Load Enemy assets
     loadEnemySprites(this);
-    
+
     const isStoreMap = sceneKey.toLowerCase().includes('store') || sceneKey.toLowerCase().includes('pantry') || sceneKey.toLowerCase().includes('shop');
     const isNatureMap = sceneKey.toLowerCase().includes('forest') || sceneKey.toLowerCase().includes('woods') || sceneKey.toLowerCase().includes('garden') || sceneKey === 'lobby';
     const isAdmin = useAuthStore.getState().isAdmin();
@@ -213,13 +213,13 @@ export class LobbyScene extends Phaser.Scene {
     // Conditional Atlases
     if ((isNatureMap || isAdmin) && !this.textures.exists('forest'))
       this.load.atlas('forest', '/forest/forest-spritesheet.png', '/forest/forest-sprites.json');
-    
+
     if ((isNatureMap || isAdmin) && !this.textures.exists('builds'))
       this.load.atlas('builds', '/builds/build-spritesheet.png', '/builds/build-sprites.json');
 
     if ((isStoreMap || isAdmin) && !this.textures.exists('store-tiles'))
       this.load.atlas('store-tiles', '/store/tiles.png', '/store/tiles.json');
-    
+
     if ((isStoreMap || isAdmin) && !this.textures.exists('store-furniture'))
       this.load.atlas('store-furniture', '/store/furniture.png', '/store/furniture.json');
 
@@ -266,7 +266,7 @@ export class LobbyScene extends Phaser.Scene {
     const urlParams = new URLSearchParams(window.location.search);
     // Prioritize initData (from portal) -> URL param -> default 'lobby'
     this.currentMapKey = this.initData?.map || urlParams.get('map') || urlParams.get('edit_map') || 'lobby';
-    
+
     // Sync with gameStore for UI components
     useGameStore.setState({ currentSceneKey: this.currentMapKey });
 
@@ -353,7 +353,7 @@ export class LobbyScene extends Phaser.Scene {
     this.events.once('shutdown', () => this.shutdown());
     this.events.once('destroy', () => {
         this.shutdown();
-        
+
         window.removeEventListener('phaser-camera-zoom', this.onZoomEvent);
         window.removeEventListener('chat-message-received', this.onChatMsg);
         window.removeEventListener('player-emoji-received', this.onEmojiMsg);
@@ -467,12 +467,12 @@ export class LobbyScene extends Phaser.Scene {
     this.events.on('enemy-attack', (data) => {
       if (this.isDead || this.isSpectating) return;
       if (this.playerAttackIFrames > 0) return;
-      
+
       console.log(`[LobbyScene] Recibiendo ataque de enemigo: ${data.damage} de daño`);
       this.playerHp = Math.max(0, this.playerHp - data.damage);
       this.playerAttackIFrames = 800; // 0.8s iFrames
       this._updateHpBar();
-      
+
       if (this.playerHp <= 0) {
         this._onPlayerDeath();
         return;
@@ -518,14 +518,14 @@ export class LobbyScene extends Phaser.Scene {
 
   _updateHpBar() {
     if (!this.hpBar || !this.hpBar.active) return;
-    
+
     this.hpBar.clear();
-    
+
     const x = 40;
     const y = 40;
     const w = 240;
     const h = 24;
-    
+
     // Background (Border)
     this.hpBar.fillStyle(0x000000, 0.7);
     this.hpBar.fillRoundedRect(x - 4, y - 4, w + 8, h + 8, 12);
@@ -535,7 +535,7 @@ export class LobbyScene extends Phaser.Scene {
     // Health bar fill
     const fillWidth = (this.playerHp / this.playerMaxHp) * w;
     const color = this.playerHp < 30 ? 0xff3333 : (this.playerHp < 60 ? 0xffcc33 : 0x33ff33);
-    
+
     this.hpBar.fillStyle(color, 1);
     if (fillWidth > 0) {
       this.hpBar.fillRoundedRect(x, y, fillWidth, h, 8);
@@ -564,16 +564,16 @@ export class LobbyScene extends Phaser.Scene {
 
   _onPlayerDeath() {
     console.log("[LobbyScene] Player has died locally");
-    if (this.isDead || useGameStore.getState().ninjaCardData) return;
-    
+    if (this.isDead) return;
+
     this.isDead = true;
-    
+
     if (this.player) {
       // TAREA 4: 'die' es el key correcto en CharacterConfig (no 'dead')
       this.player.playAnimation('die');
       if (this.player.body) this.player.body.setVelocity(0, 0);
     }
-    
+
     // Esperar que termine la animación die (~1200ms) antes de mostrar la UI de muerte
     this.time.delayedCall(1200, () => {
       window.dispatchEvent(new CustomEvent('player-dead'));
@@ -583,7 +583,7 @@ export class LobbyScene extends Phaser.Scene {
   _onSpectate() {
     console.log("[LobbyScene] Entering spectator mode");
     this.isSpectating = true;
-    
+
     // Find someone to watch
     const otherPlayers = Array.from(this.playerSprites.values());
     if (otherPlayers.length > 0) {
@@ -609,7 +609,7 @@ export class LobbyScene extends Phaser.Scene {
     window.removeEventListener('enemy-died-broadcast', this.onEnemyDied);
     window.removeEventListener('spectate-player', this.onSpectate);
     window.removeEventListener('reset-player-state', this.onResetPlayerState);
-    
+
     // Cleanup editor controller listeners
     if (this.editorController) {
       this.editorController.destroy();
@@ -736,7 +736,7 @@ export class LobbyScene extends Phaser.Scene {
 
     enemies.forEach(data => {
       let sprite = this.activeEnemies.get(data.instance_id);
-      
+
       if (!sprite) {
         // Robust asset selection:
         // 1. Use sprite_id if provided by server.
@@ -751,16 +751,16 @@ export class LobbyScene extends Phaser.Scene {
         console.log(`[LobbyScene] Spawning new enemy: ${data.npc_id} with asset ${assetId} (${data.instance_id})`);
         sprite = new EnemySprite(this, data.x, data.y, assetId, 'Enemy');
         this.add.existing(sprite); // Add to display list so it renders
-        
+
         // Evitar que el enemigo se superponga al jugador físicamente
         if (this.player && sprite.body) {
             this.physics.add.collider(this.player, sprite);
         }
-        
+
         // Set initial config and target
         sprite.config = data;
         if (this.player) sprite.target = this.player;
-        
+
         this.activeEnemies.set(data.instance_id, sprite);
         sprite.lastUpdated = Date.now();
       }
@@ -796,7 +796,7 @@ export class LobbyScene extends Phaser.Scene {
 
   handlePlayerAttack() {
     if (!this.player || this.isTyping()) return;
-    if (this.isDead || useGameStore.getState().ninjaCardData) return;
+    if (this.isDead) return;
 
     // TAREA 6: cooldown de ataque para evitar spam (500ms)
     const now = this.time.now;
@@ -826,10 +826,10 @@ export class LobbyScene extends Phaser.Scene {
 
     if (nearestEnemy) {
         console.log(`[LobbyScene] Hit enemy ${nearestEnemy.id} at dist ${minDist.toFixed(1)}px`);
-        
+
         // Enviar ataque al servidor
         useGameStore.getState().sendPlayerAttack(nearestEnemy.id);
-        
+
         // Feedback visual en el enemigo: tint rojo (hurt) + limpieza
         const hitEnemy = nearestEnemy.enemy;
         if (hitEnemy.sprite) {
@@ -928,7 +928,7 @@ export class LobbyScene extends Phaser.Scene {
       def.character_id || def.sprite || '2',
       def.name
     );
-    
+
     // NPC doesn't move by default, so we set it to idle facing the default direction
     const facing = tmpl.facing_direction || 'south';
     sprite.setFacing(facing);
@@ -964,7 +964,7 @@ export class LobbyScene extends Phaser.Scene {
     if (container.body) {
         container.body.setImmovable(true); // Don't let player push them
         // Increase collider size to ~70% of tile size for better presence
-        container.body.setCircle(35, -35, -35); 
+        container.body.setCircle(35, -35, -35);
         // Ensure they don't move on collision
         container.body.setBounce(0);
         container.body.setFriction(1);
@@ -987,7 +987,7 @@ export class LobbyScene extends Phaser.Scene {
       this.updateNpcIndicator(npcContainer, status);
     });
   }
-  
+
   playBGM(trackId) {
     if (this.currentBgmTrackId === trackId) return;
 
@@ -1023,20 +1023,20 @@ export class LobbyScene extends Phaser.Scene {
 
   getNpcMissionStatus(npcId, mission) {
       if (!mission) return null;
-      
+
       // Check if this NPC is the source of the mission or a target
       const isStartNpc = mission.start_npc_id === npcId;
       const tasks = mission.tasks || [];
       const currentTask = tasks.find(t => !t.is_completed);
-      
+
       if (!currentTask && isStartNpc) return 'complete'; // Ready to hand in
-      
+
       if (currentTask) {
           if (currentTask.npc_id === npcId) {
               return currentTask.is_completed ? 'success' : 'active';
           }
       }
-      
+
       return null;
   }
 
@@ -1086,7 +1086,7 @@ export class LobbyScene extends Phaser.Scene {
     try {
       console.log(`[LobbyScene] Fetching Map Pickups for scene: ${this.currentMapKey}`);
       const response = await api.get(`/inventory/pickups/${this.currentMapKey}`);
-      
+
       if (response.data) {
         // Clear existing pickups if any (usually empty on start)
         this.activePickups?.forEach(p => p.destroy());
@@ -1110,7 +1110,7 @@ export class LobbyScene extends Phaser.Scene {
     // Visual container for the item
     const container = this.add.container(pickup.x, pickup.y);
     container.setDepth(pickup.y);
-    
+
     // Hide editor marker if exists underneath
     if (this.pickups) {
       this.pickups.getChildren().forEach(p => {
@@ -1128,7 +1128,7 @@ export class LobbyScene extends Phaser.Scene {
     } else {
       sprite = this.add.rectangle(0, 0, 32, 32, 0xffff00);
     }
-    
+
     sprite.setDisplaySize(32, 32);
     container.add(sprite);
 
@@ -1312,10 +1312,9 @@ export class LobbyScene extends Phaser.Scene {
     }
 
     // 2. Dead state: stop everything for local player
-    const hasNinjaCard = useGameStore.getState().ninjaCardData != null;
-    if (this.isDead || hasNinjaCard) {
+    if (this.isDead) {
       if (this.player.body) this.player.body.setVelocity(0, 0);
-      return; 
+      return;
     }
 
     // Update NPCs
@@ -1341,9 +1340,9 @@ export class LobbyScene extends Phaser.Scene {
       if (this.editorMoveMode === 'camera') {
         // CAMERA PAN: WASD/Arrows scroll the viewport freely
         if (!this.isTyping()) {
-          const panSpeed = 20; 
+          const panSpeed = 20;
           const cam = this.cameras.main;
-          
+
           // Ensure follow is stopped
           if (cam._follow) cam.stopFollow();
 
@@ -1351,13 +1350,13 @@ export class LobbyScene extends Phaser.Scene {
           const right = this.cursors.right.isDown || this.wasd.right.isDown;
           const up = this.cursors.up.isDown || this.wasd.up.isDown;
           const down = this.cursors.down.isDown || this.wasd.down.isDown;
-          
+
           if (left) cam.scrollX -= panSpeed;
           else if (right) cam.scrollX += panSpeed;
           if (up) cam.scrollY -= panSpeed;
           else if (down) cam.scrollY += panSpeed;
         }
-        return; 
+        return;
       } else {
         // Character mode: ensure follow is active
         const cam = this.cameras.main;
@@ -1401,7 +1400,7 @@ export class LobbyScene extends Phaser.Scene {
     if (body.velocity.x < 0) this._lastDirection = 'left';
     else if (body.velocity.x > 0) this._lastDirection = 'right';
     const direction = this._lastDirection || 'right';
-    
+
     // Si el jugador está ejecutando una animación bloqueada (slash, hurt, die), enviamos esa
     let anim = isMoving ? 'walk' : 'idle';
     if (this.player._animLocked && this.player.currentAnim) {
@@ -1508,7 +1507,7 @@ export class LobbyScene extends Phaser.Scene {
         );
         if (hasPIN) {
           const entered = window.prompt('Introduce el PIN de 4 dígitos:');
-          if (entered === null) return; 
+          if (entered === null) return;
           pin = entered.trim();
         }
       }
@@ -1518,7 +1517,7 @@ export class LobbyScene extends Phaser.Scene {
           targetMap,
           targetX,
           targetY,
-          pin, 
+          pin,
         },
       }));
 
@@ -1532,7 +1531,7 @@ export class LobbyScene extends Phaser.Scene {
 
   shutdown() {
     console.log('[LobbyScene] Shutting down scene...');
-    
+
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = null;
@@ -1545,7 +1544,7 @@ export class LobbyScene extends Phaser.Scene {
       this.roomUnsubscribe();
       this.roomUnsubscribe = null;
     }
-    
+
     if (this.onChatMsg) {
       window.removeEventListener('chat-message-received', this.onChatMsg);
       this.onChatMsg = null;

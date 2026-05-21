@@ -114,7 +114,7 @@ func main() {
 	dialogueService := services.NewDialogueService(npcRepo, missionRepo, missionService, llmClient)
 
 	// WebSocket Hub
-	hub := gameWS.NewHub(presenceService, roomService, movementService, peerService, combatService, missionService)
+	hub := gameWS.NewHub(presenceService, roomService, movementService, peerService, combatService, missionService, learningService)
 	go hub.Run()
 
 	// Handlers

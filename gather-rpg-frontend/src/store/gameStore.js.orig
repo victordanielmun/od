@@ -386,11 +386,11 @@ export const useGameStore = create((set, get) => ({
 
                 wsClient.on('mission_completed', (payload) => {
                     console.log("[gameStore] Mission completed event received:", payload);
-                    
+
                     const { addNotification } = useNotificationStore.getState();
                     const title = payload.title || "Misión";
                     addNotification('success', `🏆 ¡MISIÓN COMPLETADA: ${title}!`);
-                    
+
                     // Clear active mission state
                     set({ activeMission: null });
 
@@ -398,7 +398,7 @@ export const useGameStore = create((set, get) => ({
                     setTimeout(() => {
                         console.log("[gameStore] Auto-redirecting to lobby after mission completion");
                         window.dispatchEvent(new CustomEvent('lobby-change-map', {
-                            detail: { 
+                            detail: {
                                 targetMap: 'lobby',
                                 targetX: 0,
                                 targetY: 0
@@ -416,7 +416,7 @@ export const useGameStore = create((set, get) => ({
                 wsClient.on('enemy_died', (payload) => {
                     // Dispatch to Phaser scenes
                     window.dispatchEvent(new CustomEvent('enemy-died-broadcast', { detail: payload }));
-                    
+
                     // Show notification if it was a player who killed it
                     if (payload.killed_by) {
                         const myId = String(useAuthStore.getState().user?.id || '');
@@ -429,7 +429,7 @@ export const useGameStore = create((set, get) => ({
                 wsClient.on('enemy_kill_progress', (payload) => {
                     const { mission_id, task_id, kills_done, required_kills, task_completed } = payload;
                     console.log(`[gameStore] Kill progress: task ${task_id} → ${kills_done}/${required_kills}`);
-                    
+
                     // Mostrar notificación de progreso
                     const { addNotification } = useNotificationStore.getState();
                     if (task_completed) {
@@ -585,11 +585,11 @@ export const useGameStore = create((set, get) => ({
             payload.x = Number(x); // Pointer expects number
             payload.y = Number(y);
         }
-        
+
         // CRITICAL: Clear local entities before joining a new room
         // so we don't bring ghost players/enemies to the new map.
         set({ players: new Map(), enemies: new Map() });
-        
+
         wsClient.send('join_room', payload);
     },
 
@@ -687,26 +687,11 @@ export const useGameStore = create((set, get) => ({
         console.log("Using item:", inventoryId);
     },
 
-    sendNinjaCardAnswer: (targetInstanceId, challengeId, selectedOption) => {
-        const roomId = get().currentRoomId;
-        if (roomId && targetInstanceId) {
-            wsClient.send("ninja_card_answer", {
-                target_instance_id: targetInstanceId,
-                challenge_id: challengeId,
-                selected_option: selectedOption,
-            });
-        }
-    },
-
-    clearNinjaCardData: () => {
-        set({ ninjaCardData: null });
-    },
-
     sendPlayerAttack: (enemyInstanceId, damage = 10) => {
         const roomId = get().currentRoomId;
         if (roomId && enemyInstanceId) {
             console.log(`[gameStore] Sending player_attack for enemy: ${enemyInstanceId} with damage: ${damage}`);
-            wsClient.send('player_attack', { 
+            wsClient.send('player_attack', {
                 target_instance_id: enemyInstanceId,
                 damage: damage,
                 room_id: roomId
