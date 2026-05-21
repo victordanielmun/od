@@ -80,9 +80,7 @@ export default class EnemySprite extends NPCSprite {
   // ─── Sincronizar desde el Servidor (Multiplayer) ─────────────────────────
   syncFromServer(data) {
     if (this.fsm === STATES.DEAD) return;
-
     const oldX = this.x;
-
     // Actualizar posición (suavizado o directo)
     this.setPosition(data.x, data.y);
     
@@ -273,6 +271,13 @@ export default class EnemySprite extends NPCSprite {
         }
         this.attackCooldown -= delta;
         if (this.attackCooldown <= 0) {
+          const animKey = this._resolveAnim(STATES.ATTACK);
+          const fullAnimKey = `enemy-${this.npcId}-${animKey}`;
+          if (this.scene.anims.exists(fullAnimKey)) {
+              this.sprite.play(fullAnimKey, true);
+          } else {
+              this.playAnimation(animKey);
+          }
           this._doAttack();
           this._attackHitDealt = false;
           this.attackCooldown = this.config?.attackRate ?? 1200;
@@ -341,7 +346,7 @@ export default class EnemySprite extends NPCSprite {
 
   setFacing(dir) {
     if (this.sprite) {
-      this.sprite.setFlipX(dir === 'left');
+      this.sprite.setFlipX(dir === 'right');
     }
   }
 
