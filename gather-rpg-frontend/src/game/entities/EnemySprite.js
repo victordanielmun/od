@@ -29,6 +29,7 @@ export default class EnemySprite extends NPCSprite {
     this.config = null;    // datos que llegan del backend
     this.stateTimer = 0;   // ms restantes en estado transitorio
     this.attackCooldown = 0;
+    this._attackHitDealt = false;
     this.target = null;    // referencia al jugador
 
     // Asegurar que tiene físicas si no se añadieron en super
@@ -64,6 +65,13 @@ export default class EnemySprite extends NPCSprite {
     if (config.name) {
       this.nameTag.setText(config.name);
     }
+
+    this.sprite.on('animationcomplete', (anim) => {
+      const attackAnim = `enemy-${this.npcId}-${this._resolveAnim(STATES.ATTACK)}`;
+      if (anim.key === attackAnim) {
+        this._attackHitDealt = false;
+      }
+    });
 
     this._changeState(STATES.IDLE);
     if (this.healthBar) this.healthBar.setVisible(true);
@@ -152,7 +160,7 @@ export default class EnemySprite extends NPCSprite {
     // EVITAR LOOP: Si está atacando, no interrumpir con chase/idle hasta terminar
     if (this.fsm === STATES.ATTACK && (newState === STATES.CHASE || newState === STATES.IDLE)) {
         const attackAnim = `enemy-${this.npcId}-${this._resolveAnim(STATES.ATTACK)}`;
-        if (this.sprite.anims.currentAnim && this.sprite.anims.currentAnim.key === attackAnim && this.sprite.anims.isPlaying) {
+        if (this.sprite.anims.currentAnim && this.sprite.anims.currentAnim.key === attackAnim) {
             return;
         }
     }
@@ -209,6 +217,11 @@ export default class EnemySprite extends NPCSprite {
   preUpdate(time, delta) {
     if (!this.active) return;
 
+    if (this.paused) {
+      if (this.body) this.body.setVelocity(0, 0);
+      return;
+    }
+
     // Actualizar depth para pseudo-3D (Y = Z)
     this.setDepth(this.y + 0.1);
 
@@ -233,7 +246,7 @@ export default class EnemySprite extends NPCSprite {
           break;
         }
         this._moveTowardTarget();
-        if (this._distToTarget() < (this.config?.attackRange ?? 90)) {
+        if (this._distToTarget() < (this.config?.attackRange ?? 70)) {
           this._changeState(STATES.ATTACK);
         }
         break;
@@ -243,9 +256,10 @@ export default class EnemySprite extends NPCSprite {
         this.attackCooldown -= delta;
         if (this.attackCooldown <= 0) {
           this._doAttack();
+          this._attackHitDealt = false;
           this.attackCooldown = this.config?.attackRate ?? 1200;
         }
-        if (this._distToTarget() > (this.config?.attackRange ?? 90) + 20) {
+        if (this._distToTarget() > (this.config?.attackRange ?? 70) + 20) {
           this._changeState(STATES.CHASE);
         }
         break;
@@ -322,6 +336,9 @@ export default class EnemySprite extends NPCSprite {
 
     // Guard: no atacar si no hay target válido (y somos nosotros)
     if (!this.target || !this.target.active) return;
+
+    if (this._attackHitDealt) return;
+    this._attackHitDealt = true;
 
     // Emitir evento — LobbyScene lo escucha para aplicar daño al jugador
     this.scene.events.emit('enemy-attack', {
