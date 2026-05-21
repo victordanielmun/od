@@ -103,6 +103,7 @@ func (r *Room) tickAI() {
 	}
 
 	updates := make([]models.ActiveEnemy, 0)
+	attackTargets := make(map[string]bool)
 	for _, enemy := range r.ActiveEnemies {
 		if enemy.FSMState == "dead" {
 			continue
@@ -137,8 +138,11 @@ func (r *Room) tickAI() {
 			if minDist > 90 { // Don't overlap completely (matched with frontend 90px attackRange)
 				enemy.X += math.Cos(angle) * speed
 				enemy.Y += math.Sin(angle) * speed
-			} else {
+			} else if !attackTargets[nearestClient.ID.String()] {
 				enemy.FSMState = "attack"
+				attackTargets[nearestClient.ID.String()] = true
+			} else {
+				enemy.FSMState = "idle"
 			}
 		} else {
 			enemy.FSMState = "idle"

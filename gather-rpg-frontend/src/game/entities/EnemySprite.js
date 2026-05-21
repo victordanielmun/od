@@ -83,9 +83,9 @@ export default class EnemySprite extends NPCSprite {
 
     // TAREA 6: Orientar el sprite según el movimiento
     if (data.x < this.x) {
-        this.sprite.setFlipX(true);
+        this.setFacing('left');
     } else if (data.x > this.x) {
-        this.sprite.setFlipX(false);
+        this.setFacing('right');
     }
 
     // Actualizar posición (suavizado o directo)
@@ -255,6 +255,13 @@ export default class EnemySprite extends NPCSprite {
         if (this.body) this.body.setVelocity(0, 0);
         this.attackCooldown -= delta;
         if (this.attackCooldown <= 0) {
+          const animKey = this._resolveAnim(STATES.ATTACK);
+          const fullAnimKey = `enemy-${this.npcId}-${animKey}`;
+          if (this.scene.anims.exists(fullAnimKey)) {
+              this.sprite.play(fullAnimKey, true);
+          } else {
+              this.playAnimation(animKey);
+          }
           this._doAttack();
           this._attackHitDealt = false;
           this.attackCooldown = this.config?.attackRate ?? 1200;
@@ -323,7 +330,7 @@ export default class EnemySprite extends NPCSprite {
 
   setFacing(dir) {
     if (this.sprite) {
-      this.sprite.setFlipX(dir === 'left');
+      this.sprite.setFlipX(dir === 'right');
     }
   }
 
