@@ -1023,17 +1023,51 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 			}
 		}()
 	} else {
-		effectType := "enemy_heals"
-		enemy.HP = enemy.HPMax
+		// Elegir efecto aleatorio entre 3 posibles efectos
+		// 0: enemy_heals, 1: player_takes_damage, 2: player_is_stunned
+		randEffect := rand.Intn(3)
+		var effectType string
+		damage := 0
+		duration := 0
+
+		log.Printf("[NinjaCard Debug] Incorrect answer from user %s (ID: %s). Choosing random penalty effect. Index: %d", client.Username, client.ID, randEffect)
+
+		if randEffect == 0 {
+			effectType = "enemy_heals"
+			enemy.HP = enemy.HPMax
+			log.Printf("[NinjaCard Debug] Penalty selected: enemy_heals. Enemy %s HP fully restored to %d/%d", instanceUUID, enemy.HP, enemy.HPMax)
+		} else if randEffect == 1 {
+			effectType = "player_takes_damage"
+			damage = 30
+			// Curar al enemigo al 50% para que el jugador no lo derrote inmediatamente en el próximo golpe
+			enemy.HP = enemy.HPMax / 2
+			if enemy.HP < 1 {
+				enemy.HP = 1
+			}
+			log.Printf("[NinjaCard Debug] Penalty selected: player_takes_damage. Damage: %d. Enemy %s partially healed to %d/%d", damage, instanceUUID, enemy.HP, enemy.HPMax)
+		} else {
+			effectType = "player_is_stunned"
+			duration = 3000 // 3 segundos
+			// Curar al enemigo al 50%
+			enemy.HP = enemy.HPMax / 2
+			if enemy.HP < 1 {
+				enemy.HP = 1
+			}
+			log.Printf("[NinjaCard Debug] Penalty selected: player_is_stunned. Duration: %dms. Enemy %s partially healed to %d/%d", duration, instanceUUID, enemy.HP, enemy.HPMax)
+		}
+
 		enemy.FSMState = "chase"
 		enemy.PendingNinjaCard = ""
 		room.mu.Unlock()
 
+		log.Printf("[NinjaCard Debug] Broadcasting NinjaCard result to client %s: correct=false, effect=%s, damage=%d, duration=%d", client.ID, effectType, damage, duration)
 		client.SendJSON(&models.WSMessage{
 			Type: MsgNinjaCardResult,
 			Payload: map[string]interface{}{
-				"correct": false,
-				"effect":  effectType,
+				"correct":  false,
+				"effect":   effectType,
+				"damage":   damage,
+				"duration": duration,
 			},
 		})
 	}

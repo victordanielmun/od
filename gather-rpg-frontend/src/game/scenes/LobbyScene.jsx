@@ -447,12 +447,65 @@ export class LobbyScene extends Phaser.Scene {
       this.isDead = false;
       this.isSpectating = false;
       this.spectatorTarget = null;
+      this.isStunned = false;
       if (this.player) {
         this.player.setAlpha(1);
         this.player.clearTint && this.player.clearTint();
       }
     };
     window.addEventListener('reset-player-state', this.onResetPlayerState);
+
+    this.isStunned = false;
+    this.onNinjaCardResult = (e) => {
+      const { correct, effect, damage, duration } = e.detail;
+      console.log(`[LobbyScene Debug] NinjaCard Result: correct=${correct}, effect=${effect}, damage=${damage}, duration=${duration}`);
+      
+      if (!correct) {
+        if (effect === 'player_takes_damage') {
+          const dmg = damage || 30;
+          console.log(`[LobbyScene Debug] Player taking damage from incorrect Ninja Card: ${dmg}`);
+          this.playerHp = Math.max(0, this.playerHp - dmg);
+          this._updateHpBar();
+          
+          if (this.player) {
+            this.player.playAnimation('hurt', 400);
+            if (this.player.sprite) this.player.sprite.setTint(0xff4444);
+            this.time.delayedCall(400, () => {
+              if (this.player?.sprite) this.player.sprite.clearTint();
+              if (!this.isDead && this.player) {
+                this.player._animLocked = false;
+                this.player.playAnimation('idle');
+              }
+            });
+          }
+          
+          if (this.playerHp <= 0) {
+            this._onPlayerDeath();
+          }
+        } else if (effect === 'player_is_stunned') {
+          const dur = duration || 3000;
+          console.log(`[LobbyScene Debug] Player stunned from incorrect Ninja Card for ${dur}ms`);
+          this.isStunned = true;
+          if (this.player && this.player.body) {
+            this.player.body.setVelocity(0, 0);
+            this.player.playAnimation('idle');
+          }
+          if (this.player && this.player.sprite) {
+            this.player.sprite.setTint(0xffff44); // Amarillo para aturdimiento
+          }
+          
+          // Limpiar stun después de la duración
+          this.time.delayedCall(dur, () => {
+            console.log('[LobbyScene Debug] Player stun expired');
+            this.isStunned = false;
+            if (this.player && this.player.sprite) {
+              this.player.sprite.clearTint();
+            }
+          });
+        }
+      }
+    };
+    window.addEventListener('ninja-card-result', this.onNinjaCardResult);
 
     // Player Health Bar (Local UI in Canvas)
     this.hpBar = this.add.graphics();
@@ -609,6 +662,7 @@ export class LobbyScene extends Phaser.Scene {
     window.removeEventListener('enemy-died-broadcast', this.onEnemyDied);
     window.removeEventListener('spectate-player', this.onSpectate);
     window.removeEventListener('reset-player-state', this.onResetPlayerState);
+    window.removeEventListener('ninja-card-result', this.onNinjaCardResult);
     
     // Cleanup editor controller listeners
     if (this.editorController) {
@@ -796,7 +850,7 @@ export class LobbyScene extends Phaser.Scene {
 
   handlePlayerAttack() {
     if (!this.player || this.isTyping()) return;
-    if (this.isDead || useGameStore.getState().ninjaCardData) return;
+    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned) return;
 
     // TAREA 6: cooldown de ataque para evitar spam (500ms)
     const now = this.time.now;
@@ -1313,7 +1367,7 @@ export class LobbyScene extends Phaser.Scene {
 
     // 2. Dead state: stop everything for local player
     const hasNinjaCard = useGameStore.getState().ninjaCardData != null;
-    if (this.isDead || hasNinjaCard) {
+    if (this.isDead || hasNinjaCard || this.isStunned) {
       if (this.player.body) this.player.body.setVelocity(0, 0);
       return; 
     }
