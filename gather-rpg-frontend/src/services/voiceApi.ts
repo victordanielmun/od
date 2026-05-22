@@ -49,7 +49,7 @@ export interface LearningChallenge {
 }
 
 export async function fetchRandomWord(difficulty?: string, type: string = 'pronunciation'): Promise<any> {
-    const params: Record<string, string> = { type };
+    const params: Record<string, any> = { type, t: Date.now() };
     if (difficulty) params.difficulty = difficulty;
     
     // Redirected to Go Backend (gatherApi) mapped to the new schema
@@ -64,7 +64,7 @@ export async function fetchRandomWord(difficulty?: string, type: string = 'pronu
 }
 
 export async function fetchWords(difficulty?: string, type: string = 'pronunciation'): Promise<LearningChallenge[]> {
-    const params: Record<string, string> = { type };
+    const params: Record<string, any> = { type, t: Date.now() };
     if (difficulty) params.difficulty = difficulty;
     // We haven't implemented listing in Go yet, so this will throw a 404/500 if used. 
     // PracticePage only uses fetchRandomWord right now.
