@@ -3,6 +3,7 @@ package websocket
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -18,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"gorm.io/gorm"
 )
 
 var (
@@ -60,6 +62,79 @@ func (h *Hub) SendToUser(userID string, msg *models.WSMessage) {
 			// Don't break, user might have multiple connections (tabs)
 		}
 	}
+}
+
+func (h *Hub) IsUserOnline(userID string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	parsedID, err := uuid.Parse(userID)
+	if err != nil {
+		return false
+	}
+	for client := range h.Clients {
+		if client.ID == parsedID {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *Hub) NotifyFriendUpdate(userID string) {
+	msg := &models.WSMessage{
+		Type: "friend_list_update",
+		Payload: map[string]string{
+			"user_id": userID,
+		},
+	}
+	h.SendToUser(userID, msg)
+}
+
+func (h *Hub) notifyFriendsOnlineStatus(userID string) {
+	if database.DB == nil {
+		return
+	}
+	go func() {
+		userUUID, err := uuid.Parse(userID)
+		if err != nil {
+			return
+		}
+
+		// Find friends in DB
+		var friendships []models.Friendship
+		err = database.DB.Where("user1_id = ? OR user2_id = ?", userUUID, userUUID).Find(&friendships).Error
+		if err != nil {
+			return
+		}
+
+		friendIDs := make([]string, 0, len(friendships))
+		for _, f := range friendships {
+			if f.User1ID == userUUID {
+				friendIDs = append(friendIDs, f.User2ID.String())
+			} else {
+				friendIDs = append(friendIDs, f.User1ID.String())
+			}
+		}
+
+		// Send "friend_list_update" to every online friend
+		msg := &models.WSMessage{
+			Type: "friend_list_update",
+			Payload: map[string]string{
+				"user_id": userID,
+			},
+		}
+
+		for _, friendID := range friendIDs {
+			h.SendToUser(friendID, msg)
+		}
+	}()
+}
+
+func canonicalPair(a, b uuid.UUID) (uuid.UUID, uuid.UUID) {
+	if a.String() < b.String() {
+		return a, b
+	}
+	return b, a
 }
 
 func NewHub(presence *services.PresenceService, roomService *services.RoomService, movement *services.MovementService, peer *services.PeerService, combat *services.CombatService, mission *services.MissionService, learning *services.LearningService) *Hub {
@@ -113,6 +188,7 @@ func (h *Hub) Run() {
 			h.Clients[client] = true
 			h.mu.Unlock()
 			log.Printf("Client registered: %s", client.ID)
+			h.notifyFriendsOnlineStatus(client.ID.String())
 
 		case client := <-h.Unregister:
 			h.handleUnregister(client)
@@ -207,6 +283,7 @@ func (h *Hub) handleUnregister(client *Client) {
 		client.Close()
 	}
 	log.Printf("Client unregistered: %s", client.ID)
+	h.notifyFriendsOnlineStatus(client.ID.String())
 }
 
 func (h *Hub) HandleMessage(client *Client, message []byte) {
@@ -492,7 +569,164 @@ func (h *Hub) handleChatRequest(client *Client, payload models.ChatRequestPayloa
 		return
 	}
 
-	// Find target client
+	if database.DB == nil {
+		h.mu.RLock()
+		var targetClient *Client
+		for c := range h.Clients {
+			if c.ID == targetID {
+				targetClient = c
+				break
+			}
+		}
+		h.mu.RUnlock()
+
+		if targetClient != nil {
+			targetClient.SendJSON(&models.WSMessage{
+				Type: MsgChatRequestBcast,
+				Payload: map[string]string{
+					"requester_id":   client.ID.String(),
+					"requester_name": client.Username,
+				},
+			})
+		}
+		return
+	}
+
+	// 1. Check if friendship already exists
+	u1, u2 := canonicalPair(client.ID, targetID)
+	var friendship models.Friendship
+	err = database.DB.Where("user1_id = ? AND user2_id = ?", u1, u2).First(&friendship).Error
+	if err == nil {
+		// Friendship exists, start session directly!
+		var targetUser models.User
+		if err := database.DB.Select("username").Where("id = ?", targetID).First(&targetUser).Error; err == nil {
+			msgForClient := &models.WSMessage{
+				Type: MsgChatSessionStart,
+				Payload: map[string]string{
+					"partner_id":   targetID.String(),
+					"partner_name": targetUser.Username,
+				},
+			}
+			client.SendJSON(msgForClient)
+
+			h.mu.RLock()
+			var targetClient *Client
+			for c := range h.Clients {
+				if c.ID == targetID {
+					targetClient = c
+					break
+				}
+			}
+			h.mu.RUnlock()
+
+			if targetClient != nil {
+				msgForTarget := &models.WSMessage{
+					Type: MsgChatSessionStart,
+					Payload: map[string]string{
+						"partner_id":   client.ID.String(),
+						"partner_name": client.Username,
+					},
+				}
+				targetClient.SendJSON(msgForTarget)
+			}
+		}
+		return
+	}
+
+	// 2. Check if B (target) has a pending request to A (client)
+	var pendingFromTarget models.FriendRequest
+	err = database.DB.Where("requester_id = ? AND addressee_id = ? AND status = ?", targetID, client.ID, models.FriendRequestPending).First(&pendingFromTarget).Error
+	if err == nil {
+		// Auto-accept the request!
+		err = database.DB.Transaction(func(tx *gorm.DB) error {
+			f := &models.Friendship{User1ID: u1, User2ID: u2}
+			if err := tx.Create(f).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&models.FriendRequest{}).Where("id = ?", pendingFromTarget.ID).Update("status", models.FriendRequestAccepted).Error; err != nil {
+				return err
+			}
+			return nil
+		})
+		if err == nil {
+			h.NotifyFriendUpdate(client.ID.String())
+			h.NotifyFriendUpdate(targetID.String())
+
+			var targetUser models.User
+			if err := database.DB.Select("username").Where("id = ?", targetID).First(&targetUser).Error; err == nil {
+				client.SendJSON(&models.WSMessage{
+					Type: MsgChatSessionStart,
+					Payload: map[string]string{
+						"partner_id":   targetID.String(),
+						"partner_name": targetUser.Username,
+					},
+				})
+
+				h.mu.RLock()
+				var targetClient *Client
+				for c := range h.Clients {
+					if c.ID == targetID {
+						targetClient = c
+						break
+					}
+				}
+				h.mu.RUnlock()
+
+				if targetClient != nil {
+					targetClient.SendJSON(&models.WSMessage{
+						Type: MsgChatSessionStart,
+						Payload: map[string]string{
+							"partner_id":   client.ID.String(),
+							"partner_name": client.Username,
+						},
+					})
+				}
+			}
+			return
+		}
+	}
+
+	// 3. Check if A (client) already has a pending request to B (target)
+	var existingPending models.FriendRequest
+	err = database.DB.Where("requester_id = ? AND addressee_id = ? AND status = ?", client.ID, targetID, models.FriendRequestPending).First(&existingPending).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Create a pending request
+		req := &models.FriendRequest{
+			RequesterID: client.ID,
+			AddresseeID: targetID,
+			Status:      models.FriendRequestPending,
+		}
+		if err := database.DB.Create(req).Error; err == nil {
+			h.NotifyFriendUpdate(targetID.String())
+			h.NotifyFriendUpdate(client.ID.String())
+
+			// Send friend_request_received WS event to target
+			h.mu.RLock()
+			var targetClient *Client
+			for c := range h.Clients {
+				if c.ID == targetID {
+					targetClient = c
+					break
+				}
+			}
+			h.mu.RUnlock()
+
+			if targetClient != nil {
+				targetClient.SendJSON(&models.WSMessage{
+					Type: "friend_request_received",
+					Payload: map[string]interface{}{
+						"request_id":         req.ID,
+						"requester_id":       client.ID,
+						"requester_username": client.Username,
+						"timestamp":          req.CreatedAt,
+					},
+				})
+			}
+		}
+	}
+
+	// 4. Send chat request popup/prompt to target if online
+	h.mu.RLock()
 	var targetClient *Client
 	for c := range h.Clients {
 		if c.ID == targetID {
@@ -500,6 +734,7 @@ func (h *Hub) handleChatRequest(client *Client, payload models.ChatRequestPayloa
 			break
 		}
 	}
+	h.mu.RUnlock()
 
 	if targetClient != nil {
 		targetClient.SendJSON(&models.WSMessage{
@@ -518,6 +753,7 @@ func (h *Hub) handleChatResponse(client *Client, payload models.ChatResponsePayl
 		return
 	}
 
+	h.mu.RLock()
 	var targetClient *Client
 	for c := range h.Clients {
 		if c.ID == targetID {
@@ -525,27 +761,108 @@ func (h *Hub) handleChatResponse(client *Client, payload models.ChatResponsePayl
 			break
 		}
 	}
+	h.mu.RUnlock()
 
-	if targetClient != nil {
-		if payload.Accepted {
-			// Notify both to start session
-			msg := &models.WSMessage{
+	if database.DB == nil {
+		if targetClient != nil {
+			if payload.Accepted {
+				msg := &models.WSMessage{
+					Type: MsgChatSessionStart,
+					Payload: map[string]string{
+						"partner_id":   client.ID.String(),
+						"partner_name": client.Username,
+					},
+				}
+				targetClient.SendJSON(msg)
+
+				client.SendJSON(&models.WSMessage{
+					Type: MsgChatSessionStart,
+					Payload: map[string]string{
+						"partner_id":   targetID.String(),
+						"partner_name": targetClient.Username,
+					},
+				})
+			} else {
+				targetClient.SendJSON(&models.WSMessage{
+					Type: MsgChatReject,
+					Payload: map[string]string{
+						"rejecter_id":   client.ID.String(),
+						"rejecter_name": client.Username,
+					},
+				})
+			}
+		}
+		return
+	}
+
+	if payload.Accepted {
+		u1, u2 := canonicalPair(client.ID, targetID)
+
+		var req models.FriendRequest
+		_ = database.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("requester_id = ? AND addressee_id = ? AND status = ?", targetID, client.ID, models.FriendRequestPending).First(&req).Error; err != nil {
+				var friendship models.Friendship
+				if err2 := tx.Where("user1_id = ? AND user2_id = ?", u1, u2).First(&friendship).Error; errors.Is(err2, gorm.ErrRecordNotFound) {
+					f := &models.Friendship{User1ID: u1, User2ID: u2}
+					if err3 := tx.Create(f).Error; err3 != nil {
+						return err3
+					}
+				}
+				return nil
+			}
+
+			var friendship models.Friendship
+			if err2 := tx.Where("user1_id = ? AND user2_id = ?", u1, u2).First(&friendship).Error; errors.Is(err2, gorm.ErrRecordNotFound) {
+				f := &models.Friendship{User1ID: u1, User2ID: u2}
+				if err3 := tx.Create(f).Error; err3 != nil {
+					return err3
+				}
+			}
+
+			if err := tx.Model(&models.FriendRequest{}).Where("id = ?", req.ID).Update("status", models.FriendRequestAccepted).Error; err != nil {
+				return err
+			}
+			return nil
+		})
+
+		h.NotifyFriendUpdate(client.ID.String())
+		h.NotifyFriendUpdate(targetID.String())
+
+		if targetClient != nil {
+			targetClient.SendJSON(&models.WSMessage{
 				Type: MsgChatSessionStart,
 				Payload: map[string]string{
 					"partner_id":   client.ID.String(),
 					"partner_name": client.Username,
 				},
-			}
-			targetClient.SendJSON(msg)
-
-			client.SendJSON(&models.WSMessage{
-				Type: MsgChatSessionStart,
-				Payload: map[string]string{
-					"partner_id":   targetClient.ID.String(),
-					"partner_name": targetClient.Username,
-				},
 			})
-		} else {
+		}
+
+		client.SendJSON(&models.WSMessage{
+			Type: MsgChatSessionStart,
+			Payload: map[string]string{
+				"partner_id":   targetID.String(),
+				"partner_name": func() string {
+					if targetClient != nil {
+						return targetClient.Username
+					}
+					var user models.User
+					if err := database.DB.Select("username").Where("id = ?", targetID).First(&user).Error; err == nil {
+						return user.Username
+					}
+					return ""
+				}(),
+			},
+		})
+	} else {
+		database.DB.Model(&models.FriendRequest{}).
+			Where("requester_id = ? AND addressee_id = ? AND status = ?", targetID, client.ID, models.FriendRequestPending).
+			Update("status", models.FriendRequestRejected)
+
+		h.NotifyFriendUpdate(client.ID.String())
+		h.NotifyFriendUpdate(targetID.String())
+
+		if targetClient != nil {
 			targetClient.SendJSON(&models.WSMessage{
 				Type: MsgChatReject,
 				Payload: map[string]string{

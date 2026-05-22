@@ -20,52 +20,55 @@ export const RegisterForm = () => {
 
   return (
     <>
-      <h2 className="text-2xl text-white mb-6 text-center">Register</h2>
-      {error && <div className="text-red-500 mb-4 text-sm">{error}</div>}
+      <h2 className="text-2xl font-bold text-yellow-400 mb-6 text-center font-medieval uppercase tracking-widest drop-shadow-md">Register</h2>
+      {error && <div className="text-red-400 mb-4 text-xs font-mono uppercase bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl text-center">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="username" className="text-gray-300 block mb-1">Username</label>
+          <label htmlFor="username" className="text-gray-400 text-xs font-bold uppercase tracking-wider block mb-1.5">Username</label>
           <input
             id="username"
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="w-full bg-gray-700 text-white rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-gray-950/60 text-white border border-white/10 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all font-sans placeholder-gray-500 text-sm"
+            placeholder="Enter your username"
             required
           />
         </div>
         <div>
-          <label htmlFor="email" className="text-gray-300 block mb-1">Email</label>
+          <label htmlFor="email" className="text-gray-400 text-xs font-bold uppercase tracking-wider block mb-1.5">Email</label>
           <input
             id="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full bg-gray-700 text-white rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-gray-950/60 text-white border border-white/10 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all font-sans placeholder-gray-500 text-sm"
+            placeholder="Enter your email"
             required
           />
         </div>
         <div>
-          <label htmlFor="password" className="text-gray-300 block mb-1">Password</label>
+          <label htmlFor="password" className="text-gray-400 text-xs font-bold uppercase tracking-wider block mb-1.5">Password</label>
           <input
             id="password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full bg-gray-700 text-white rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-gray-950/60 text-white border border-white/10 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all font-sans placeholder-gray-500 text-sm"
+            placeholder="••••••••"
             required
           />
         </div>
         <button
           type="submit"
-          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition"
+          className="w-full bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black font-extrabold py-3 rounded-xl transition-all font-medieval uppercase tracking-widest shadow-[0_0_20px_rgba(245,158,11,0.2)] hover:shadow-[0_0_25px_rgba(245,158,11,0.4)] border border-yellow-300 cursor-pointer"
         >
           Create Account
         </button>
       </form>
-      <div className="mt-4 text-center">
-        <span className="text-gray-400 text-sm">Already have an account? </span>
-        <a href="/login" className="text-blue-400 hover:text-blue-300 text-sm">Sign In</a>
+      <div className="mt-6 text-center text-xs tracking-wide">
+        <span className="text-gray-400">Already have an account? </span>
+        <a href="/login" className="text-yellow-400 hover:text-yellow-300 font-bold transition-colors">Sign In</a>
       </div>
     </>
   );

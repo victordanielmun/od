@@ -379,6 +379,10 @@ export const useGameStore = create((set, get) => ({
                     window.dispatchEvent(new CustomEvent('friend-request-update'));
                 });
 
+                wsClient.on('friend_list_update', () => {
+                    window.dispatchEvent(new CustomEvent('friend-request-update'));
+                });
+
                 wsClient.on('emoji_broadcast', (payload) => {
                     // Send event to Phaser LobbyScene to show bubble
                     window.dispatchEvent(new CustomEvent('player-emoji-received', { detail: payload }));

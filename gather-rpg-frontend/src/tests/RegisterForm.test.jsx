@@ -62,7 +62,7 @@ describe('RegisterForm', () => {
 
     await waitFor(() => {
       expect(mockRegister).toHaveBeenCalledWith('testuser', 'test@example.com', 'password123');
-      expect(mockNavigate).toHaveBeenCalledWith('/lobby');
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
     });
   });
 

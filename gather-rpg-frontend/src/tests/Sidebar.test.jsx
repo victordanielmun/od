@@ -53,6 +53,7 @@ describe('Sidebar', () => {
           acceptChatRequest: mockAcceptChatRequest,
           rejectChatRequest: mockRejectChatRequest,
           closeChat: mockCloseChat,
+          sendChatRequest: vi.fn(),
           ...state
       };
 
@@ -90,7 +91,7 @@ describe('Sidebar', () => {
         </BrowserRouter>
     );
     
-    const button = screen.getByRole('button');
+    const button = screen.getByTestId('sidebar-toggle');
     expect(button).toBeInTheDocument();
     fireEvent.click(button);
     expect(mockToggle).toHaveBeenCalled();

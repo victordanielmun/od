@@ -10,17 +10,25 @@ vi.mock('../store/roomStore');
 
 // Mock Phaser
 vi.mock('phaser', () => {
-  return {
-    default: {
-      Game: class {
-        constructor() {}
-        destroy() {}
-      },
-      AUTO: 0,
-      Scene: class { constructor() {} },
-      Scale: { RESIZE: 0, CENTER_BOTH: 0 },
-      Input: { Keyboard: { KeyCodes: {} } }
+  const mockPhaser = {
+    Game: class {
+      constructor() {}
+      destroy() {}
+    },
+    AUTO: 0,
+    Scene: class { constructor() {} },
+    Scale: { RESIZE: 0, CENTER_BOTH: 0 },
+    Input: { Keyboard: { KeyCodes: {} } },
+    GameObjects: {
+      Container: class {
+        constructor() { this.add = () => {}; }
+        add() {}
+      }
     }
+  };
+  return {
+    ...mockPhaser,
+    default: mockPhaser
   };
 });
 
@@ -34,16 +42,17 @@ describe('LobbyGameCanvas', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
+    const gameStoreState = {
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+      joinRoom: mockJoinRoom,
+      isConnected: true, // Simulate connected
+      players: new Map()
+    };
     useGameStore.mockImplementation((selector) => {
-      const state = {
-        connect: mockConnect,
-        disconnect: mockDisconnect,
-        joinRoom: mockJoinRoom,
-        isConnected: true, // Simulate connected
-        players: new Map()
-      };
-      return selector ? selector(state) : state;
+      return selector ? selector(gameStoreState) : gameStoreState;
     });
+    useGameStore.getState = () => gameStoreState;
 
     useRoomStore.mockImplementation((selector) => {
       const state = {
@@ -71,7 +80,7 @@ describe('LobbyGameCanvas', () => {
     await waitFor(() => {
         expect(mockFetchRooms).toHaveBeenCalled();
         expect(mockCreateRoom).toHaveBeenCalledWith(expect.objectContaining({ name: 'Main Lobby' }));
-        expect(mockJoinRoom).toHaveBeenCalledWith('new-lobby-id');
+        expect(mockJoinRoom).toHaveBeenCalledWith('new-lobby-id', null, null);
     });
   });
 
@@ -93,7 +102,7 @@ describe('LobbyGameCanvas', () => {
     await waitFor(() => {
         expect(mockFetchRooms).toHaveBeenCalled();
         expect(mockCreateRoom).not.toHaveBeenCalled();
-        expect(mockJoinRoom).toHaveBeenCalledWith('existing-id');
+        expect(mockJoinRoom).toHaveBeenCalledWith('existing-id', null, null);
     });
   });
 });

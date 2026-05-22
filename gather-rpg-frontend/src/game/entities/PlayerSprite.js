@@ -39,7 +39,7 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
 
     // Physics: Add bodies for everyone to enable collision.
     scene.physics.add.existing(this);
-    this.body.setCircle(40, -40, -40); // Consistent hitbox
+    this.body.setCircle(25, -25, -25); // Consistent hitbox
     
     if (this.isSelf) {
       this.body.setCollideWorldBounds(true);

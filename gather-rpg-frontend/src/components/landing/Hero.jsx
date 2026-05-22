@@ -16,7 +16,7 @@ const Hero = () => {
       // ["16", "DE", "ENERO", "DEL", "2026"]
       if (parts.length >= 5) {
         // Set to 9 AM on the event day
-        return new Date(parseInt(parts[4]), months[parts[2]], parseInt(parts[0]), 9, 0, 0); 
+        return new Date(parseInt(parts[4]), months[parts[2]], parseInt(parts[0]), 9, 0, 0);
       }
       return new Date();
     };
@@ -64,28 +64,28 @@ const Hero = () => {
   );
 
   return (
-    <div 
+    <div
       className="relative min-h-screen flex items-center justify-center overflow-hidden pt-24 pb-20 group"
       onMouseMove={handleMouseMove}
     >
       {/* Dynamic Background Layers */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
         {/* Parallax Image */}
-        <div 
+        <div
           className="absolute -inset-[5%] w-[110%] h-[110%] transition-transform duration-100 ease-out will-change-transform"
           style={{
             transform: `translate(${mousePos.x * -20}px, ${mousePos.y * -20}px) scale(1.05)`
           }}
         >
-          <img 
-            src={IMAGES.heroBanner} 
+          <img
+            src={IMAGES.heroBanner}
             alt="Odisea Arena"
             className="w-full h-full object-cover opacity-40 filter contrast-125 saturate-150"
           />
         </div>
 
         {/* Dynamic Interactive Gradients */}
-        <div 
+        <div
           className="absolute inset-0 transition-opacity duration-500"
           style={{
             background: `
@@ -98,7 +98,7 @@ const Hero = () => {
         {/* Base Overlays */}
         <div className="absolute inset-0 bg-gradient-to-t from-neon-dark via-neon-dark/90 to-transparent"></div>
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 mix-blend-overlay"></div>
-        
+
         {/* Grid Pattern */}
         <div className="absolute inset-0 bg-grid-pattern bg-[length:40px_40px] opacity-10 [mask-image:linear-gradient(to_bottom,transparent,black)]"></div>
       </div>
@@ -113,7 +113,7 @@ const Hero = () => {
         </div>
 
         <p className="font-tech text-xl sm:text-2xl md:text-3xl text-neon-blue mb-12 tracking-[0.2em] uppercase neon-text-glow">
-          AI Automation Challenge
+          Level up your English
         </p>
 
         {/* Countdown Timer */}
@@ -125,7 +125,7 @@ const Hero = () => {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
-          <a 
+          <a
             href="#register"
             className="group relative px-8 py-4 bg-transparent overflow-hidden rounded-sm"
           >
@@ -136,8 +136,8 @@ const Hero = () => {
               <span className="block w-2 h-2 bg-neon-yellow animate-ping"></span>
             </span>
           </a>
-          
-          <a 
+
+          <a
             href="#challenges"
             className="font-tech text-lg text-gray-400 hover:text-white border-b border-transparent hover:border-neon-blue transition-all"
           >

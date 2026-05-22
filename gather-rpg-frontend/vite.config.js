@@ -7,11 +7,13 @@ import path from 'path';
 // https://vitejs.dev/config/
 export default defineConfig({
   server: {
-    host: '127.0.0.1', // Force IPv4 to prevent Web Speech API IPv6/localhost resolution issues
+    host: '0.0.0.0', // Listen on all network interfaces (EC2/Production)
+    // host: '127.0.0.1', // Local development (Force IPv4 to prevent Web Speech API IPv6/localhost resolution issues)
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://18.221.199.221:3000',
+        target: 'http://18.221.199.221:3000', // Production (EC2)
+        //target: 'http://127.0.0.1:3000', // Local development
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/api/, ''),
@@ -28,13 +30,15 @@ export default defineConfig({
         }
       },
       '/ws': {
-        target: 'ws://18.221.199.221:3000',
+        target: 'ws://18.221.199.221:3000', // Production (EC2)
+        //target: 'ws://127.0.0.1:3000', // Local development
         ws: true,
         changeOrigin: true,
         secure: false
       },
       '/voice': {
-        target: 'http://18.221.199.221:8000',
+        target: 'http://18.221.199.221:8000', // Production (EC2)
+        //target: 'http://127.0.0.1:8000', // Local development
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/voice/, '')

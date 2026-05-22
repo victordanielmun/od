@@ -96,7 +96,7 @@ export class InteractionSystem {
           sprite.x, sprite.y 
         );
 
-        if (dist < 80) {
+        if (dist < 120) { // Increased from 80 to 120 so physical colliders (radius 40px each = min 80px apart) don't block interaction
           foundPlayer = { id, name: sprite.username };
           break;
         }

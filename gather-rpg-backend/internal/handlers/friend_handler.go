@@ -34,7 +34,27 @@ func (h *FriendHandler) ListFriends(c *fiber.Ctx) error {
 		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"friends": friends})
+
+	type friendResponse struct {
+		ID          uuid.UUID `json:"id"`
+		Username    string    `json:"username"`
+		IsGuest     bool      `json:"is_guest"`
+		CharacterID string    `json:"character_id"`
+		IsOnline    bool      `json:"is_online"`
+	}
+
+	resp := make([]friendResponse, 0, len(friends))
+	for _, f := range friends {
+		resp = append(resp, friendResponse{
+			ID:          f.ID,
+			Username:    f.Username,
+			IsGuest:     f.IsGuest,
+			CharacterID: f.CharacterID,
+			IsOnline:    h.Hub.IsUserOnline(f.ID.String()),
+		})
+	}
+
+	return c.JSON(fiber.Map{"friends": resp})
 }
 
 func (h *FriendHandler) ListRequests(c *fiber.Ctx) error {
@@ -105,6 +125,9 @@ func (h *FriendHandler) SendRequest(c *fiber.Ctx) error {
 		})
 	}
 
+	h.Hub.NotifyFriendUpdate(req.RequesterID.String())
+	h.Hub.NotifyFriendUpdate(req.AddresseeID.String())
+
 	return c.Status(fiber.StatusCreated).JSON(req)
 }
 
@@ -115,7 +138,8 @@ func (h *FriendHandler) AcceptRequest(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request id"})
 	}
 
-	if err := h.Service.AcceptRequest(currentUserID, id); err != nil {
+	req, err := h.Service.AcceptRequest(currentUserID, id)
+	if err != nil {
 		switch err.Error() {
 		case "guest users cannot use friends":
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": err.Error()})
@@ -131,40 +155,10 @@ func (h *FriendHandler) AcceptRequest(c *fiber.Ctx) error {
 		}
 	}
 
-	// Notify Requester that request was accepted
-	// We need to fetch the request to get IDs? Service AcceptRequest handles DB update but doesn't return the request.
-	// But Service checked it. We could modify Service to return details or just fetch again here (inefficient but safe)
-	// Actually, since we need to notify, let's fetch it before or after?
-	// The service updates it.
-	// Let's assume we can fetch it again or better yet, change Service.AcceptRequest to return info?
-	// For now, let's query the request again to get RequesterID.
-	// Actually, AcceptRequest updates status to Accepted.
-	// We can fetch it by ID.
-	// NOTE: Ideally Service should return the accepted Friendship or Request.
-	// For quick fix:
-	// We need to know who the requester was to notify them.
-	// Let's query the request ID.
-	// But it might be updated already.
-	// Wait, Service AcceptRequest logic is transactional.
-	// Let's rely on Hub broadcasting to both? Or just requester.
-	// I'll fetch the request from DB to get requester ID.
-	// Since I don't want to modify Service signature right now to avoid breaking other things.
-	
-	// Re-query request to get IDs for notification
-	// We need a helper or direct DB access? Handlers shouldn't access DB directly if possible.
-	// But we have Service.
-	// Service doesn't have "GetRequest".
-	// Let's modify Service.AcceptRequest to return the request or friendship?
-	// Or just ignore notification for now? No, user wants it.
-	// I'll implement a simple "GetFriendRequest" in service or just broadcast generic "friend_list_updated" to current user?
-	// User asked for notification for the *other* user (requester).
-	// Let's modify the handler to notify. I will skip fetching for now if it's too complex without modifying service.
-	// Wait, I can't notify if I don't know who sent it.
-	// I'll leave Accept notification as TODO or do it if easy.
-	// Actually, `Service.AcceptRequest` verifies the user.
-	// I'll skip "Accept" notification for now unless I change Service. 
-	// But I CAN implement "friend_request_received" easily because I have the `req` object returned by SendRequest.
-	
+	// Notify both users of friendship changes
+	h.Hub.NotifyFriendUpdate(req.RequesterID.String())
+	h.Hub.NotifyFriendUpdate(req.AddresseeID.String())
+
 	return c.JSON(fiber.Map{"status": "ok"})
 }
 
@@ -175,7 +169,8 @@ func (h *FriendHandler) RejectRequest(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request id"})
 	}
 
-	if err := h.Service.RejectRequest(currentUserID, id); err != nil {
+	req, err := h.Service.RejectRequest(currentUserID, id)
+	if err != nil {
 		switch err.Error() {
 		case "guest users cannot use friends":
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": err.Error()})
@@ -190,6 +185,10 @@ func (h *FriendHandler) RejectRequest(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 		}
 	}
+
+	// Notify both users of request status changes
+	h.Hub.NotifyFriendUpdate(req.RequesterID.String())
+	h.Hub.NotifyFriendUpdate(req.AddresseeID.String())
 
 	return c.JSON(fiber.Map{"status": "ok"})
 }
@@ -213,6 +212,11 @@ func (h *FriendHandler) RemoveFriend(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 		}
 	}
+
+	// Notify both users of friendship removal
+	h.Hub.NotifyFriendUpdate(currentUserID)
+	h.Hub.NotifyFriendUpdate(friendID.String())
+
 	return c.JSON(fiber.Map{"status": "ok"})
 }
 

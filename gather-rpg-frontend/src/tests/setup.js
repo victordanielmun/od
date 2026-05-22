@@ -26,3 +26,63 @@ global.WebSocket = class WebSocket {
   send() {}
   close() {}
 };
+
+import { vi } from 'vitest';
+import mockTranslations from '../locales/en/translation.json';
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key) => {
+      if (key === 'lobby.sidebar.chat_request') return 'wants to chat.';
+      if (key === 'lobby.sidebar.type_words') return 'Message...';
+      const parts = key.split('.');
+      let result = mockTranslations;
+      for (const part of parts) {
+        if (result && result[part] !== undefined) {
+          result = result[part];
+        } else {
+          return key;
+        }
+      }
+      return result;
+    },
+    i18n: {
+      changeLanguage: () => Promise.resolve(),
+      language: 'en',
+    },
+  }),
+  initReactI18next: {
+    type: '3rdParty',
+    init: () => {},
+  }
+}));
+
+const mockPhaserGlobal = {
+  Game: class {
+    constructor(config) {
+      this.config = config;
+    }
+    destroy() {}
+  },
+  AUTO: 0,
+  Scene: class {
+    constructor() {}
+  },
+  Scale: {
+    FIT: 0,
+    CENTER_BOTH: 0,
+    RESIZE: 0,
+  },
+  Input: { Keyboard: { KeyCodes: {} } },
+  GameObjects: {
+    Container: class {
+      constructor() { this.add = () => {}; }
+      add() {}
+    }
+  }
+};
+global.Phaser = mockPhaserGlobal;
+if (typeof window !== 'undefined') {
+  window.Phaser = mockPhaserGlobal;
+}
+

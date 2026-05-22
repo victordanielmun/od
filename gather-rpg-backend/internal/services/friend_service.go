@@ -252,17 +252,17 @@ func (s *FriendService) SendRequest(currentUserID string, input SendFriendReques
 	return req, nil
 }
 
-func (s *FriendService) AcceptRequest(currentUserID string, requestID uuid.UUID) error {
+func (s *FriendService) AcceptRequest(currentUserID string, requestID uuid.UUID) (*models.FriendRequest, error) {
 	if _, err := s.ensureNonGuest(currentUserID); err != nil {
-		return err
+		return nil, err
 	}
 	currentUserUUID, err := uuid.Parse(currentUserID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return database.DB.Transaction(func(tx *gorm.DB) error {
-		var req models.FriendRequest
+	var req models.FriendRequest
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("id = ?", requestID).First(&req).Error; err != nil {
 			return err
 		}
@@ -299,35 +299,39 @@ func (s *FriendService) AcceptRequest(currentUserID string, requestID uuid.UUID)
 
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return &req, nil
 }
 
-func (s *FriendService) RejectRequest(currentUserID string, requestID uuid.UUID) error {
+func (s *FriendService) RejectRequest(currentUserID string, requestID uuid.UUID) (*models.FriendRequest, error) {
 	if _, err := s.ensureNonGuest(currentUserID); err != nil {
-		return err
+		return nil, err
 	}
 	currentUserUUID, err := uuid.Parse(currentUserID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var req models.FriendRequest
 	if err := database.DB.Where("id = ?", requestID).First(&req).Error; err != nil {
-		return err
+		return nil, err
 	}
 	if req.AddresseeID != currentUserUUID {
-		return errors.New("not allowed")
+		return nil, errors.New("not allowed")
 	}
 	if req.Status != models.FriendRequestPending {
-		return errors.New("request is not pending")
+		return nil, errors.New("request is not pending")
 	}
 
 	if err := database.DB.Model(&models.FriendRequest{}).
 		Where("id = ?", requestID).
 		Update("status", models.FriendRequestRejected).Error; err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return &req, nil
 }
 
 func (s *FriendService) RemoveFriend(currentUserID string, friendID uuid.UUID) error {

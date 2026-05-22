@@ -17,7 +17,6 @@ import {
   Award, 
   Heart, 
   Sparkles,
-  Trophy,
   Brain
 } from 'lucide-react';
 
@@ -159,9 +158,7 @@ export const Dashboard = () => {
         {/* Header */}
         <header className="flex flex-col md:flex-row justify-between items-center mb-8 pb-6 border-b border-white/10 gap-4">
           <div className="flex items-center gap-3">
-            <div className="bg-yellow-500/10 p-2 border border-yellow-500/30 rounded-xl">
-              <Trophy className="text-yellow-500 w-8 h-8 animate-pulse" />
-            </div>
+            <img src="/banners/logo.png" alt="Odisea Logo" className="w-24 h-auto object-contain" />
             <div>
               <h1 className="text-3xl font-extrabold tracking-wider bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-500 bg-clip-text text-transparent uppercase font-medieval">
                 Odyssey Adventurer Card

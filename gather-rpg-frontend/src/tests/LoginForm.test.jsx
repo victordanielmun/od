@@ -71,7 +71,7 @@ describe('LoginForm', () => {
 
     await waitFor(() => {
       expect(mockLogin).toHaveBeenCalledWith('test@example.com', 'password123');
-      expect(mockNavigate).toHaveBeenCalledWith('/lobby');
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
     });
   });
 
@@ -93,7 +93,7 @@ describe('LoginForm', () => {
 
     await waitFor(() => {
       expect(mockLoginGuest).toHaveBeenCalled();
-      expect(mockNavigate).toHaveBeenCalledWith('/lobby');
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
     });
   });
 

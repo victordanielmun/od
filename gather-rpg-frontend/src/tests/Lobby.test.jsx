@@ -36,16 +36,17 @@ describe('LobbyLayout', () => {
       return selector ? selector(state) : state;
     });
 
+    const roomState = {
+      rooms: [],
+      isLoading: false,
+      error: null,
+      fetchRooms: mockFetchRooms,
+      createRoom: mockCreateRoom
+    };
     useRoomStore.mockImplementation((selector) => {
-      const state = {
-        rooms: [],
-        isLoading: false,
-        error: null,
-        fetchRooms: mockFetchRooms,
-        createRoom: mockCreateRoom
-      };
-      return selector ? selector(state) : state;
+      return selector ? selector(roomState) : roomState;
     });
+    useRoomStore.getState = () => roomState;
 
     useGameStore.mockImplementation((selector) => {
       const state = {
@@ -54,7 +55,9 @@ describe('LobbyLayout', () => {
         challengeMessages: [],
         leaveChallenge: vi.fn(),
         sendChallengeMessage: vi.fn(),
-        currentRoomId: null
+        currentRoomId: null,
+        chatRequests: [],
+        activeChat: null
       };
       return selector ? selector(state) : state;
     });

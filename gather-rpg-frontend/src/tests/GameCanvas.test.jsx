@@ -7,25 +7,31 @@ import { BrowserRouter } from 'react-router-dom';
 
 // Mock Phaser
 vi.mock('phaser', () => {
-  return {
-    default: {
-      Game: class {
-        constructor(config) {
-          this.config = config;
-        }
-        destroy() {}
-      },
-      AUTO: 0,
-      Scene: class {
-        constructor() {}
-      },
-      GameObjects: {
-        Container: class {
-          constructor() { this.add = () => {}; }
-          add() {}
-        }
+  const mockPhaser = {
+    Game: class {
+      constructor(config) {
+        this.config = config;
+      }
+      destroy() {}
+    },
+    AUTO: 0,
+    Scene: class {
+      constructor() {}
+    },
+    Scale: {
+      FIT: 0,
+      CENTER_BOTH: 0
+    },
+    GameObjects: {
+      Container: class {
+        constructor() { this.add = () => {}; }
+        add() {}
       }
     }
+  };
+  return {
+    ...mockPhaser,
+    default: mockPhaser
   };
 });
 

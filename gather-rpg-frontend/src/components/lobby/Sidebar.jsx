@@ -14,15 +14,20 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle }) => {
     const navigate = useNavigate();
 
     // Internal State for Auto-Hide
-    const [isPinned, setIsPinned] = useState(false); // Default unpinned (auto-hide)
+    const [isPinned, setIsPinned] = useState(initialOpen || false); // Default unpinned (auto-hide)
     const [isHovered, setIsHovered] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
     const [showSettings, setShowSettings] = useState(false);
 
+    // Sync state with prop updates
+    useEffect(() => {
+        setIsPinned(initialOpen || false);
+    }, [initialOpen]);
+
     // Derived Open State
     const isOpen = isPinned || isHovered;
 
-    const { players, movePlayer, activeChat, sendPrivateMessage, closeChat, chatRequests, acceptChatRequest, rejectChatRequest } = useGameStore();
+    const { players, movePlayer, activeChat, sendPrivateMessage, closeChat, chatRequests, acceptChatRequest, rejectChatRequest, sendChatRequest } = useGameStore();
     const { addNotification } = useNotificationStore();
 
     const [chatInput, setChatInput] = useState("");
@@ -177,7 +182,11 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle }) => {
             {/* Manual Toggle / Unread Badge (Visible when closed) */}
             {!isOpen && (
                 <button
-                    onClick={() => setIsPinned(true)}
+                    data-testid="sidebar-toggle"
+                    onClick={() => {
+                        setIsPinned(true);
+                        if (initialToggle) initialToggle();
+                    }}
                     className="fixed top-4 left-4 z-40 bg-[var(--color-base-dark)] border-2 border-[var(--color-gold-dark)] text-[var(--color-gold)] p-2 rounded-sm hover:bg-[var(--color-accent-blue)] transition shadow-lg flex items-center gap-2"
                 >
                     <ChevronRight size={20} />
@@ -362,11 +371,12 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle }) => {
                                 {friends.map(f => (
                                     <li key={f.id} className="bg-[var(--color-base-dark)]/40 p-2 border-2 border-[var(--color-gold-dark)]/30 flex justify-between items-center transition-colors hover:border-[var(--color-gold)]/50 group shadow-inner">
                                         <div className="flex items-center gap-3 overflow-hidden">
-                                            <span className={`w-2 h-2 rounded-full shadow-[0_0_8px] ${players.has(String(f.id)) ? 'bg-green-600 shadow-green-600' : 'bg-gray-800 shadow-black'}`} />
+                                            <span className={`w-2 h-2 rounded-full shadow-[0_0_8px] ${f.is_online ? 'bg-green-600 shadow-green-600' : 'bg-gray-800 shadow-black'}`} />
                                             <span className="text-xs text-[var(--color-gold)] font-medieval truncate">{f.username}</span>
                                         </div>
                                         <div className="flex gap-2">
                                             <button disabled={!players.has(String(f.id))} onClick={() => handleTeleportToFriend(f.id)} className="text-[var(--color-gold-dark)] hover:text-[var(--color-gold)] disabled:opacity-10 transition-colors"><MapPin size={14} /></button>
+                                            <button onClick={() => sendChatRequest(f.id)} className="text-[var(--color-gold-dark)] hover:text-[var(--color-gold)] transition-colors" title={t('lobby.sidebar.chat_request')}><MessageSquare size={14} /></button>
                                             <button onClick={() => handleCallFriend(f.id)} className="text-[var(--color-gold-dark)] hover:text-white transition-colors" title={t('lobby.sidebar.call_friend')}><Phone size={14} /></button>
                                             <button onClick={() => handleRemoveFriend(f.id)} className="text-[var(--color-orange-vibrant)]/40 hover:text-[var(--color-orange-vibrant)] transition-colors"><X size={14} /></button>
                                         </div>
