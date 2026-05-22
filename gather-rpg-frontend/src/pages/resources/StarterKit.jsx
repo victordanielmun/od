@@ -6,7 +6,7 @@ const StarterKit = () => {
     <LegalLayout title="Kit de Inicio">
       <section>
         <h2 className="text-xl text-white font-bold mb-4">Bienvenido al Reto</h2>
-        <p>Este kit contiene todos los recursos necesarios para comenzar tu viaje en Battle Night AI Challenge.</p>
+        <p>Este kit contiene todos los recursos necesarios para comenzar tu viaje en Odisea AI Challenge.</p>
       </section>
       <section>
         <h2 className="text-xl text-white font-bold mb-4">Recursos Disponibles</h2>

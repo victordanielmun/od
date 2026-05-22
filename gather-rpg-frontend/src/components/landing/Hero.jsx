@@ -79,7 +79,7 @@ const Hero = () => {
         >
           <img 
             src={IMAGES.heroBanner} 
-            alt="Battle Night Arena" 
+            alt="Odisea Arena"
             className="w-full h-full object-cover opacity-40 filter contrast-125 saturate-150"
           />
         </div>
@@ -107,7 +107,7 @@ const Hero = () => {
         {/* Glitch Effect Title */}
         <div className="mb-6 relative inline-block">
           <h1 className="font-pixel text-4xl sm:text-6xl md:text-8xl text-transparent bg-clip-text bg-gradient-to-r from-neon-blue via-white to-neon-purple animate-pulse neon-text-glow tracking-tighter">
-            BATTLE NIGHT
+            ODISEA
           </h1>
           <div className="absolute -inset-1 bg-neon-blue/20 blur-xl opacity-50 animate-pulse"></div>
         </div>

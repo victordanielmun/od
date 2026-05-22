@@ -16,9 +16,9 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20">
           <div className="flex items-center gap-3">
-            <img src={IMAGES.logoBadge} alt="Battle Night Logo" className="h-12 w-12 rounded-full border-2 border-neon-blue shadow-[0_0_10px_#00f3ff]" />
+            <img src={IMAGES.logoBadge} alt="Odisea Logo" className="h-12 w-12 rounded-full border-2 border-neon-blue shadow-[0_0_10px_#00f3ff]" />
             <span className="font-pixel text-xs md:text-sm text-white tracking-widest hidden sm:block">
-              BATTLE NIGHT
+              ODISEA
             </span>
           </div>
           

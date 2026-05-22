@@ -11,7 +11,7 @@ const Footer = () => {
              <div className="flex items-center gap-3 mb-6">
                 <img src={IMAGES.logoBadge} alt="Logo" className="h-10 w-10 grayscale hover:grayscale-0 transition-all duration-500" />
                 <span className="font-pixel text-sm text-white tracking-widest">
-                  BATTLE NIGHT
+                  ODISEA
                 </span>
             </div>
             <p className="text-gray-400 font-sans max-w-sm mb-6">
@@ -46,7 +46,7 @@ const Footer = () => {
         
         <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-gray-600 text-sm font-mono">
-            © 2026 Battle Night AI. All systems operational.
+            © 2026 Odisea AI. All systems operational.
           </p>
           <div className="flex items-center gap-2 text-gray-600 text-sm">
             <Bot size={16} />
