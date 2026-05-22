@@ -12,6 +12,8 @@ Dado que **no se utiliza Ollama local** (se usa la API de OpenAI), la carga de m
 > Sin esto, el instalador de dependencias de Python (`pip`), el compilador de Go, o el modelo local de Whisper para la transcripción de voz excederán el límite de 1 GB físico y el sistema operativo forzará el cierre de los servicios (OOM Killer).
 >
 > Como Amazon Linux 2023 utiliza el sistema de archivos **XFS**, el comando estándar `fallocate` para crear el swap fallará o dará problemas. Por ende, **se debe usar `dd`** para reservar el espacio físicamente.
+>
+> **Nota sobre el espacio en disco:** Si usas un volumen EBS estándar de **8 GB** en AWS (el tamaño por defecto en t2.micro/t3.micro), reservar 4 GB para Swap dejará muy poco espacio para el sistema. Se recomienda **ampliar el volumen de tu EC2 a 15 GB o 20 GB** en la consola de AWS (es totalmente gratis dentro de la capa gratuita de hasta 30 GB). Adicionalmente, la instalación del backend de voz está optimizada para instalar **PyTorch versión CPU-only** y no guardar caché de `pip` en disco, ahorrando más de 2.5 GB.
 
 ---
 
@@ -141,7 +143,7 @@ sudo dnf install -y python3.11 python3.11-pip python3.11-devel
 El directorio base del proyecto será `/home/ec2-user/od`.
 ```bash
 cd ~
-git clone <URL_DE_TU_REPOSITORIO> od
+git clone https://github.com/victordanielmun/od.git
 cd od
 ```
 
@@ -207,6 +209,7 @@ El backend utiliza Docker Compose para configurar PostgreSQL en el puerto `5433`
    Type=simple
    User=ec2-user
    WorkingDirectory=/home/ec2-user/od/gather-rpg-backend
+   EnvironmentFile=-/home/ec2-user/od/gather-rpg-backend/.env
    ExecStart=/home/ec2-user/od/gather-rpg-backend/server
    Restart=always
    RestartSec=5
@@ -241,7 +244,19 @@ El backend utiliza Docker Compose para configurar PostgreSQL en el puerto `5433`
    python3.11 -m venv venv
    source venv/bin/activate
    pip install --upgrade pip
-   pip install -r requirements.txt
+   
+   # Limpiar caché previo de pip para liberar espacio en disco
+   rm -rf ~/.cache/pip
+   
+   # Instalar PyTorch CPU-only (pesa ~150MB en vez de ~780MB y no instala CUDA/GPU)
+   pip install torch==2.3.1 --index-url https://download.pytorch.org/whl/cpu --no-cache-dir
+   
+   # Instalar setuptools e instalar whisper sin aislamiento de compilación
+   pip install "setuptools<70" wheel --no-cache-dir
+   pip install openai-whisper==20231117 --no-build-isolation --no-cache-dir
+   
+   # Instalar el resto de dependencias sin guardar en caché
+   pip install -r requirements.txt --no-cache-dir
    ```
 3. Crea y configura su respectivo archivo `.env`:
    ```bash
@@ -281,6 +296,7 @@ El backend utiliza Docker Compose para configurar PostgreSQL en el puerto `5433`
    Type=simple
    User=ec2-user
    WorkingDirectory=/home/ec2-user/od/voice/backend
+   EnvironmentFile=-/home/ec2-user/od/voice/backend/.env
    ExecStart=/home/ec2-user/od/voice/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
    Restart=always
    RestartSec=5

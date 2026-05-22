@@ -11,7 +11,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://18.221.199.221:3000',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/api/, ''),
@@ -28,13 +28,13 @@ export default defineConfig({
         }
       },
       '/ws': {
-        target: 'ws://127.0.0.1:3000',
+        target: 'ws://18.221.199.221:3000',
         ws: true,
         changeOrigin: true,
         secure: false
       },
       '/voice': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://18.221.199.221:8000',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/voice/, '')
