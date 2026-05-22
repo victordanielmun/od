@@ -228,6 +228,9 @@ func main() {
 	// Map config read (accessible to all authenticated users)
 	app.Get("/maps/config", middleware.Protected(cfg), adminHandler.GetMapConfig)
 
+	// Player Stats route
+	app.Get("/player/stats", middleware.Protected(cfg), authHandler.GetPlayerStats)
+
 	// Learning Routes
 	learning := app.Group("/learning")
 	learning.Get("/challenges/random", learningHandler.GetRandomChallenge)

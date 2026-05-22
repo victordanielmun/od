@@ -14,7 +14,7 @@ export const RegisterForm = () => {
     e.preventDefault();
     const success = await register(username, email, password);
     if (success) {
-      navigate('/lobby');
+      navigate('/dashboard');
     }
   };
 

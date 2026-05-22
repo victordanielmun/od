@@ -415,3 +415,157 @@ pip install -r requirements.txt
 deactivate
 sudo systemctl restart gather-rpg-voice
 ```
+
+---
+
+## 🌐 Etapa 2: Servidor Web Nginx & Frontend (Proxy Inverso)
+
+Para poder acceder al juego a través del navegador sin problemas de **CORS** ni **Mixed Content** (bloqueos HTTPS/HTTP), utilizaremos **Nginx**. Nginx servirá los archivos estáticos del frontend de React en el puerto 80 y actuará como proxy inverso para redirigir internamente las llamadas a `/api`, `/ws` y `/voice`.
+
+### 📊 Consumo de Recursos
+* **Nginx**: Muy eficiente y optimizado. Consume aproximadamente **15 MB - 30 MB de RAM** y **< 1% de CPU** en reposo.
+* **Frontend**: Consume **0% de RAM/CPU** en el servidor de EC2 porque se ejecuta y renderiza completamente en el navegador del usuario. Solo ocupa unos **8 MB - 15 MB de almacenamiento en disco**.
+* Esto lo hace la opción ideal y segura para una instancia `t2.micro` / `t3.micro` con 1 GB de RAM.
+
+---
+
+### 🛠️ Paso a Paso para la Configuración
+
+#### 1. Preparar las Variables del Frontend (Localmente en tu PC)
+Para que el frontend realice peticiones relativas y pasen por el proxy de Nginx, debes asegurarte de que el archivo [gather-rpg-frontend/.env](file:///c:/Users/USUARIO/Desktop/mis%20proyectos/-Odyssey-main/gather-rpg-frontend/.env) tenga las rutas relativas en tu PC antes de compilar:
+
+```env
+VITE_API_URL=/api
+VITE_WS_URL=/ws
+VITE_VOICE_API_URL=/voice
+```
+
+#### 2. Compilar el Frontend localmente y subirlo
+> [!IMPORTANT]
+> **NO compiles el frontend ejecutando `npm run build` dentro de la instancia EC2 micro.**
+> El proceso de compilación de TypeScript/Vite consume más de 1 GB de RAM temporalmente y congelará tu servidor EC2 (activando el OOM Killer).
+> Compílalo en tu PC local y súbelo ya compilado.
+
+1. En tu máquina local, abre una terminal en la carpeta `gather-rpg-frontend` y ejecuta:
+   ```bash
+   npm run build
+   ```
+   Esto generará una carpeta llamada `dist` dentro de `gather-rpg-frontend`.
+
+2. En tu servidor de EC2, crea la carpeta de destino y dale permisos a tu usuario:
+   ```bash
+   sudo mkdir -p /var/www/gather-rpg/dist
+   sudo chown -R ec2-user:ec2-user /var/www/gather-rpg
+   ```
+
+3. Desde tu máquina local (utilizando PowerShell o Git Bash en Windows), sube el contenido de `dist` al servidor EC2:
+   ```bash
+   # Si usas archivo de clave (.pem) para conectar a EC2:
+   scp -i "tu-clave.pem" -r ./gather-rpg-frontend/dist/* ec2-user@18.221.199.221:/var/www/gather-rpg/dist/
+   ```
+
+---
+
+#### 3. Instalar y Configurar Nginx en EC2
+
+1. Conéctate a EC2 por SSH e instala Nginx:
+   ```bash
+   sudo dnf install -y nginx
+   ```
+
+2. Crea un archivo de configuración específico para tu aplicación en `/etc/nginx/conf.d/gather-rpg.conf`:
+   ```bash
+   sudo nano /etc/nginx/conf.d/gather-rpg.conf
+   ```
+
+3. Pega el siguiente contenido (reemplaza `18.221.199.221` por tu dominio o IP pública):
+   ```nginx
+   server {
+       listen 80;
+       server_name 18.221.199.221;
+
+       # Carpeta del Frontend de React
+       root /var/www/gather-rpg/dist;
+       index index.html;
+
+       # Manejar rutas del React Router (Soporte SPA)
+       location / {
+           try_files $uri $uri/ /index.html;
+       }
+
+       # Proxy al Go Backend (API)
+       location /api/ {
+           proxy_pass http://127.0.0.1:3000/;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_cache_bypass $http_upgrade;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+       }
+
+       # Proxy para WebSockets del juego
+       location /ws {
+           proxy_pass http://127.0.0.1:3000/ws;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection "Upgrade";
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_read_timeout 86400s;
+           proxy_send_timeout 86400s;
+       }
+
+       # Proxy al Python Voice Backend
+       location /voice/ {
+           proxy_pass http://127.0.0.1:8000/;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_cache_bypass $http_upgrade;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+       }
+   }
+   ```
+   *(Guarda los cambios con `Ctrl + O`, presiona `Enter` y sal con `Ctrl + X`).*
+
+4. **Desactivar el bloque `server` por defecto de Nginx**:
+   Amazon Linux incluye un bloque `server` por defecto en `/etc/nginx/nginx.conf` que interceptará tus peticiones. Debes quitarlo o comentarlo.
+   - Abre el archivo:
+     ```bash
+     sudo nano /etc/nginx/nginx.conf
+     ```
+   - Busca la sección `server { listen 80 default_server; ... }` (suele estar al final de la sección `http`) y coméntala completa agregando `#` al inicio de cada línea de ese bloque, o simplemente elimina el bloque.
+   - Guarda y sal.
+
+5. Verifica que no haya errores de sintaxis en Nginx:
+   ```bash
+   sudo nginx -t
+   ```
+   Debe responder: `nginx: configuration file ... test is successful`
+
+6. Habilita e inicia Nginx:
+   ```bash
+   sudo systemctl enable nginx
+   ```
+   ```bash
+   sudo systemctl start nginx
+   ```
+   sudo setsebool -P httpd_can_network_connect 1
+
+
+7. Si en el futuro necesitas aplicar cambios en la configuración de Nginx:
+   ```bash
+   sudo systemctl reload nginx
+   ```
+
+---
+
+### 🛡️ Seguridad Avanzada
+Una vez configurado Nginx, puedes ir a los Grupos de Seguridad (Security Groups) de tu consola de AWS y **eliminar las reglas de entrada de los puertos 3000 y 8000**.
+* Nginx corre en el puerto `80`, por lo que solo necesitas mantener el puerto `80` (HTTP), `443` (si pones SSL) y `22` (SSH) abiertos.
+* Esto protege tus backends ya que nadie podrá saltarse a Nginx y comunicarse directamente con tus APIs internas.

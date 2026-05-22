@@ -24,7 +24,9 @@ import { AdminEnemies } from './pages/admin/AdminEnemies';
 import { AdminEnemyDefinitions } from './pages/admin/AdminEnemyDefinitions';
 import { AdminChallenges } from './pages/admin/AdminChallenges';
 import PracticePage from './pages/PracticePage';
+import { Dashboard } from './pages/Dashboard';
 import { useAuthStore } from './store/authStore';
+
 
 const PrivateRoute = ({ children }) => {
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
@@ -51,6 +53,12 @@ function App() {
           <Route path="/login" element={<LoginForm />} />
           <Route path="/register" element={<RegisterForm />} />
         </Route>
+
+        <Route path="/dashboard" element={
+          <PrivateRoute>
+            <Dashboard />
+          </PrivateRoute>
+        } />
 
         <Route path="/lobby" element={
           <PrivateRoute>

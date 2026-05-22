@@ -142,3 +142,27 @@ func (s *AuthService) Login(req models.LoginRequest) (*models.AuthResponse, erro
 		User:  *user,
 	}, nil
 }
+
+func (s *AuthService) GetPlayerStats(userIDStr string) (*models.PlayerStats, error) {
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, errors.New("invalid user ID format")
+	}
+
+	var stats models.PlayerStats
+	if err := database.DB.First(&stats, "user_id = ?", userID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			stats = models.PlayerStats{
+				UserID: userID,
+				Gold:   100,
+			}
+			if err := database.DB.Create(&stats).Error; err != nil {
+				return nil, err
+			}
+			return &stats, nil
+		}
+		return nil, err
+	}
+	return &stats, nil
+}
+

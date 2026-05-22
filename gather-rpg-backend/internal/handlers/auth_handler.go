@@ -50,3 +50,18 @@ func (h *AuthHandler) GuestLogin(c *fiber.Ctx) error {
 	}
 	return c.Status(fiber.StatusCreated).JSON(res)
 }
+
+func (h *AuthHandler) GetPlayerStats(c *fiber.Ctx) error {
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	stats, err := h.Service.GetPlayerStats(userIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(stats)
+}
+

@@ -14,7 +14,7 @@ export const LoginForm = () => {
   const handleGuestLogin = async () => {
     const success = await loginGuest();
     if (success) {
-      navigate('/lobby');
+      navigate('/dashboard');
     }
   };
 
@@ -36,7 +36,7 @@ export const LoginForm = () => {
       if (useAuthStore.getState().isAdmin()) {
         navigate('/admin');
       } else {
-        navigate('/lobby');
+        navigate('/dashboard');
       }
     }
   };
