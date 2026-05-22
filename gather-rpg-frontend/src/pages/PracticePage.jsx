@@ -355,7 +355,7 @@ export default function PracticePage() {
                         )}
                     </>
                 ) : (
-                    <ChallengeView 
+                    <ChallengeView key={word?.id || "challenge"}
                         challenge={word} 
                         difficulty={difficulty} 
                         onNext={handleNextWord} 
