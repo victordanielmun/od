@@ -39,15 +39,8 @@ func SeedAdminUser() {
 	log.Println("[Seed] ✅ Admin user seeded (admin@odyssey.dev / Admin123!)")
 }
 
-// SeedLearningChallenges populates the database with default pronunciation exercises if empty
+// SeedLearningChallenges populates the database with default challenges if they do not exist
 func SeedLearningChallenges() {
-	var count int64
-	DB.Model(&models.LearningChallenge{}).Count(&count)
-	if count > 0 {
-		log.Println("[Seed] Learning challenges already exist, skipping")
-		return
-	}
-
 	challenges := []models.LearningChallenge{
 		{
 			Type:             models.ChallengeTypePronunciation,
@@ -135,11 +128,22 @@ func SeedLearningChallenges() {
 		},
 	}
 
-	if err := DB.Create(&challenges).Error; err != nil {
-		log.Printf("[Seed] Failed to create learning challenges: %v", err)
-		return
+	seededCount := 0
+	for _, chal := range challenges {
+		var count int64
+		DB.Model(&models.LearningChallenge{}).Where("question = ? AND type = ?", chal.Question, chal.Type).Count(&count)
+		if count == 0 {
+			if err := DB.Create(&chal).Error; err != nil {
+				log.Printf("[Seed] Failed to create learning challenge '%s': %v", chal.Question, err)
+			} else {
+				seededCount++
+			}
+		}
 	}
-
-	log.Printf("[Seed] ✅ Seeded %d learning challenges", len(challenges))
+	if seededCount > 0 {
+		log.Printf("[Seed] ✅ Seeded %d new learning challenges", seededCount)
+	} else {
+		log.Println("[Seed] All learning challenges already exist, skipping")
+	}
 }
 

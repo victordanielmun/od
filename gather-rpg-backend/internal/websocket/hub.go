@@ -765,6 +765,11 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 
 		// Get a random challenge
 		challenge, err := h.LearningService.GetRandomChallenge("vocabulary", "beginner")
+		if err != nil || challenge == nil {
+			log.Printf("[NinjaCard Warning] Vocabulary beginner challenge not found. Falling back to any available challenge.")
+			challenge, err = h.LearningService.GetRandomChallenge("", "")
+		}
+
 		if err == nil && challenge != nil {
 			client.SendJSON(&models.WSMessage{
 				Type: MsgNinjaCardTriggered,

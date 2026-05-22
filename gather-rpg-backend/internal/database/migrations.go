@@ -19,6 +19,25 @@ func EnsureEnumValues() {
 
 	// Helper to ensure values in an enum
 	ensureEnum := func(typeName string, values []string) {
+		var typeExists bool
+		DB.Raw("SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = ?)", typeName).Scan(&typeExists)
+
+		if !typeExists {
+			log.Printf("[Migration] Creating ENUM %s with values: %v", typeName, values)
+			var valsStr string
+			for i, val := range values {
+				if i > 0 {
+					valsStr += ", "
+				}
+				valsStr += fmt.Sprintf("'%s'", val)
+			}
+			query := fmt.Sprintf("CREATE TYPE %s AS ENUM (%s)", typeName, valsStr)
+			if _, err := sqlDB.Exec(query); err != nil {
+				log.Printf("[Migration] Error creating ENUM %s: %v", typeName, err)
+			}
+			return
+		}
+
 		for _, val := range values {
 			var exists bool
 			DB.Raw(fmt.Sprintf(`

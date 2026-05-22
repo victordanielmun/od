@@ -19,6 +19,7 @@
     "nav": {
         "dashboard": "Dashboard",
         "maps": "Mapas",
+        "challenges": "Desafíos / Cards",
         "npc_models": "Modelos NPC",
         "npc_sprites": "Sprites NPC",
         "items": "Ítems",

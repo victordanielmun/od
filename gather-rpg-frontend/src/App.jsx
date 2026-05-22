@@ -22,6 +22,7 @@ import { AdminItems } from './pages/admin/AdminItems';
 import { AdminShops } from './pages/admin/AdminShops';
 import { AdminEnemies } from './pages/admin/AdminEnemies';
 import { AdminEnemyDefinitions } from './pages/admin/AdminEnemyDefinitions';
+import { AdminChallenges } from './pages/admin/AdminChallenges';
 import PracticePage from './pages/PracticePage';
 import { useAuthStore } from './store/authStore';
 
@@ -75,6 +76,7 @@ function App() {
           <Route path="enemies" element={<AdminEnemies />} />
           <Route path="enemy-models" element={<AdminEnemyDefinitions />} />
           <Route path="ai-test" element={<AdminAITester />} />
+          <Route path="challenges" element={<AdminChallenges />} />
         </Route>
 
         {/* English Learning / Pronunciation Routes */}

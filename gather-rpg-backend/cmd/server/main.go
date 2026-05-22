@@ -192,6 +192,13 @@ func main() {
 	admin.Delete("/npc-definitions/:id", npcHandler.DeleteNPCDefinition)
 	admin.Post("/ai-test", npcHandler.TestAI)
 	
+	// Challenge Admin Routes
+	admin.Get("/challenges", adminHandler.ListChallenges)
+	admin.Post("/challenges", adminHandler.CreateChallenge)
+	admin.Put("/challenges/:id", adminHandler.UpdateChallenge)
+	admin.Delete("/challenges/:id", adminHandler.DeleteChallenge)
+	admin.Post("/challenges/import", adminHandler.ImportChallenges)
+	
 	// Item & Shop Admin Routes
 	admin.Get("/items", adminHandler.ListItems)
 	admin.Get("/enemies", adminHandler.ListEnemies)

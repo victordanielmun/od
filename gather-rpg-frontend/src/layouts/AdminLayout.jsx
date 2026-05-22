@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore';
-import { LayoutDashboard, Map as MapIcon, Settings, LogOut, Gamepad2, Users, Terminal, ScrollText, Package, ShoppingBag, Swords } from 'lucide-react';
+import { LayoutDashboard, Map as MapIcon, Settings, LogOut, Gamepad2, Users, Terminal, ScrollText, Package, ShoppingBag, Swords, Brain } from 'lucide-react';
 import { LanguageSwitcher } from '../components/common/LanguageSwitcher';
 
 export const AdminLayout = () => {
@@ -25,6 +25,7 @@ export const AdminLayout = () => {
     const navItems = [
         { path: '/admin', label: t('admin.nav.dashboard'), icon: LayoutDashboard },
         { path: '/admin/maps', label: t('admin.nav.maps'), icon: MapIcon },
+        { path: '/admin/challenges', label: t('admin.nav.challenges'), icon: Brain },
         { path: '/admin/npcs', label: t('admin.nav.npc_models'), icon: Users },
         { path: '/admin/npcsprites', label: t('admin.nav.npc_sprites'), icon: Gamepad2 },
         { path: '/admin/items', label: t('admin.nav.items'), icon: Package },

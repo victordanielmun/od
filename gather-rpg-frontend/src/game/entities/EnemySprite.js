@@ -346,7 +346,7 @@ export default class EnemySprite extends NPCSprite {
 
   setFacing(dir) {
     if (this.sprite) {
-      this.sprite.setFlipX(dir === 'right');
+      this.sprite.setFlipX(dir === 'left');
     }
   }
 
