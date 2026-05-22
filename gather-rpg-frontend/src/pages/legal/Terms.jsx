@@ -6,7 +6,7 @@ const Terms = () => {
     <LegalLayout title="Términos y Condiciones">
       <section>
         <h2 className="text-xl text-white font-bold mb-4">Aceptación de los Términos</h2>
-        <p>Al registrarse en Battle Night AI Challenge, usted acepta cumplir con estos términos y condiciones.</p>
+        <p>Al registrarse en Odisea AI Challenge, usted acepta cumplir con estos términos y condiciones.</p>
       </section>
       <section>
         <h2 className="text-xl text-white font-bold mb-4">Conducta del Participante</h2>

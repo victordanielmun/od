@@ -9,6 +9,11 @@ vi.mock('../store/authStore', () => ({
   useAuthStore: vi.fn()
 }));
 
+// Add mock for useAuthStore.getState()
+useAuthStore.getState = vi.fn(() => ({
+  isAdmin: vi.fn().mockReturnValue(false)
+}));
+
 // Mock useNavigate
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -26,6 +31,9 @@ describe('LoginForm', () => {
       loginGuest: vi.fn(),
       error: null
     }));
+    useAuthStore.getState.mockReturnValue({
+      isAdmin: vi.fn().mockReturnValue(false)
+    });
     mockNavigate.mockClear();
   });
 
