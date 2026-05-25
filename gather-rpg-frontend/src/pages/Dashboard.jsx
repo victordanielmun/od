@@ -148,10 +148,19 @@ export const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-indigo-950 to-gray-950 text-white font-sans selection:bg-yellow-500 selection:text-black py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-indigo-950 to-gray-950 text-white font-sans selection:bg-yellow-500 selection:text-black py-8 px-4 sm:px-6 lg:px-8 relative">
       {/* Decorative backdrop glow elements */}
       <div className="absolute top-20 left-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute bottom-20 right-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+      {/* Floating Close Button to return to the Lobby */}
+      <button
+        onClick={() => navigate('/lobby')}
+        className="absolute top-6 right-6 z-50 p-2.5 bg-black/40 backdrop-blur-md border border-white/10 hover:border-yellow-500/30 text-gray-400 hover:text-white rounded-xl shadow-xl transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center"
+        title="Back to Lobby"
+      >
+        <X size={20} />
+      </button>
 
       <div className="max-w-7xl mx-auto relative z-10">
         

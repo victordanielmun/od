@@ -23,6 +23,7 @@ import { AdminShops } from './pages/admin/AdminShops';
 import { AdminEnemies } from './pages/admin/AdminEnemies';
 import { AdminEnemyDefinitions } from './pages/admin/AdminEnemyDefinitions';
 import { AdminChallenges } from './pages/admin/AdminChallenges';
+import { AdminWhatsApp } from './pages/admin/AdminWhatsApp';
 import PracticePage from './pages/PracticePage';
 import { Dashboard } from './pages/Dashboard';
 import { useAuthStore } from './store/authStore';
@@ -85,6 +86,7 @@ function App() {
           <Route path="enemy-models" element={<AdminEnemyDefinitions />} />
           <Route path="ai-test" element={<AdminAITester />} />
           <Route path="challenges" element={<AdminChallenges />} />
+          <Route path="whatsapp" element={<AdminWhatsApp />} />
         </Route>
 
         {/* English Learning / Pronunciation Routes */}

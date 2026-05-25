@@ -276,3 +276,20 @@ func (h *NPCHandler) PatchTemplateInstructions(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{"message": "Instructions updated successfully"})
 }
+
+// GetGuides lists all NPC definitions with type 'guide'
+func (h *NPCHandler) GetGuides(c *fiber.Ctx) error {
+	definitions, err := h.Service.GetNPCDefinitions()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	guides := make([]models.NPCDefinition, 0)
+	for _, def := range definitions {
+		if def.Type == models.NPCTypeGuide {
+			guides = append(guides, def)
+		}
+	}
+
+	return c.JSON(guides)
+}

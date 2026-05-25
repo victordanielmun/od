@@ -74,4 +74,13 @@ func EnsureEnumValues() {
 		"bring_item", "find_item", "collect_items", "defeat_enemy", 
 		"kill_all", "kill_boss", "talk_to_npc", "deliver_message", "pronunciation_threshold",
 	})
+
+	// WhatsApp Integration ENUMs
+	ensureEnum("wa_conversation_status", []string{"active", "waiting_reply", "closed", "paused"})
+	ensureEnum("wa_message_role", []string{"user", "assistant", "system"})
+	ensureEnum("wa_message_type", []string{"text", "motivation", "practice_prompt", "reminder", "feedback", "onboarding"})
+	ensureEnum("reminder_type", []string{"streak_danger", "inactive_1day", "inactive_3days", "weekly_goal", "practice_suggestion", "achievement_nearby", "custom"})
+	ensureEnum("reminder_recurrence", []string{"once", "daily", "weekly", "smart"})
+	ensureEnum("motivation_tone", []string{"encouraging", "celebratory", "empathetic", "challenging", "friendly", "curious"})
+	ensureEnum("motivation_category", []string{"streak_keep", "streak_lost", "after_inactivity", "after_good_practice", "after_bad_practice", "milestone_near", "general"})
 }

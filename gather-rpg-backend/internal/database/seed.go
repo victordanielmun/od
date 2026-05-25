@@ -147,3 +147,102 @@ func SeedLearningChallenges() {
 	}
 }
 
+// SeedMotivations populates the database with initial motivators
+func SeedMotivations() {
+	var count int64
+	DB.Model(&models.Motivation{}).Count(&count)
+	if count > 0 {
+		log.Println("[Seed] Motivations already exist, skipping")
+		return
+	}
+
+	motivations := []models.Motivation{
+		{
+			Category:               models.WAMotivationCategoryAfterInactivity,
+			EnglishLevel:           "beginner",
+			Tone:                   models.WAMotivationToneEmpathetic,
+			MessageES:              "¡Oye! Hace unos días que no te veo por acá. No pasa nada, todos tenemos esas semanas. ¿Cómo estás?",
+			IncludesPracticePrompt: true,
+			PracticePromptES:      "Si tienes 3 minuticos, podemos practicar una sola palabrita juntos. Sin presión 😊",
+		},
+		{
+			Category:               models.WAMotivationCategoryStreakKeep,
+			EnglishLevel:           "all",
+			Tone:                   models.WAMotivationToneCelebratory,
+			MessageES:              "¡Llevas {{streak}} días seguidos practicando! Eso no es suerte, eso es disciplina de verdad 🔥",
+			IncludesPracticePrompt: false,
+		},
+		{
+			Category:               models.WAMotivationCategoryAfterGoodPractice,
+			EnglishLevel:           "intermediate",
+			Tone:                   models.WAMotivationToneChallenging,
+			MessageES:              "Ese puntaje de pronunciación estuvo muy bueno. ¿Será que puedes superar tu propio récord hoy?",
+			IncludesPracticePrompt: true,
+			PracticePromptES:      "¿Le damos una vuelta a algo un poco más difícil esta vez?",
+		},
+	}
+
+	for _, mot := range motivations {
+		if err := DB.Create(&mot).Error; err != nil {
+			log.Printf("[Seed] Failed to seed motivation category '%s': %v", mot.Category, err)
+		}
+	}
+
+	log.Println("[Seed] ✅ Seeded initial WhatsApp motivation catalog")
+}
+
+// SeedGuides seeds three medieval guides (Aria, Eldrin, Thorin) of type models.NPCTypeGuide if they do not exist.
+func SeedGuides() {
+	guides := []models.NPCDefinition{
+		{
+			ID:              1001, // Use fixed IDs so they don't change and are easily recognizable
+			Name:            "Aria",
+			Sprite:          "aria_sprite",
+			Greeting:        "Hello there, traveler! I am Aria, a skilled archer, and your guide to mastering the art of English pronunciation. Shall we practice speaking?",
+			Type:            models.NPCTypeGuide,
+			DefaultState:    models.NPCStateIdle,
+			InteractionMode: "hybrid",
+			VoiceType:       "female",
+		},
+		{
+			ID:              1002,
+			Name:            "Eldrin",
+			Sprite:          "eldrin_sprite",
+			Greeting:        "Greetings, seeker of wisdom. I am Eldrin, master of arcane grammar. Let me aid you in weaving the complex threads of English structure into pure magic.",
+			Type:            models.NPCTypeGuide,
+			DefaultState:    models.NPCStateIdle,
+			InteractionMode: "hybrid",
+			VoiceType:       "male",
+		},
+		{
+			ID:              1003,
+			Name:            "Thorin",
+			Sprite:          "thorin_sprite",
+			Greeting:        "Hail, warrior! Thorin here! If you want to keep your stamina high and build an unbreakable streak, I am your dwarf. Let's conquer these language challenges together!",
+			Type:            models.NPCTypeGuide,
+			DefaultState:    models.NPCStateIdle,
+			InteractionMode: "hybrid",
+			VoiceType:       "male",
+		},
+	}
+
+	seededCount := 0
+	for _, guide := range guides {
+		var count int64
+		DB.Model(&models.NPCDefinition{}).Where("id = ? OR name = ?", guide.ID, guide.Name).Count(&count)
+		if count == 0 {
+			if err := DB.Create(&guide).Error; err != nil {
+				log.Printf("[Seed] Failed to seed guide '%s': %v", guide.Name, err)
+			} else {
+				seededCount++
+			}
+		}
+	}
+	if seededCount > 0 {
+		log.Printf("[Seed] ✅ Seeded %d guide NPCs", seededCount)
+	} else {
+		log.Println("[Seed] Guide NPCs already exist, skipping")
+	}
+}
+
+

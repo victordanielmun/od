@@ -1,6 +1,13 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, Navigate } from 'react-router-dom';
+import { useAuthStore } from '../store/authStore';
 
 export const AuthLayout = () => {
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-950 via-indigo-950 to-gray-950 px-4 relative overflow-hidden font-sans">
       {/* Decorative backdrop glow elements */}

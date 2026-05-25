@@ -32,6 +32,9 @@ type Config struct {
 	OpenAIModel    string
 	MistralAPIKey  string
 	MistralModel   string
+
+	EvolutionAPIURL string
+	EvolutionAPIKey string
 }
 
 func LoadConfig() *Config {
@@ -65,6 +68,9 @@ func LoadConfig() *Config {
 		OpenAIModel:    getEnv("OPENAI_MODEL", "gpt-4o"),
 		MistralAPIKey:  getEnv("MISTRAL_API_KEY", ""),
 		MistralModel:   getEnv("MISTRAL_MODEL", "mistral-large-latest"),
+
+		EvolutionAPIURL: getEnv("EVOLUTION_API_URL", "http://localhost:8080"),
+		EvolutionAPIKey: getEnv("EVOLUTION_API_KEY", "evolution_secret_key"),
 	}
 
 	log.Printf("Config Loaded: DB_HOST=%s, DB_PORT=%s, DB_NAME=%s", cfg.DBHost, cfg.DBPort, cfg.DBName)

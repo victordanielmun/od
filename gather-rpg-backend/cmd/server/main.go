@@ -62,6 +62,13 @@ func main() {
 		&models.PlayerLearningStats{},
 		&models.MapPickup{},
 		&models.PlayerNPCGift{},
+		// ── WhatsApp Integration System ──────────────────────────────────
+		&models.WhatsAppContact{},
+		&models.WhatsAppConversation{},
+		&models.WhatsAppMessage{},
+		&models.WhatsAppReminder{},
+		&models.Motivation{},
+		&models.UserMotivationHistory{},
 	); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
@@ -69,6 +76,8 @@ func main() {
 	// Seed static data
 	database.SeedAdminUser()
 	database.SeedLearningChallenges()
+	database.SeedMotivations()
+	database.SeedGuides()
 
 	// Repositories & Services
 	userRepo := repository.NewUserRepository()
@@ -133,6 +142,9 @@ func main() {
 	shopHandler := handlers.NewShopHandler(inventoryService)
 	pickupHandler := handlers.NewMapPickupHandler(inventoryService)
 
+	whatsAppService := services.NewWhatsAppService(cfg)
+	whatsAppHandler := handlers.NewWhatsAppHandler(whatsAppService)
+
 	// App with customized config (50MB body limit for large map JSONs)
 	app := fiber.New(fiber.Config{
 		BodyLimit: 50 * 1024 * 1024,
@@ -155,6 +167,7 @@ func main() {
 	auth.Post("/register", authHandler.Register)
 	auth.Post("/login", authHandler.Login)
 	auth.Post("/guest", authHandler.GuestLogin)
+	auth.Post("/companion", middleware.Protected(cfg), authHandler.SetCompanion)
 
 	// Room Routes
 	rooms := app.Group("/rooms", middleware.Protected(cfg))
@@ -162,6 +175,9 @@ func main() {
 	rooms.Post("/", roomHandler.CreateRoom)
 	rooms.Get("/:id", roomHandler.GetRoom)
 	rooms.Get("/:id/npcs", npcHandler.GetRoomNPCs)
+
+	// NPC Guides Routes
+	app.Get("/npcs/guides", middleware.Protected(cfg), npcHandler.GetGuides)
 
 	// Friend Routes
 	friends := app.Group("/friends", middleware.Protected(cfg))
@@ -225,6 +241,12 @@ func main() {
 	admin.Delete("/tasks/:id", missionAdminHandler.DeleteTask)
 	admin.Get("/missions/:id/roles", missionAdminHandler.ListRoles)
 
+	// WhatsApp Admin Routes
+	admin.Get("/whatsapp/instances", whatsAppHandler.FetchInstances)
+	admin.Delete("/whatsapp/instances/:name", whatsAppHandler.DeleteInstance)
+	admin.Get("/whatsapp/global/qr", whatsAppHandler.GetGlobalQR)
+	admin.Get("/whatsapp/global/status", whatsAppHandler.GetGlobalStatus)
+
 	// Map config read (accessible to all authenticated users)
 	app.Get("/maps/config", middleware.Protected(cfg), adminHandler.GetMapConfig)
 
@@ -261,6 +283,12 @@ func main() {
 	shop := app.Group("/shop", middleware.Protected(cfg))
 	shop.Post("/buy", shopHandler.BuyItem)
 	shop.Get("/npc/:id/items", shopHandler.GetNPCItems)
+
+	// WhatsApp Routes
+	whatsapp := app.Group("/whatsapp", middleware.Protected(cfg))
+	whatsapp.Get("/qr", whatsAppHandler.GetQR)
+	whatsapp.Get("/status", whatsAppHandler.GetStatus)
+	whatsapp.Post("/contact", whatsAppHandler.CreateOrUpdateContact)
 
 	// WS Route
 	app.Use("/ws", func(c *fiber.Ctx) error {

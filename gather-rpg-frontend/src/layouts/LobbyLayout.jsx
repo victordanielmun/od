@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Copy, Minus, Plus, X } from 'lucide-react';
+import { Copy, Minus, Plus, X, Brain, LogOut, User, Coins, Heart, Sparkles, Award } from 'lucide-react';
 import { RoomList } from '../components/lobby/RoomList';
 import { CreateRoomModal } from '../components/lobby/CreateRoomModal';
 import { CharacterSelector } from '../components/lobby/CharacterSelector';
@@ -17,9 +17,37 @@ import { useRoomStore } from '../store/roomStore';
 import { NPCDialogue } from '../components/game/NPCDialogue';
 import MissionTracker from '../components/game/MissionTracker';
 import { NinjaCardHUD } from '../components/combat/NinjaCardHUD';
+import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
 export const LobbyLayout = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const logout = useAuthStore(state => state.logout);
+  const user = useAuthStore(state => state.user);
+
+  const [rpgStats, setRpgStats] = useState(null);
+
+  useEffect(() => {
+    const fetchRPGStats = async () => {
+      try {
+        const response = await api.get('/player/stats');
+        setRpgStats(response.data);
+      } catch (err) {
+        console.error('Failed to load RPG stats in lobby:', err);
+      }
+    };
+    fetchRPGStats();
+
+    window.addEventListener('refresh-player-stats', fetchRPGStats);
+    return () => window.removeEventListener('refresh-player-stats', fetchRPGStats);
+  }, []);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [activeOverlay, setActiveOverlay] = useState(null); // 'missions', 'character', 'shop', 'route', null
   const [routeUrl, setRouteUrl] = useState('');
@@ -168,10 +196,99 @@ export const LobbyLayout = () => {
   }, []);
 
   return (
-    <div className="h-screen w-screen bg-gray-900 overflow-hidden relative">
+    <div className="h-screen w-screen bg-gray-950 overflow-hidden relative font-sans selection:bg-yellow-500 selection:text-black">
+      {/* Decorative backdrop glow elements */}
+      <div className="absolute top-20 left-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none z-0"></div>
+      <div className="absolute bottom-20 right-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none z-0"></div>
+
       {/* Map Editor UI (Admin Tool) */}
       {userRole === 'admin' && (
         <MapEditorUI gameRef={gameRef} />
+      )}
+
+      {/* Floating RPG Player HUD Card (Top-Left overlay on Canvas) */}
+      {!isEditorMode && rpgStats && (
+        <div className="absolute top-4 left-4 z-20 pointer-events-auto bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-2xl shadow-xl flex items-center gap-3.5 hover:border-yellow-500/30 transition-all duration-300">
+          {/* Avatar Frame (Clickable to view Dashboard) */}
+          <div 
+            onClick={() => navigate('/dashboard')}
+            className="w-12 h-12 bg-black/40 border-2 border-yellow-500/40 rounded-xl overflow-hidden shadow-md flex items-center justify-center relative shrink-0 cursor-pointer hover:border-yellow-400 hover:scale-105 active:scale-95 transition-all"
+            title={t('lobby.hud.open_dashboard') || "View Stats Card"}
+          >
+            {user ? (
+              <div 
+                className="w-full h-full pixelated"
+                style={{
+                  backgroundImage: `url(/characters/${user.character_id || '1'}c.png)`,
+                  backgroundSize: '400% 300%', 
+                  backgroundPosition: '0 0', 
+                  backgroundRepeat: 'no-repeat',
+                  filter: 'drop-shadow(2.5px 2.5px 2.5px rgba(0,0,0,0.5))'
+                }}
+              />
+            ) : (
+              <User size={24} className="text-yellow-500" />
+            )}
+          </div>
+
+          {/* Player details */}
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-sm font-extrabold text-white tracking-wide">{user?.username || 'Traveler'}</span>
+              <span className="bg-yellow-500/20 text-yellow-400 text-[9px] font-black px-1.5 py-0.5 rounded-lg border border-yellow-500/30 font-mono font-bold">LVL {rpgStats.level}</span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* HP Progress Bar */}
+              <div className="flex flex-col w-20">
+                <div className="flex justify-between text-[8px] font-bold text-emerald-400 mb-0.5">
+                  <span>HP</span>
+                  <span>{rpgStats.hp_current}/{rpgStats.hp_max}</span>
+                </div>
+                <div className="w-full h-1 bg-gray-950 rounded-full overflow-hidden border border-white/5 shadow-inner">
+                  <div 
+                    className="h-full bg-gradient-to-r from-emerald-600 to-green-400 transition-all duration-300"
+                    style={{ width: `${Math.min(100, Math.round((rpgStats.hp_current / rpgStats.hp_max) * 100))}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* MP Progress Bar */}
+              <div className="flex flex-col w-20">
+                <div className="flex justify-between text-[8px] font-bold text-blue-400 mb-0.5">
+                  <span>MP</span>
+                  <span>{rpgStats.mp_current}/{rpgStats.mp_max}</span>
+                </div>
+                <div className="w-full h-1 bg-gray-950 rounded-full overflow-hidden border border-white/5 shadow-inner">
+                  <div 
+                    className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-300"
+                    style={{ width: `${Math.min(100, Math.round((rpgStats.mp_current / rpgStats.mp_max) * 100))}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Gold Counter */}
+              <div className="flex items-center gap-1 text-yellow-400 font-extrabold text-[11px] font-mono shrink-0 pl-1">
+                <Coins size={12} className="text-yellow-500 animate-bounce" />
+                <span>{rpgStats.gold ?? 0}g</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Action Menu (Top-Right overlay on Canvas) */}
+      {!isEditorMode && (
+        <div className="absolute top-4 right-4 z-20 pointer-events-auto flex items-center gap-2">
+          <button
+            onClick={() => navigate('/learn')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/30 transition-all text-xs font-bold hover:scale-105 cursor-pointer shadow-lg"
+            title="Practice English"
+          >
+            <Brain size={14} />
+            <span>Practice</span>
+          </button>
+        </div>
       )}
 
       {/* Game Layer */}
@@ -190,10 +307,10 @@ export const LobbyLayout = () => {
 
       {/* Mission Welcome Banner */}
       {showMissionBanner && activeMission && (
-        <div className="absolute top-10 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-top-10 duration-1000 pointer-events-none">
-          <div className="bg-black/60 backdrop-blur-xl border-t-4 border-b-4 border-yellow-500/50 p-8 shadow-[0_0_50px_rgba(234,179,8,0.3)] flex flex-col items-center min-w-[500px]">
-            <div className="text-yellow-500 font-medieval text-xs uppercase tracking-[0.5em] mb-2 opacity-80">Aventura Iniciada</div>
-            <h1 className="text-white font-medieval text-5xl uppercase tracking-tighter drop-shadow-2xl mb-4">
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-top-10 duration-1000 pointer-events-none">
+          <div className="bg-black/60 backdrop-blur-xl border-t-4 border-b-4 border-yellow-500/50 p-8 shadow-[0_0_50px_rgba(234,179,8,0.3)] flex flex-col items-center min-w-[500px] rounded-2xl">
+            <div className="text-yellow-500 font-extrabold text-xs uppercase tracking-[0.5em] mb-2 opacity-80">Aventura Iniciada</div>
+            <h1 className="text-white font-extrabold text-5xl uppercase tracking-tighter drop-shadow-2xl mb-4">
               {activeMission.title}
             </h1>
             <div className="h-0.5 w-32 bg-gradient-to-r from-transparent via-yellow-500 to-transparent"></div>
@@ -204,9 +321,6 @@ export const LobbyLayout = () => {
         </div>
       )}
 
-      {/* Private Map PIN Toast (Z-Index 200) — appears when a new private room is created */}
-      {/* <PrivateMapPINToast /> */}
-
       {/* HUD & Tracker */}
       {!isEditorMode && (
         <>
@@ -216,14 +330,13 @@ export const LobbyLayout = () => {
 
       {/* Kill Mission HUD Widget — visible durante misiones de eliminar enemigos */}
       {activeMission && !isEditorMode && (() => {
-        // Filtra tareas de kill (type ahora viene del backend como campo 'type' en minúsculas)
         const killTasks = (activeMission.tasks || []).filter(t =>
           (t.type === 'defeat_enemy' || t.type === 'kill_boss' || t.type === 'kill_all') &&
           (t.required_kills > 0 || t.type === 'kill_all')
         );
         if (killTasks.length === 0) return null;
         return (
-          <div className="absolute top-32 right-4 z-20 pointer-events-none space-y-2">
+          <div className="absolute top-36 right-4 z-20 pointer-events-none space-y-2">
             {killTasks.map(task => {
               const done = task.kills_done || 0;
               const req = task.required_kills || 1;
@@ -271,47 +384,48 @@ export const LobbyLayout = () => {
         </div>
       )}
 
-      <div className="absolute top-4 right-4 z-20 pointer-events-none">
-        <div className="flex flex-col items-end gap-2">
-          <div className="bg-gray-900/80 border border-gray-700 text-white px-3 py-2 rounded shadow-lg">
-            <div className="text-[10px] text-gray-400 uppercase tracking-wider">{t('lobby.hud.current_room')}</div>
-            <div className="text-sm font-medium truncate max-w-[240px]">{roomName}</div>
+      {/* Floating HUD controls on top right (Room indicators, PIN code, Zoom) */}
+      <div className="absolute top-[68px] right-4 z-20 pointer-events-none">
+        <div className="flex flex-col items-end gap-2.5">
+          <div className="bg-black/60 backdrop-blur-md border border-white/10 text-white px-4 py-2.5 rounded-2xl shadow-xl hover:border-yellow-500/30 transition-all duration-300">
+            <div className="text-[9px] text-yellow-400 font-extrabold uppercase tracking-widest mb-0.5">{t('lobby.hud.current_room')}</div>
+            <div className="text-sm font-semibold truncate max-w-[240px] text-gray-100">{roomName}</div>
           </div>
 
           {currentInviteCode && (
-            <div className="bg-purple-950/80 border border-purple-600/60 text-white px-3 py-2 rounded-xl shadow-lg flex items-center gap-3">
+            <div className="bg-black/60 backdrop-blur-md border border-purple-500/30 text-white px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-3">
               <div>
-                <div className="text-[10px] text-purple-300 uppercase tracking-wider">{t('lobby.hud.private_pin')}</div>
+                <div className="text-[9px] text-purple-400 font-extrabold uppercase tracking-widest mb-0.5">{t('lobby.hud.private_pin')}</div>
                 <div className="text-lg font-bold tracking-[0.3em] text-white font-mono">{currentInviteCode}</div>
               </div>
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(currentInviteCode);
                 }}
-                className="bg-purple-700/60 hover:bg-purple-600/80 p-1.5 rounded-lg transition border border-purple-500/40"
+                className="bg-purple-600/20 hover:bg-purple-600/40 p-2 rounded-xl transition border border-purple-500/30 cursor-pointer pointer-events-auto active:scale-95"
                 title={t('lobby.hud.copy_pin')}
               >
-                <Copy size={14} />
+                <Copy size={14} className="text-purple-300" />
               </button>
             </div>
           )}
 
-          <div className="flex items-center gap-1 pointer-events-auto">
+          <div className="flex items-center gap-1.5 pointer-events-auto">
             <button
               type="button"
               onClick={zoomOut}
-              className="bg-gray-900/80 border border-gray-700 text-white w-9 h-9 rounded shadow-lg hover:bg-gray-800 transition flex items-center justify-center"
+              className="bg-black/60 backdrop-blur-md border border-white/10 hover:border-yellow-500/30 text-white w-9 h-9 rounded-xl shadow-lg hover:bg-white/5 active:scale-95 transition flex items-center justify-center cursor-pointer"
               aria-label="Zoom -"
             >
-              <Minus size={16} />
+              <Minus size={16} className="text-gray-400 hover:text-white" />
             </button>
             <button
               type="button"
               onClick={zoomIn}
-              className="bg-gray-900/80 border border-gray-700 text-white w-9 h-9 rounded shadow-lg hover:bg-gray-800 transition flex items-center justify-center"
+              className="bg-black/60 backdrop-blur-md border border-white/10 hover:border-yellow-500/30 text-white w-9 h-9 rounded-xl shadow-lg hover:bg-white/5 active:scale-95 transition flex items-center justify-center cursor-pointer"
               aria-label="Zoom +"
             >
-              <Plus size={16} />
+              <Plus size={16} className="text-gray-400 hover:text-white" />
             </button>
           </div>
         </div>

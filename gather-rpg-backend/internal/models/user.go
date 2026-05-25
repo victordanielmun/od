@@ -14,10 +14,11 @@ type User struct {
 	Password    string         `json:"-"`
 	Role        string         `gorm:"not null;default:'user'" json:"role"` // "admin", "user"
 	IsGuest     bool           `gorm:"not null;default:false" json:"is_guest"`
-	CharacterID string         `gorm:"not null;default:'1'" json:"character_id"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	CharacterID    string         `gorm:"not null;default:'1'" json:"character_id"`
+	CompanionNPCID *uint          `gorm:"type:integer" json:"companion_npc_id,omitempty"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+	DeletedAt      gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 type LoginRequest struct {

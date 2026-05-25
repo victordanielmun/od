@@ -166,3 +166,13 @@ func (s *AuthService) GetPlayerStats(userIDStr string) (*models.PlayerStats, err
 	return &stats, nil
 }
 
+// UpdateCompanion saves the chosen companion NPC ID to the user's profile
+func (s *AuthService) UpdateCompanion(userIDStr string, companionNPCID uint) error {
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return errors.New("invalid user ID format")
+	}
+
+	return database.DB.Model(&models.User{}).Where("id = ?", userID).Update("companion_npc_id", companionNPCID).Error
+}
+
