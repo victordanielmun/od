@@ -34,10 +34,38 @@ func (h *WhatsAppHandler) GetQR(c *fiber.Ctx) error {
 	// Instance name based on authenticated user ID
 	instanceName := fmt.Sprintf("user_%s", userIDStr)
 
-	// Step 1: Force delete existing instance if any to guarantee a fresh QR code
+	// Step 1: Check if the instance already exists
+	stateRes, err := h.WhatsAppService.GetConnectionState(instanceName)
+	if err == nil {
+		// Instance exists! Check if it is already connected
+		state := ""
+		if inst, ok := stateRes["instance"].(map[string]interface{}); ok {
+			if s, ok := inst["state"].(string); ok {
+				state = s
+			}
+		}
+		if state == "" {
+			if s, ok := stateRes["state"].(string); ok {
+				state = s
+			}
+		}
+
+		if state == "open" {
+			return c.JSON(stateRes)
+		}
+
+		// Not open, so fetch its existing connection QR code directly!
+		qrRes, err := h.WhatsAppService.GetConnectQR(instanceName)
+		if err == nil {
+			if _, exists := qrRes["base64"]; exists {
+				return c.JSON(qrRes)
+			}
+		}
+	}
+
+	// Step 2: If it doesn't exist or fetching QR failed, let's delete it just in case and create it fresh
 	_, _ = h.WhatsAppService.DeleteInstance(instanceName)
 
-	// Step 2: Create instance and get QR code directly from the creation response
 	createRes, err := h.WhatsAppService.CreateInstance(instanceName)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
@@ -115,10 +143,38 @@ func (h *WhatsAppHandler) DeleteInstance(c *fiber.Ctx) error {
 func (h *WhatsAppHandler) GetGlobalQR(c *fiber.Ctx) error {
 	instanceName := "admin_global"
 
-	// Step 1: Force delete existing instance if any to guarantee a fresh QR code
+	// Step 1: Check if the instance already exists
+	stateRes, err := h.WhatsAppService.GetConnectionState(instanceName)
+	if err == nil {
+		// Instance exists! Check if it is already connected
+		state := ""
+		if inst, ok := stateRes["instance"].(map[string]interface{}); ok {
+			if s, ok := inst["state"].(string); ok {
+				state = s
+			}
+		}
+		if state == "" {
+			if s, ok := stateRes["state"].(string); ok {
+				state = s
+			}
+		}
+
+		if state == "open" {
+			return c.JSON(stateRes)
+		}
+
+		// Not open, so fetch its existing connection QR code directly!
+		qrRes, err := h.WhatsAppService.GetConnectQR(instanceName)
+		if err == nil {
+			if _, exists := qrRes["base64"]; exists {
+				return c.JSON(qrRes)
+			}
+		}
+	}
+
+	// Step 2: If it doesn't exist or fetching QR failed, let's delete it just in case and create it fresh
 	_, _ = h.WhatsAppService.DeleteInstance(instanceName)
 
-	// Step 2: Create instance and get QR code directly from the creation response
 	createRes, err := h.WhatsAppService.CreateInstance(instanceName)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
