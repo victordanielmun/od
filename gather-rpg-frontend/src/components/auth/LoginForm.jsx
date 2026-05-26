@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { useNavigate } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 
 export const LoginForm = () => {
   const [email, setEmail] = useState(localStorage.getItem('savedEmail') || '');
   const [password, setPassword] = useState(localStorage.getItem('savedPassword') || '');
   const [rememberMe, setRememberMe] = useState(localStorage.getItem('rememberMe') === 'true');
+  const [showPassword, setShowPassword] = useState(false);
   const login = useAuthStore(state => state.login);
   const loginGuest = useAuthStore(state => state.loginGuest);
   const error = useAuthStore(state => state.error);
@@ -60,16 +62,25 @@ export const LoginForm = () => {
         </div>
         <div>
           <label htmlFor="password" className="text-gray-400 text-xs font-bold uppercase tracking-wider block mb-1.5">Password</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full bg-gray-950/60 text-white border border-white/10 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all font-sans placeholder-gray-500 text-sm"
-            placeholder="••••••••"
-            required
-            autoComplete="current-password"
-          />
+          <div className="relative">
+            <input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-gray-950/60 text-white border border-white/10 rounded-xl pl-3 pr-10 py-2.5 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all font-sans placeholder-gray-500 text-sm"
+              placeholder="••••••••"
+              required
+              autoComplete="current-password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white cursor-pointer"
+            >
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
         </div>
         <div className="flex items-center">
           <input

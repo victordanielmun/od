@@ -174,19 +174,28 @@ export const MapEditorUI = ({ gameRef }) => {
       const { type, frame, scale, metadata } = e.detail;
       console.log('[MapEditorUI] Object picked from scene:', e.detail);
       
+      const newFrame = frame || 'sprite1';
+      const newScale = scale || 1;
+      
       setActiveTile(type);
-      setActiveTexture(frame);
-      setBuildScale(scale);
+      setActiveTexture(newFrame);
+      setBuildScale(newScale);
+
+      dispatchEditorCommand('setTileType', type);
+      dispatchEditorCommand('setTexture', newFrame);
+      dispatchEditorCommand('setBuildScale', newScale);
 
       if (type === 'build' || type === 'exit') {
-        setBuildMeta({
+        const bm = {
           portalType: metadata.portalType || 'map',
           targetMap: metadata.targetMap || '',
           targetX: metadata.targetX || '',
           targetY: metadata.targetY || '',
           targetRoute: metadata.targetRoute || '',
           interactionText: metadata.interactionText || ''
-        });
+        };
+        setBuildMeta(bm);
+        dispatchEditorCommand('setBuildMetadata', bm);
       } else if (type === 'npc') {
         setNpcMeta({
           definitionId: metadata.definitionId || '',
@@ -379,7 +388,12 @@ export const MapEditorUI = ({ gameRef }) => {
   };
 
   const selectTool = id => { setActiveTool(id); dispatchEditorCommand('setTool', id); };
-  const selectTile = id => { setActiveTile(id); dispatchEditorCommand('setTileType', id); };
+  const selectTile = id => { 
+    setActiveTile(id); 
+    dispatchEditorCommand('setTileType', id); 
+    setActiveTexture('sprite1');
+    dispatchEditorCommand('setTexture', 'sprite1');
+  };
   const selectTexture = id => { setActiveTexture(id); dispatchEditorCommand('setTexture', id); };
   const updateMeta = (k, v) => { const m = { ...buildMeta, [k]: v }; setBuildMeta(m); dispatchEditorCommand('setBuildMetadata', m); };
   const updateScale = v => { const s = parseFloat(v); setBuildScale(s); dispatchEditorCommand('setBuildScale', s); };

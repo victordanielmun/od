@@ -520,7 +520,7 @@ export class MapManager {
     }
   }
 
-  _placeTileDirect(type, gx, gy, frame = null, metadata = null) {
+  _placeTileDirect(type, gx, gy, frame = null, metadata = null, scale = null) {
     const texture = this.scene._getTextureForType(type);
     const group = this.scene._getGroupForType(type);
 
@@ -548,9 +548,9 @@ export class MapManager {
       this._setupForestSprite(sprite);
     } else if (type === 'build') {
       const f = frame || 'sprite1';
-      const scale = (metadata && metadata.buildScale) || 2.5;
+      const s = scale || (metadata && metadata.buildScale) || 2.5;
       const sprite = group.create(gx, gy, 'builds', f);
-      sprite.setScale(scale);
+      sprite.setScale(s);
       sprite.data = new Phaser.Data.DataManager(sprite);
       if (metadata) {
         if (metadata.targetMap !== undefined) sprite.data.set('targetMap', metadata.targetMap);
@@ -559,7 +559,7 @@ export class MapManager {
         if (metadata.targetY !== undefined) sprite.data.set('targetY', metadata.targetY);
         if (metadata.interactionText !== undefined) sprite.data.set('interactionText', metadata.interactionText);
         if (metadata.portalType !== undefined) sprite.data.set('portalType', metadata.portalType);
-        sprite.data.set('buildScale', scale);
+        sprite.data.set('buildScale', s);
       }
       this._setupBuildSprite(sprite);
     } else if (type === 'npc') {

@@ -51,7 +51,7 @@ export const LobbyLayout = () => {
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [activeOverlay, setActiveOverlay] = useState(null); // 'missions', 'character', 'shop', 'route', null
   const [routeUrl, setRouteUrl] = useState('');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [pendingChallengeId, setPendingChallengeId] = useState(null);
   const [challengeChatInput, setChallengeChatInput] = useState('');
   const [npcData, setNpcData] = useState(null);
@@ -206,76 +206,7 @@ export const LobbyLayout = () => {
         <MapEditorUI gameRef={gameRef} />
       )}
 
-      {/* Floating RPG Player HUD Card (Top-Left overlay on Canvas) */}
-      {!isEditorMode && rpgStats && (
-        <div className="absolute top-4 left-4 z-20 pointer-events-auto bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-2xl shadow-xl flex items-center gap-3.5 hover:border-yellow-500/30 transition-all duration-300">
-          {/* Avatar Frame (Clickable to view Dashboard) */}
-          <div 
-            onClick={() => navigate('/dashboard')}
-            className="w-12 h-12 bg-black/40 border-2 border-yellow-500/40 rounded-xl overflow-hidden shadow-md flex items-center justify-center relative shrink-0 cursor-pointer hover:border-yellow-400 hover:scale-105 active:scale-95 transition-all"
-            title={t('lobby.hud.open_dashboard') || "View Stats Card"}
-          >
-            {user ? (
-              <div 
-                className="w-full h-full pixelated"
-                style={{
-                  backgroundImage: `url(/characters/${user.character_id || '1'}c.png)`,
-                  backgroundSize: '400% 300%', 
-                  backgroundPosition: '0 0', 
-                  backgroundRepeat: 'no-repeat',
-                  filter: 'drop-shadow(2.5px 2.5px 2.5px rgba(0,0,0,0.5))'
-                }}
-              />
-            ) : (
-              <User size={24} className="text-yellow-500" />
-            )}
-          </div>
 
-          {/* Player details */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-sm font-extrabold text-white tracking-wide">{user?.username || 'Traveler'}</span>
-              <span className="bg-yellow-500/20 text-yellow-400 text-[9px] font-black px-1.5 py-0.5 rounded-lg border border-yellow-500/30 font-mono font-bold">LVL {rpgStats.level}</span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {/* HP Progress Bar */}
-              <div className="flex flex-col w-20">
-                <div className="flex justify-between text-[8px] font-bold text-emerald-400 mb-0.5">
-                  <span>HP</span>
-                  <span>{rpgStats.hp_current}/{rpgStats.hp_max}</span>
-                </div>
-                <div className="w-full h-1 bg-gray-950 rounded-full overflow-hidden border border-white/5 shadow-inner">
-                  <div 
-                    className="h-full bg-gradient-to-r from-emerald-600 to-green-400 transition-all duration-300"
-                    style={{ width: `${Math.min(100, Math.round((rpgStats.hp_current / rpgStats.hp_max) * 100))}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* MP Progress Bar */}
-              <div className="flex flex-col w-20">
-                <div className="flex justify-between text-[8px] font-bold text-blue-400 mb-0.5">
-                  <span>MP</span>
-                  <span>{rpgStats.mp_current}/{rpgStats.mp_max}</span>
-                </div>
-                <div className="w-full h-1 bg-gray-950 rounded-full overflow-hidden border border-white/5 shadow-inner">
-                  <div 
-                    className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-300"
-                    style={{ width: `${Math.min(100, Math.round((rpgStats.mp_current / rpgStats.mp_max) * 100))}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Gold Counter */}
-              <div className="flex items-center gap-1 text-yellow-400 font-extrabold text-[11px] font-mono shrink-0 pl-1">
-                <Coins size={12} className="text-yellow-500 animate-bounce" />
-                <span>{rpgStats.gold ?? 0}g</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Floating Action Menu (Top-Right overlay on Canvas) */}
       {!isEditorMode && (
@@ -379,7 +310,11 @@ export const LobbyLayout = () => {
       {!isEditorMode && (
         <div className="absolute top-0 left-0 h-full z-30 pointer-events-none">
           <div className="pointer-events-auto h-full">
-            <Sidebar isOpen={isSidebarOpen} toggle={() => setIsSidebarOpen(!isSidebarOpen)} />
+            <Sidebar 
+              isOpen={isSidebarOpen} 
+              toggle={() => setIsSidebarOpen(!isSidebarOpen)} 
+              rpgStats={rpgStats}
+            />
           </div>
         </div>
       )}

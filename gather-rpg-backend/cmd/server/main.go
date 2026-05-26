@@ -141,10 +141,13 @@ func main() {
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	shopHandler := handlers.NewShopHandler(inventoryService)
 	pickupHandler := handlers.NewMapPickupHandler(inventoryService)
-
 	whatsAppService := services.NewWhatsAppService(cfg)
+	whatsAppQueueService := services.NewWhatsAppQueueService(whatsAppService)
+	whatsAppQueueService.StartWorker()
+	whatsAppSchedulerService := services.NewWhatsAppSchedulerService(whatsAppQueueService)
+	whatsAppSchedulerService.Start()
+	
 	whatsAppHandler := handlers.NewWhatsAppHandler(whatsAppService)
-
 	// App with customized config (50MB body limit for large map JSONs)
 	app := fiber.New(fiber.Config{
 		BodyLimit: 50 * 1024 * 1024,
@@ -285,11 +288,16 @@ func main() {
 	shop.Post("/buy", shopHandler.BuyItem)
 	shop.Get("/npc/:id/items", shopHandler.GetNPCItems)
 
-	// WhatsApp Routes
+	// WhatsApp Public Webhook Route (no auth required for third party)
+	app.Post("/whatsapp/webhook", whatsAppHandler.ReceiveWebhook)
+
+	// WhatsApp Protected Routes
 	whatsapp := app.Group("/whatsapp", middleware.Protected(cfg))
 	whatsapp.Get("/qr", whatsAppHandler.GetQR)
 	whatsapp.Get("/status", whatsAppHandler.GetStatus)
+	whatsapp.Get("/contact", whatsAppHandler.GetContact)
 	whatsapp.Post("/contact", whatsAppHandler.CreateOrUpdateContact)
+	whatsapp.Get("/global/phone", whatsAppHandler.GetGlobalPhone)
 
 	// WS Route
 	app.Use("/ws", func(c *fiber.Ctx) error {

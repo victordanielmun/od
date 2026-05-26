@@ -3,12 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
 import { useGameStore } from '../../store/gameStore';
 import { useNotificationStore } from '../../store/notificationStore';
-import { LogOut, Settings, MessageSquare, Users, ChevronLeft, ChevronRight, User, Send, X, UserPlus, MapPin, Phone, Pin, PinOff } from 'lucide-react';
+import { LogOut, Settings, MessageSquare, Users, ChevronLeft, ChevronRight, User, Send, X, UserPlus, MapPin, Phone, Pin, PinOff, Coins } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import SettingsMenu from '../common/SettingsMenu';
 
-export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle }) => {
+export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }) => {
     const { t } = useTranslation();
     const { user, logout } = useAuthStore();
     const navigate = useNavigate();
@@ -206,54 +206,97 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle }) => {
                 onMouseLeave={() => setIsHovered(false)}
             >
                 {/* Header / Pin Control */}
-                <div className="p-5 border-b border-white/10 bg-black/30 flex justify-between items-start relative z-10 shrink-0">
-                    <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 bg-black/40 border-2 border-yellow-500/40 shadow-xl flex items-center justify-center overflow-hidden rounded-xl relative">
-                            {user ? (
-                                <div 
-                                    className="w-full h-full pixelated"
-                                    style={{
-                                        backgroundImage: `url(${getAvatarUrl(user.character_id)})`,
-                                        backgroundSize: '400% 300%', 
-                                        backgroundPosition: '0 0', 
-                                        backgroundRepeat: 'no-repeat',
-                                        filter: 'drop-shadow(2px 2px 2px rgba(0,0,0,0.5))'
-                                    }}
-                                />
-                            ) : (
-                                <User size={28} className="text-yellow-500" />
-                            )}
-                        </div>
-                        <div>
-                            <p className="text-yellow-400 text-[10px] uppercase font-bold tracking-[0.2em] mb-0.5">
-                                {isGuest ? t('lobby.sidebar.guest') : t('lobby.sidebar.traveler')}
-                            </p>
-                            <p className="text-white font-extrabold text-xl truncate max-w-[140px] drop-shadow-md">
-                                {user?.username || t('lobby.sidebar.guest')}
-                            </p>
-                            <div className="flex flex-col">
-                                <p className="text-gray-400 text-xs tracking-wide capitalize">
-                                    {user?.characterClass || t('lobby.sidebar.adventurer')}
-                                </p>
-                                 {profile && (
-                                    <div className="flex items-center gap-1 mt-1">
-                                        <div className="bg-amber-500/20 px-2.5 py-0.5 border border-amber-500/30 rounded-lg shadow-sm">
-                                            <span className="text-amber-300 text-[10px] font-bold">XP: {profile.total_xp}</span>
-                                        </div>
-                                    </div>
+                <div className="p-5 border-b border-white/10 bg-black/30 flex flex-col gap-4 relative z-10 shrink-0">
+                    <div className="flex justify-between items-start w-full">
+                        <div className="flex items-center gap-4">
+                            <div className="w-16 h-16 bg-black/40 border-2 border-yellow-500/40 shadow-xl flex items-center justify-center overflow-hidden rounded-xl relative">
+                                {user ? (
+                                    <div 
+                                        className="w-full h-full pixelated"
+                                        style={{
+                                            backgroundImage: `url(${getAvatarUrl(user.character_id)})`,
+                                            backgroundSize: '400% 300%', 
+                                            backgroundPosition: '0 0', 
+                                            backgroundRepeat: 'no-repeat',
+                                            filter: 'drop-shadow(2px 2px 2px rgba(0,0,0,0.5))'
+                                        }}
+                                    />
+                                ) : (
+                                    <User size={28} className="text-yellow-500" />
                                 )}
                             </div>
+                            <div>
+                                <p className="text-yellow-400 text-[10px] uppercase font-bold tracking-[0.2em] mb-0.5">
+                                    {isGuest ? t('lobby.sidebar.guest') : t('lobby.sidebar.traveler')}
+                                </p>
+                                <div className="flex items-center gap-2">
+                                    <p className="text-white font-extrabold text-xl truncate max-w-[120px] drop-shadow-md">
+                                        {user?.username || t('lobby.sidebar.guest')}
+                                    </p>
+                                    {rpgStats && (
+                                        <span className="bg-yellow-500/20 text-yellow-400 text-[9px] font-black px-1.5 py-0.5 rounded-lg border border-yellow-500/30 font-mono">
+                                            LVL {rpgStats.level}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex flex-col">
+                                    <p className="text-gray-400 text-xs tracking-wide capitalize">
+                                        {user?.characterClass || t('lobby.sidebar.adventurer')}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
+
+                         {/* Pin Toggle */}
+                        <button
+                            onClick={() => setIsPinned(!isPinned)}
+                            className={`p-1.5 border rounded-lg transition cursor-pointer ${isPinned ? 'text-black bg-gradient-to-r from-yellow-500 to-amber-500 border-yellow-300' : 'text-gray-400 border-white/10 hover:border-yellow-500 hover:text-yellow-400 bg-white/5'}`}
+                            title={isPinned ? t('lobby.sidebar.unpin') : t('lobby.sidebar.pin')}
+                        >
+                            {isPinned ? <Pin size={16} /> : <PinOff size={16} />}
+                        </button>
                     </div>
 
-                     {/* Pin Toggle */}
-                    <button
-                        onClick={() => setIsPinned(!isPinned)}
-                        className={`p-1.5 border rounded-lg transition cursor-pointer ${isPinned ? 'text-black bg-gradient-to-r from-yellow-500 to-amber-500 border-yellow-300' : 'text-gray-400 border-white/10 hover:border-yellow-500 hover:text-yellow-400 bg-white/5'}`}
-                        title={isPinned ? t('lobby.sidebar.unpin') : t('lobby.sidebar.pin')}
-                    >
-                        {isPinned ? <Pin size={16} /> : <PinOff size={16} />}
-                    </button>
+                    {/* RPG Stats Overlay (HP, MP, Gold) */}
+                    {rpgStats && (
+                        <div className="flex items-center justify-between bg-black/40 border border-white/5 p-3 rounded-xl shadow-inner w-full mt-1">
+                            <div className="flex items-center gap-4 w-full">
+                                {/* HP Progress Bar */}
+                                <div className="flex flex-col flex-1">
+                                    <div className="flex justify-between text-[9px] font-extrabold text-emerald-400 mb-1">
+                                        <span>HP</span>
+                                        <span>{rpgStats.hp_current}/{rpgStats.hp_max}</span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-gray-950 rounded-full overflow-hidden border border-white/5 shadow-inner">
+                                        <div 
+                                            className="h-full bg-gradient-to-r from-emerald-600 to-green-400 transition-all duration-300"
+                                            style={{ width: `${Math.min(100, Math.round((rpgStats.hp_current / rpgStats.hp_max) * 100))}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+
+                                {/* MP Progress Bar */}
+                                <div className="flex flex-col flex-1">
+                                    <div className="flex justify-between text-[9px] font-extrabold text-blue-400 mb-1">
+                                        <span>MP</span>
+                                        <span>{rpgStats.mp_current}/{rpgStats.mp_max}</span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-gray-950 rounded-full overflow-hidden border border-white/5 shadow-inner">
+                                        <div 
+                                            className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-300"
+                                            style={{ width: `${Math.min(100, Math.round((rpgStats.mp_current / rpgStats.mp_max) * 100))}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+
+                                {/* Gold Counter */}
+                                <div className="flex items-center gap-1 text-yellow-400 font-extrabold text-[12px] font-mono shrink-0 pl-1">
+                                    <Coins size={14} className="text-yellow-500 animate-bounce" />
+                                    <span>{rpgStats.gold ?? 0}g</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Chat Section */}

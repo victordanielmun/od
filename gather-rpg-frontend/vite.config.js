@@ -12,7 +12,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        // target: 'http://18.221.199.221:3000', // Production (EC2)
+        //target: 'http://18.221.199.221:3000', // Production (EC2)
         target: 'http://127.0.0.1:3000', // Local development
         changeOrigin: true,
         secure: false,
@@ -37,7 +37,7 @@ export default defineConfig({
         secure: false
       },
       '/voice': {
-        // target: 'http://18.221.199.221:8000', // Production (EC2)
+        //target: 'http://18.221.199.221:8000', // Production (EC2)
         target: 'http://127.0.0.1:8000', // Local development
         changeOrigin: true,
         secure: false,
