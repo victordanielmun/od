@@ -168,6 +168,7 @@ func main() {
 	auth.Post("/login", authHandler.Login)
 	auth.Post("/guest", authHandler.GuestLogin)
 	auth.Post("/companion", middleware.Protected(cfg), authHandler.SetCompanion)
+	auth.Post("/terms", middleware.Protected(cfg), authHandler.AcceptTerms)
 
 	// Room Routes
 	rooms := app.Group("/rooms", middleware.Protected(cfg))

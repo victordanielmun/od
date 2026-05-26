@@ -176,3 +176,13 @@ func (s *AuthService) UpdateCompanion(userIDStr string, companionNPCID uint) err
 	return database.DB.Model(&models.User{}).Where("id = ?", userID).Update("companion_npc_id", companionNPCID).Error
 }
 
+// AcceptTerms saves the terms accepted flag to the user's profile
+func (s *AuthService) AcceptTerms(userIDStr string) error {
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return errors.New("invalid user ID format")
+	}
+
+	return database.DB.Model(&models.User{}).Where("id = ?", userID).Update("terms_accepted", true).Error
+}
+

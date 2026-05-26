@@ -259,8 +259,8 @@ func (h *AdminHandler) UpdateMapConfig(c *fiber.Ctx) error {
 // GET /admin/maps
 func (h *AdminHandler) ListMapConfigs(c *fiber.Ctx) error {
 	var maps []models.MapConfig
-	// Lightweight list: Exclude walls_json and map_data to save bandwidth
-	if err := database.DB.Select("id", "scene_key", "is_public", "max_users", "updated_by", "created_at", "updated_at").Find(&maps).Error; err != nil {
+	// Lightweight list: Exclude walls_json (large) but include map_data for editor width/height settings
+	if err := database.DB.Select("id", "scene_key", "is_public", "max_users", "map_data", "updated_by", "created_at", "updated_at").Find(&maps).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 

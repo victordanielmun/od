@@ -525,7 +525,10 @@ export class MapManager {
     const group = this.scene._getGroupForType(type);
 
     if (type === 'wall') {
-      group.create(gx, gy, texture).refreshBody();
+      const f = frame || 'sprite1';
+      const sprite = group.create(gx, gy, 'walls', f);
+      sprite.refreshBody();
+
     } else if (type === 'floor' || type === 'store') {
       const atlas = type === 'store' ? 'store-tiles' : 'terrain';
       const f = frame || 'sprite1';

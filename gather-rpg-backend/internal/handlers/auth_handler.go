@@ -86,3 +86,27 @@ func (h *AuthHandler) SetCompanion(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Companion companion selected successfully"})
 }
 
+// AcceptTerms marks the onboarding terms as accepted for the current user
+func (h *AuthHandler) AcceptTerms(c *fiber.Ctx) error {
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	var req struct {
+		TermsAccepted bool `json:"terms_accepted"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if !req.TermsAccepted {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Terms must be accepted"})
+	}
+
+	if err := h.Service.AcceptTerms(userIDStr); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "Terms accepted successfully"})
+}

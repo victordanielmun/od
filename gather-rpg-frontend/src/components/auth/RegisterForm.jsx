@@ -5,7 +5,7 @@ import api from '../../services/api';
 import { 
   User, Mail, Lock, Check, ArrowRight, ChevronRight, 
   Sparkles, Phone, Clock, Globe, AlertCircle, Loader2,
-  BookOpen, Award, ShieldAlert
+  BookOpen, Award, ShieldAlert, Compass
 } from 'lucide-react';
 
 export const RegisterForm = () => {
@@ -16,9 +16,13 @@ export const RegisterForm = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [step1Error, setStep1Error] = useState('');
   const register = useAuthStore(state => state.register);
   const authError = useAuthStore(state => state.error);
+  const user = useAuthStore(state => state.user);
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  const updateUser = useAuthStore(state => state.updateUser);
   
   // Step 2: Companion Guide
   const [guides, setGuides] = useState([]);
@@ -37,6 +41,19 @@ export const RegisterForm = () => {
 
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
+
+  // Onboarding restore / redirect logic on mount
+  useEffect(() => {
+    if (isAuthenticated && step === 1) {
+      if (user && user.companion_npc_id) {
+        // Fully onboarded, skip to dashboard
+        navigate('/dashboard');
+      } else {
+        // Logged in but missing guide - jump straight to Step 2
+        setStep(2);
+      }
+    }
+  }, [isAuthenticated, user, navigate, step]);
 
   // Fallback guides definition if API call is empty or fails
   const fallbackGuides = [
@@ -100,8 +117,12 @@ export const RegisterForm = () => {
   const handleStep1Submit = async (e) => {
     e.preventDefault();
     setStep1Error('');
-    if (!username || !email || !password) {
+    if (!username || !email || !password || !confirmPassword) {
       setStep1Error('Por favor, completa todos los campos.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setStep1Error('Las contraseñas no coinciden.');
       return;
     }
     setSubmitting(true);
@@ -124,6 +145,8 @@ export const RegisterForm = () => {
     setStep2Error('');
     try {
       await api.post('/auth/companion', { companion_npc_id: selectedGuideId });
+      // Update local state and localStorage
+      updateUser({ companion_npc_id: selectedGuideId });
       setStep(3);
     } catch (err) {
       console.error("Failed to save companion guide selection:", err);
@@ -137,8 +160,17 @@ export const RegisterForm = () => {
   const handleStep3Submit = async (e) => {
     e.preventDefault();
     if (!enableWhatsApp) {
-      // User opted out, skip WhatsApp contact saving and navigate to dashboard
-      navigate('/dashboard');
+      // User opted out, save terms acceptance and navigate to dashboard
+      setSubmitting(true);
+      try {
+        await api.post('/auth/terms', { terms_accepted: true });
+        navigate('/dashboard');
+      } catch (err) {
+        console.error("Failed to save terms:", err);
+        setStep3Error('No se pudo guardar la aceptación de términos. Inténtalo de nuevo.');
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
 
@@ -158,6 +190,8 @@ export const RegisterForm = () => {
         preferred_hour_start: parseInt(preferredHourStart, 10),
         preferred_hour_end: parseInt(preferredHourEnd, 10)
       });
+      // Save terms acceptance
+      await api.post('/auth/terms', { terms_accepted: true });
       navigate('/dashboard');
     } catch (err) {
       console.error("Failed to save WhatsApp settings:", err);
@@ -167,53 +201,34 @@ export const RegisterForm = () => {
     }
   };
 
-  // Guide detailed layout definitions (Visual tags, skills, colors)
-  const getGuideDetails = (name) => {
-    switch (name) {
-      case "Aria":
-        return {
-          title: "Guía de Pronunciación",
-          description: "Aria es una ágil exploradora y arquera experta. Te guiará en el entrenamiento del habla, ayudándote a apuntar a la pronunciación correcta en cada misión.",
-          badgeColor: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-          cardGlow: "group-hover:shadow-[0_0_25px_rgba(16,185,129,0.15)]",
-          selectedColor: "border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)] bg-emerald-950/20",
-          skill: "Acento & Fonética",
-          colorHex: "#10b981",
-          avatarColor: "from-emerald-600 to-teal-500"
-        };
-      case "Eldrin":
-        return {
-          title: "Maestro de Gramática",
-          description: "Eldrin domina las artes místicas de la sintaxis y estructura lingüística. Su magia canaliza oraciones complejas y aclara tus dudas gramaticales.",
-          badgeColor: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
-          cardGlow: "group-hover:shadow-[0_0_25px_rgba(99,102,241,0.15)]",
-          selectedColor: "border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.3)] bg-indigo-950/20",
-          skill: "Sintaxis & Reglas",
-          colorHex: "#6366f1",
-          avatarColor: "from-indigo-600 to-violet-500"
-        };
-      case "Thorin":
-        return {
-          title: "Guardián de Racha",
-          description: "Thorin es un tenaz guerrero enano. Te mantendrá motivado a entrenar todos los días, protegiendo tu racha de aprendizaje con disciplina inquebrantable.",
-          badgeColor: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-          cardGlow: "group-hover:shadow-[0_0_25px_rgba(245,158,11,0.15)]",
-          selectedColor: "border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.3)] bg-amber-950/20",
-          skill: "Stamina & Disciplina",
-          colorHex: "#f59e0b",
-          avatarColor: "from-amber-600 to-red-500"
-        };
-      default:
-        return {
-          title: "Instructor RPG",
-          description: "Te acompaña en tus aventuras lingüísticas diarias.",
-          badgeColor: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
-          cardGlow: "group-hover:shadow-[0_0_25px_rgba(234,179,8,0.15)]",
-          selectedColor: "border-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.3)] bg-yellow-950/20",
-          skill: "Inglés General",
-          colorHex: "#eab308",
-          avatarColor: "from-yellow-600 to-amber-500"
-        };
+  // Guide detailed layout definitions (Visual theme styling dynamically assigned by ID/name)
+  const getGuideDetails = (guide) => {
+    const name = guide.name || 'Guía';
+    const isAria = name.toLowerCase().includes('aria');
+    const isEldrin = name.toLowerCase().includes('eldrin');
+    
+    // Fallback/Dynamic color theme assignation
+    if (isAria || guide.id % 3 === 1) {
+      return {
+        cardGlow: "hover:shadow-[0_0_25px_rgba(16,185,129,0.15)]",
+        selectedColor: "border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)] bg-emerald-950/20",
+        colorHex: "#10b981",
+        avatarColor: "from-emerald-600 to-teal-500"
+      };
+    } else if (isEldrin || guide.id % 3 === 2) {
+      return {
+        cardGlow: "hover:shadow-[0_0_25px_rgba(99,102,241,0.15)]",
+        selectedColor: "border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.3)] bg-indigo-950/20",
+        colorHex: "#6366f1",
+        avatarColor: "from-indigo-600 to-violet-500"
+      };
+    } else {
+      return {
+        cardGlow: "hover:shadow-[0_0_25px_rgba(245,158,11,0.15)]",
+        selectedColor: "border-yellow-500 shadow-[0_0_20px_rgba(245,158,11,0.3)] bg-yellow-950/20",
+        colorHex: "#f59e0b",
+        avatarColor: "from-yellow-600 to-amber-500"
+      };
     }
   };
 
@@ -374,6 +389,26 @@ export const RegisterForm = () => {
                   </div>
                 </div>
 
+                <div>
+                  <label htmlFor="confirmPassword" className="text-gray-400 text-[10px] font-extrabold uppercase tracking-widest block mb-2">
+                    Confirmar Contraseña
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500">
+                      <Lock className="w-4.5 h-4.5" />
+                    </span>
+                    <input
+                      id="confirmPassword"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full bg-gray-950/60 text-white border border-white/10 rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all font-sans placeholder-gray-600 text-sm"
+                      placeholder="••••••••"
+                      required
+                    />
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   disabled={submitting}
@@ -430,15 +465,15 @@ export const RegisterForm = () => {
                   <span className="text-gray-400 text-sm font-medieval tracking-widest uppercase">Invocando opciones de guías...</span>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div className="flex flex-wrap justify-center gap-6 max-w-4xl mx-auto mb-8">
                   {guides.map((guide) => {
-                    const details = getGuideDetails(guide.name);
+                    const details = getGuideDetails(guide);
                     const isSelected = selectedGuideId === guide.id;
                     return (
                       <div
                         key={guide.id}
                         onClick={() => setSelectedGuideId(guide.id)}
-                        className={`group relative flex flex-col justify-between border rounded-2xl p-5 cursor-pointer transition-all duration-300 select-none overflow-hidden bg-gray-950/40 backdrop-blur-md ${
+                        className={`group relative flex flex-col items-center justify-center border rounded-2xl p-6 cursor-pointer transition-all duration-300 select-none overflow-hidden bg-gray-950/40 backdrop-blur-md w-full sm:w-[220px] md:w-[240px] shrink-0 ${
                           isSelected 
                             ? details.selectedColor 
                             : 'border-white/10 hover:border-white/20 hover:bg-gray-900/30'
@@ -446,49 +481,52 @@ export const RegisterForm = () => {
                       >
                         {/* Background guide glow */}
                         <div 
-                          className="absolute -right-16 -bottom-16 w-36 h-36 rounded-full filter blur-[40px] opacity-10 transition-opacity duration-300 group-hover:opacity-20 pointer-events-none"
+                          className="absolute -right-12 -bottom-12 w-28 h-28 rounded-full filter blur-[35px] opacity-10 transition-opacity duration-300 group-hover:opacity-25 pointer-events-none"
                           style={{ backgroundColor: details.colorHex }}
                         ></div>
 
-                        <div>
-                          {/* Header card details */}
-                          <div className="flex items-center justify-between mb-4">
-                            <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border tracking-wider ${details.badgeColor}`}>
-                              {details.skill}
-                            </span>
-                            {isSelected && (
-                              <span className="w-5 h-5 rounded-full bg-yellow-400 text-black flex items-center justify-center shadow-[0_0_10px_rgba(234,179,8,0.5)]">
-                                <Check className="w-3.5 h-3.5 stroke-[3px]" />
-                              </span>
+                        {/* Top corner selected check indicator */}
+                        {isSelected && (
+                          <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-yellow-400 text-black flex items-center justify-center shadow-[0_0_10px_rgba(234,179,8,0.5)] z-20">
+                            <Check className="w-3.5 h-3.5 stroke-[3px]" />
+                          </div>
+                        )}
+
+                        {/* Guide visual placeholder avatar (Sleek circles with initial letter) */}
+                        <div className="text-center relative z-10 w-full flex flex-col items-center">
+                          <div className={`w-20 h-20 rounded-full bg-gradient-to-tr ${details.avatarColor} p-0.5 shadow-lg relative flex items-center justify-center border-2 border-white/15 overflow-hidden group-hover:scale-105 transition-all duration-300 mb-3`}>
+                            {guide.sprite && (
+                              <img 
+                                src={`/npcs/${guide.sprite}.png`} 
+                                alt={guide.name} 
+                                className="w-full h-full object-cover object-top rounded-full z-10"
+                                onError={(e) => {
+                                  if (e.target.src.includes('/npcs/')) {
+                                    e.target.src = `/characters/${guide.sprite}.png`;
+                                  } else {
+                                    e.target.style.display = 'none';
+                                    if (e.target.nextSibling) {
+                                      e.target.nextSibling.style.display = 'block';
+                                    }
+                                  }
+                                }}
+                              />
                             )}
-                          </div>
-
-                          {/* Guide visual placeholder avatar (Sleek circles with initial letter) */}
-                          <div className="mb-4 text-center">
-                            <div className={`w-16 h-16 rounded-full mx-auto bg-gradient-to-tr ${details.avatarColor} p-0.5 shadow-lg relative flex items-center justify-center border-2 border-white/15 overflow-hidden group-hover:scale-105 transition-all duration-300`}>
-                              <span className="text-2xl font-medieval text-white font-black tracking-widest drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-                                {guide.name[0]}
-                              </span>
-                              {/* Sparkles glow */}
-                              <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                            </div>
-                            <h3 className="text-lg font-bold text-white font-medieval uppercase mt-2 group-hover:text-yellow-400 transition-colors">
-                              {guide.name}
-                            </h3>
-                            <span className="text-[11px] text-gray-400 font-sans tracking-wide">
-                              {details.title}
+                            <span className="text-3xl font-medieval text-white font-black tracking-widest drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" style={{ display: guide.sprite ? 'none' : 'block' }}>
+                              {guide.name ? guide.name[0].toUpperCase() : 'G'}
                             </span>
+                            {/* Sparkles glow */}
+                            <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                           </div>
-
-                          {/* Card body - description */}
-                          <p className="text-gray-400 text-[11px] leading-relaxed text-center font-sans border-t border-white/5 pt-3.5 mb-4 italic">
-                            "{guide.greeting}"
-                          </p>
-                        </div>
-
-                        {/* Description summary of role */}
-                        <div className="bg-white/5 rounded-xl p-3 border border-white/5 text-center text-white text-[10px] font-sans">
-                          {details.description}
+                          
+                          <h3 className="text-xl font-bold text-white font-medieval uppercase tracking-wider group-hover:text-yellow-400 transition-colors">
+                            {guide.name}
+                          </h3>
+                          
+                          <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/5 border border-white/5 text-[11px] text-gray-400 font-sans tracking-wide">
+                            <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse"></span>
+                            <span>Sprite: {guide.sprite || 'default'}</span>
+                          </div>
                         </div>
                       </div>
                     );

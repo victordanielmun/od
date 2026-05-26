@@ -31,7 +31,19 @@ import { useAuthStore } from './store/authStore';
 
 const PrivateRoute = ({ children }) => {
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
-  return isAuthenticated ? children : <Navigate to="/login" />;
+  const user = useAuthStore(state => state.user);
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Force registered users (not guests) to complete companion guide onboarding
+  const isGuest = user?.is_guest || user?.username?.startsWith('Guest_') || false;
+  if (!isGuest && user && !user.companion_npc_id) {
+    return <Navigate to="/register" replace />;
+  }
+
+  return children;
 };
 
 function App() {
