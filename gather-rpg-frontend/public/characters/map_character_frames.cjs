@@ -50,8 +50,9 @@ function normalizeAtlas(filePath) {
 }
 
 // Animaciones en ORDEN de aparición en cada sheet (de arriba a abajo)
-const BASE_ANIM_NAMES = ['walk', 'idle', 'hurt', 'die', 'stun', 'poison'];
-const COMBAT_ANIM_NAMES = ['slash', 'special', 'potion', 'projectile', 'block'];
+const BASE_ANIM_NAMES = ['idle', 'walk', 'hurt', 'die', 'block', 'potion'];
+const COMBAT_ANIM_NAMES = ['combo1', 'combo2', 'combo3_finisher', 'special', 'projectile'];
+const COMBO_ANIM_NAMES  = ['combo1', 'combo2', 'combo3_finisher', 'kick', 'strong', 'block_combo'];
 const AVATAR_ANIM_NAMES = [
     'avatar-idle', 'avatar-hurt', 'avatar-low-health', 'avatar-dead',
     'avatar-special', 'avatar-help', 'avatar-angry', 'avatar-happy',
@@ -71,6 +72,13 @@ const ANIM_SETTINGS = {
     potion: { frameRate: 10, repeat: 0 },
     projectile: { frameRate: 12, repeat: 0 },
     block: { frameRate: 10, repeat: 0 },
+    // Combo Sheet (1d)
+    combo1:           { frameRate: 14, repeat: 0 },  // Jab rápido
+    combo2:           { frameRate: 13, repeat: 0 },  // Cross
+    combo3_finisher:  { frameRate: 11, repeat: 0 },  // Uppercut/remate (más lento = más peso)
+    kick:             { frameRate: 12, repeat: 0 },  // Patada
+    strong:           { frameRate: 10, repeat: 0 },  // Golpe cargado
+    block_combo:      { frameRate: 10, repeat: 0 },  // Bloqueo
     // Avatars (static frames)
     portrait: { frameRate: 1, repeat: -1 }
 };
@@ -83,10 +91,10 @@ function loadAtlas(filePath) {
     return JSON.parse(raw);
 }
 
-/** Filtra frames reales (descarta placeholders 1x1) y devuelve sus nombres en orden */
+/** Filtra frames reales (descarta placeholders y ruido) y devuelve sus nombres en orden */
 function realFrames(atlas) {
     return atlas.frames
-        .filter(f => f.frame.w > 1 && f.frame.h > 1)
+        .filter(f => f.frame.w > 10 && f.frame.h > 10)
         .map(f => f.filename);
 }
 
@@ -116,15 +124,18 @@ function normalizeChunk(frames, n, animName) {
 }
 
 /** Genera el bloque de animaciones para UN personaje */
-function buildAnimBlock(charId, baseAtlas, combatAtlas, avatarAtlas) {
+function buildAnimBlock(charId, baseAtlas, combatAtlas, avatarAtlas, comboAtlas) {
     const baseFrames = realFrames(baseAtlas);
     const combatFrames = realFrames(combatAtlas);
 
-    console.log(`\n── Personaje ${charId} ──────────────────────────────`);
+    console.log(`\n── Personaje ${charId} ────────────────────────────`);
     console.log(`  base   frames reales : ${baseFrames.length}`);
     console.log(`  combat frames reales : ${combatFrames.length}`);
     if (avatarAtlas) {
         console.log(`  avatar frames reales : ${realFrames(avatarAtlas).length}`);
+    }
+    if (comboAtlas) {
+        console.log(`  combo  frames reales : ${realFrames(comboAtlas).length}`);
     }
 
     const baseChunks = chunk(baseFrames, FRAMES_PER_ACTION);
@@ -151,6 +162,18 @@ function buildAnimBlock(charId, baseAtlas, combatAtlas, avatarAtlas) {
         AVATAR_ANIM_NAMES.forEach((name, i) => {
             const frame = avatarFrames[i] ? [avatarFrames[i]] : [avatarFrames[avatarFrames.length - 1]];
             anims[name] = { sheetType: 'avatar', frames: frame, frameRate: 1, repeat: -1 };
+        });
+    }
+
+    // Combo sheet (Xd.json) — nuevo en esta versión
+    if (comboAtlas) {
+        const comboFrames = realFrames(comboAtlas);
+        const comboChunks = chunk(comboFrames, FRAMES_PER_ACTION);
+        COMBO_ANIM_NAMES.forEach((name, i) => {
+            const raw = comboChunks[i] ?? [];
+            const frames = normalizeChunk(raw, FRAMES_PER_ACTION, name);
+            const { frameRate, repeat } = ANIM_SETTINGS[name] ?? { frameRate: 12, repeat: 0 };
+            anims[name] = { sheetType: 'combo', frames, frameRate, repeat };
         });
     }
 
@@ -204,8 +227,8 @@ function main() {
 
     for (const id of charIds) {
         try {
-            const basePath = path.join(CHARACTERS_DIR, `${id}a.json`);
-            const combatPath = path.join(CHARACTERS_DIR, `${id}b.json`);
+            const basePath = path.join(CHARACTERS_DIR, `${id}b.json`);
+            const combatPath = path.join(CHARACTERS_DIR, `${id}a.json`);
             const avatarPath = path.join(CHARACTERS_DIR, `${id}c.json`);
 
             if (!fs.existsSync(basePath) || !fs.existsSync(combatPath)) {
@@ -216,18 +239,21 @@ function main() {
             console.log(`\n📦 Procesando Personaje ${id}...`);
             
             // Paso 1: Normalización de Alineación
-            const normBase = normalizeAtlas(basePath);
-            const normCombat = normalizeAtlas(combatPath);
-            if (normBase || normCombat) {
-                console.log(`  ⚖️  Alineación vertical normalizada.`);
-            }
+            // Omitido para evitar corromper el posicionamiento original en hojas grandes sin trim
+            const comboPath = path.join(CHARACTERS_DIR, `${id}d.json`);
+            const comboExists = fs.existsSync(comboPath);
+            const normBase = false;
+            const normCombat = false;
+            const normCombo = false;
 
             // Paso 2: Mapeo de Animaciones
             const baseAtlas = loadAtlas(basePath);
             const combatAtlas = loadAtlas(combatPath);
             const avatarAtlas = fs.existsSync(avatarPath) ? loadAtlas(avatarPath) : null;
-            
-            const anims = buildAnimBlock(id, baseAtlas, combatAtlas, avatarAtlas);
+            const comboAtlas = comboExists ? loadAtlas(comboPath) : null;
+            if (comboAtlas) console.log(`  🗻  Combo sheet (${id}d.json) detectado.`);
+
+            const anims = buildAnimBlock(id, baseAtlas, combatAtlas, avatarAtlas, comboAtlas);
             blocks.push(animsToString(id, anims));
             console.log(`  ✨ Mapeo completado.`);
 

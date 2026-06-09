@@ -62,3 +62,28 @@ func (h *InventoryHandler) AddTestItem(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{"status": "success", "message": "Item added to inventory"})
 }
+
+func (h *InventoryHandler) UseItem(c *fiber.Ctx) error {
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
+	}
+
+	idStr := c.Params("id")
+	inventoryID, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid inventory ID"})
+	}
+
+	err = h.Service.UseItem(userID, inventoryID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"status": "success", "message": "Item used successfully"})
+}

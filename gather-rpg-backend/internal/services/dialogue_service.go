@@ -169,7 +169,8 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 		fmt.Printf("[DialogueService] Raw AI Response: %s\n", aiRespRaw)
 	}
 
-	if err := json.Unmarshal([]byte(aiRespRaw), &aiResp); err != nil {
+	cleanedJSON := sanitizeJSON(aiRespRaw)
+	if err := json.Unmarshal([]byte(cleanedJSON), &aiResp); err != nil {
 		fmt.Printf("[DialogueService] JSON Unmarshal Error: %v\n", err)
 		// Fallback for non-json
 		aiResp = DialogueResponse{
@@ -392,4 +393,26 @@ func normalizeInput(input string) string {
 	s = strings.Join(strings.Fields(s), " ")
 	
 	return s
+}
+
+func sanitizeJSON(input string) string {
+	cleaned := strings.TrimSpace(input)
+	
+	// 1. Strip markdown wrappers (```json ... ``` or ``` ... ```)
+	if strings.HasPrefix(cleaned, "```") {
+		firstLineEnd := strings.Index(cleaned, "\n")
+		if firstLineEnd != -1 {
+			cleaned = cleaned[firstLineEnd+1:]
+		}
+		if strings.HasSuffix(cleaned, "```") {
+			cleaned = cleaned[:len(cleaned)-3]
+		}
+		cleaned = strings.TrimSpace(cleaned)
+	}
+
+	// 2. Remove trailing commas before closing braces/brackets to avoid strictly unmarshaling errors in standard library
+	reTrailingComma := regexp.MustCompile(`,(\s*[}\]])`)
+	cleaned = reTrailingComma.ReplaceAllString(cleaned, "$1")
+
+	return cleaned
 }

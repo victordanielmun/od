@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS missions (
     objective_en TEXT,
     type mission_type NOT NULL,
     status VARCHAR(20) DEFAULT 'active',
+    difficulty VARCHAR(20) NOT NULL DEFAULT 'beginner',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

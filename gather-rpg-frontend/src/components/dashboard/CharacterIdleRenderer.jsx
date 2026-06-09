@@ -19,12 +19,21 @@ export const CharacterIdleRenderer = ({ characterId = '1', scale = 2.5, classNam
       return;
     }
 
-    const { frames: animationFrames, frameRate } = charConfig.idle;
+    const { frames: animationFrames, frameRate, sheetType = 'base' } = charConfig.idle;
     const interval = 1000 / frameRate;
 
+    // Map sheetType to its corresponding filename suffix
+    const suffixMap = {
+      base: 'b',
+      combat: 'a',
+      avatar: 'c',
+      combo: 'd'
+    };
+    const suffix = suffixMap[sheetType] || 'b';
+
     // Load sprite sheet and JSON atlas
-    const imageUrl = `/characters/${characterId}a.png`;
-    const jsonUrl = `/characters/${characterId}a.json`;
+    const imageUrl = `/characters/${characterId}${suffix}.png`;
+    const jsonUrl = `/characters/${characterId}${suffix}.json`;
 
     setLoading(true);
     setError(null);
@@ -64,9 +73,16 @@ export const CharacterIdleRenderer = ({ characterId = '1', scale = 2.5, classNam
         const canvas = canvasRef.current;
         if (!canvas) return;
 
-        // Set canvas size based on bounding box and scale
-        canvas.width = virtualW * scale;
-        canvas.height = virtualH * scale;
+        // Set canvas size based on bounding box and dynamic scale to fit within ~180px container
+        let finalScale = scale;
+        if (virtualH > 100) {
+          finalScale = 180 / virtualH;
+        } else {
+          finalScale = Math.max(scale, 150 / virtualH);
+        }
+
+        canvas.width = virtualW * finalScale;
+        canvas.height = virtualH * finalScale;
 
         const ctx = canvas.getContext('2d');
         ctx.imageSmoothingEnabled = false;
@@ -89,10 +105,10 @@ export const CharacterIdleRenderer = ({ characterId = '1', scale = 2.5, classNam
             ctx.drawImage(
               image,
               x, y, w, h,
-              xOffset * scale,
-              yOffset * scale,
-              w * scale,
-              h * scale
+              xOffset * finalScale,
+              yOffset * finalScale,
+              w * finalScale,
+              h * finalScale
             );
           }
 

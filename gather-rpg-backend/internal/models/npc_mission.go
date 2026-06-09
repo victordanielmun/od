@@ -130,20 +130,21 @@ type NPCTemplate struct {
 }
 
 type Mission struct {
-	ID            uint        `gorm:"primaryKey" json:"id"`
-	SceneKey      string      `gorm:"size:100;not null" json:"scene_key"`
-	Title         string      `gorm:"size:200;not null" json:"title"`
-	DescriptionEn string      `json:"description_en"`
-	ObjectiveEn   string      `json:"objective_en"`
-	Type            MissionType `gorm:"type:mission_type" json:"type"`
-	Status          string      `gorm:"size:20;default:'active'" json:"status"`
-	Mode            string      `gorm:"size:20;default:'individual'" json:"mode"` // "cooperative", "individual", "competitive"
-	ObjectiveTarget string      `gorm:"size:200" json:"objective_target"`
-	RewardItemID   *uuid.UUID  `gorm:"type:uuid" json:"reward_item_id"`
-	RewardQuantity int         `gorm:"default:0" json:"reward_quantity"`
-	RewardGold     int         `gorm:"default:0" json:"reward_gold"`
-	RewardXP       int         `gorm:"default:0" json:"reward_xp"`
-	CreatedAt     time.Time   `json:"created_at"`
+	ID            uint            `gorm:"primaryKey" json:"id"`
+	SceneKey      string          `gorm:"size:100;not null" json:"scene_key"`
+	Title         string          `gorm:"size:200;not null" json:"title"`
+	DescriptionEn string          `json:"description_en"`
+	ObjectiveEn   string          `json:"objective_en"`
+	Type          MissionType     `gorm:"type:mission_type" json:"type"`
+	Status        string          `gorm:"size:20;default:'active'" json:"status"`
+	Mode          string          `gorm:"size:20;default:'individual'" json:"mode"` // "cooperative", "individual", "competitive"
+	ObjectiveTarget string        `gorm:"size:200" json:"objective_target"`
+	RewardItemID   *uuid.UUID      `gorm:"type:uuid" json:"reward_item_id"`
+	RewardQuantity int             `gorm:"default:0" json:"reward_quantity"`
+	RewardGold     int             `gorm:"default:0" json:"reward_gold"`
+	RewardXP       int             `gorm:"default:0" json:"reward_xp"`
+	Difficulty    DifficultyLevel `gorm:"type:varchar(20);not null;default:'beginner'" json:"difficulty"`
+	CreatedAt     time.Time       `json:"created_at"`
 }
 
 type MissionTask struct {

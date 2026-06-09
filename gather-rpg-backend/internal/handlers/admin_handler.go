@@ -117,6 +117,7 @@ func (h *AdminHandler) SaveMapConfig(c *fiber.Ctx) error {
 	if err == nil {
 		mapDataStr = updatedMapData
 		database.DB.Model(&existing).Update("map_data", mapDataStr)
+		existing.MapData = mapDataStr
 	}
 
 	// Sync Pickups
@@ -249,6 +250,7 @@ func (h *AdminHandler) UpdateMapConfig(c *fiber.Ctx) error {
 		if err == nil {
 			mapDataStr = updatedMapData
 			database.DB.Model(&mapConfig).Update("map_data", mapDataStr)
+			mapConfig.MapData = mapDataStr
 		}
 	}
 
@@ -351,6 +353,14 @@ func (h *AdminHandler) DeleteItem(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(204)
+}
+
+func (h *AdminHandler) ListSkills(c *fiber.Ctx) error {
+	var skills []models.Skill
+	if err := database.DB.Order("name asc").Find(&skills).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(skills)
 }
 
 func (h *AdminHandler) ListEnemies(c *fiber.Ctx) error {
@@ -634,9 +644,13 @@ func (h *AdminHandler) syncMapEnemies(wallsJSON string, currentMapDataJSON strin
 		return "", err
 	}
 
-	var mData models.MapData
+	// Preserve every existing map_data field and only replace the enemies key.
+	// This avoids losing editor metadata like defaultSpawnX/defaultSpawnY/bgmTrack.
+	mData := make(map[string]json.RawMessage)
 	if currentMapDataJSON != "" {
-		_ = json.Unmarshal([]byte(currentMapDataJSON), &mData)
+		if err := json.Unmarshal([]byte(currentMapDataJSON), &mData); err != nil {
+			mData = make(map[string]json.RawMessage)
+		}
 	}
 
 	// Convert editor spawns to model spawns
@@ -646,14 +660,22 @@ func (h *AdminHandler) syncMapEnemies(wallsJSON string, currentMapDataJSON strin
 		
 		// Attempt to look up the template to get the actual sprite/asset ID
 		var tmpl models.NPCTemplate
-		// Check if NPCID is a numeric ID (uint)
-		if id, err := strconv.Atoi(s.NPCID); err == nil {
+		// Check if NPCID is a valid UUID (which matches an Enemy ID)
+		if enemyUUID, err := uuid.Parse(s.NPCID); err == nil {
+			var enemy models.Enemy
+			if err := database.DB.Where("id = ?", enemyUUID).First(&enemy).Error; err == nil {
+				spriteID = enemy.SpriteKey
+			} else {
+				fmt.Printf("[AdminHandler] WARNING: Enemy not found for UUID %s, using default sprite '1'\n", s.NPCID)
+			}
+		} else if id, err := strconv.Atoi(s.NPCID); err == nil {
+			// Check if NPCID is a numeric ID (uint) - legacy fallback
 			if err := database.DB.Preload("NPCDefinition").Where("id = ?", id).First(&tmpl).Error; err == nil {
 				spriteID = tmpl.NPCDefinition.Sprite
 			}
 		} else {
-			// If not a number, it might be a UUID string or something else
-			fmt.Printf("[AdminHandler] WARNING: NPCID %s is not numeric, using default sprite '1'\n", s.NPCID)
+			// If not a number nor a UUID, it might be something else
+			fmt.Printf("[AdminHandler] WARNING: NPCID %s is not numeric nor a valid UUID, using default sprite '1'\n", s.NPCID)
 		}
 
 		spawns = append(spawns, models.EnemySpawn{
@@ -670,7 +692,11 @@ func (h *AdminHandler) syncMapEnemies(wallsJSON string, currentMapDataJSON strin
 		})
 	}
 
-	mData.Enemies = spawns
+	enemyBytes, err := json.Marshal(spawns)
+	if err != nil {
+		return currentMapDataJSON, err
+	}
+	mData["enemies"] = enemyBytes
 	
 	updatedBytes, err := json.Marshal(mData)
 	if err != nil {

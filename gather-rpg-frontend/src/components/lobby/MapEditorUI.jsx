@@ -390,9 +390,20 @@ export const MapEditorUI = ({ gameRef }) => {
   const selectTool = id => { setActiveTool(id); dispatchEditorCommand('setTool', id); };
   const selectTile = id => { 
     setActiveTile(id); 
-    dispatchEditorCommand('setTileType', id); 
-    setActiveTexture('sprite1');
-    dispatchEditorCommand('setTexture', 'sprite1');
+    dispatchEditorCommand('setTileType', id);
+    // Para tipos con atlas propios NO reseteamos a 'sprite1' (que solo existe en el terrain atlas).
+    // Dejamos que el usuario seleccione el sprite, o usamos null para que _placeTileDirect
+    // use su propio frame por defecto (ej. tree1.png para forest).
+    const tilesWithOwnAtlas = ['forest', 'wall', 'build', 'store', 'furniture'];
+    if (!tilesWithOwnAtlas.includes(id)) {
+      setActiveTexture('sprite1');
+      dispatchEditorCommand('setTexture', 'sprite1');
+    } else {
+      // Mantener la textura activa si el usuario ya tenia una seleccionada para ese tipo,
+      // o resetear a null para que _placeTileDirect use el default de cada atlas.
+      setActiveTexture(null);
+      dispatchEditorCommand('setTexture', null);
+    }
   };
   const selectTexture = id => { setActiveTexture(id); dispatchEditorCommand('setTexture', id); };
   const updateMeta = (k, v) => { const m = { ...buildMeta, [k]: v }; setBuildMeta(m); dispatchEditorCommand('setBuildMetadata', m); };

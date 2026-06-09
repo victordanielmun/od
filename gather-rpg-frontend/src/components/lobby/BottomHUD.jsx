@@ -3,12 +3,14 @@ import { useTranslation } from 'react-i18next';
 import { useGameStore } from '../../store/gameStore';
 import { Bell, Home } from 'lucide-react';
 import SettingsMenu from '../common/SettingsMenu';
+import { useDeviceType } from '../../hooks/useDeviceType';
 
 export const BottomHUD = () => {
     const { t } = useTranslation();
-    const { activeChat, chatRequests, currentMapKey } = useGameStore();
+    const { activeChat, chatRequests, currentMapKey, virtualControlsMode } = useGameStore();
     const [menuOpen, setMenuOpen] = useState(false);
     const [initialTab, setInitialTab] = useState('notifications');
+    const { isTouch } = useDeviceType();
 
     const openMenu = (tab = 'notifications') => {
         setInitialTab(tab);
@@ -27,11 +29,16 @@ export const BottomHUD = () => {
 
     const hasNotifications = chatRequests.length > 0 || activeChat;
     const isNotInLobby = currentMapKey && currentMapKey !== 'lobby';
+    const showVirtualControls = virtualControlsMode === 'always' || (virtualControlsMode === 'auto' && isTouch);
+
+    const containerClass = showVirtualControls
+        ? "fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-row gap-3"
+        : "fixed md:bottom-6 md:right-6 bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 z-50 flex flex-row md:flex-col gap-3";
 
     return (
         <>
             {/* HUD Buttons Container */}
-            <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+            <div className={containerClass}>
                 {/* Return to Lobby Button - Only visible when away */}
                 {isNotInLobby && (
                     <button

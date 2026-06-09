@@ -101,6 +101,12 @@ const EnemyCard = ({ enemyDef }) => {
             scale: {
                 mode: Phaser.Scale.FIT,
                 autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            input: {
+                keyboard: false,
+                mouse: false,
+                touch: false,
+                gamepad: false
             }
         });
         gameRef.current = game;

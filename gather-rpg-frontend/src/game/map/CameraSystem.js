@@ -46,5 +46,9 @@ export class CameraSystem {
       cam.startFollow(this.scene.player, true, 0.1, 0.1);
       cam.centerOn(this.scene.player.x, this.scene.player.y);
     }
+
+    if (this.scene.mapManager) {
+      this.scene.mapManager.cameraBoundsDirty = true;
+    }
   }
 }

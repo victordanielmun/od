@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
 import { useGameStore } from '../../store/gameStore';
 import { useNotificationStore } from '../../store/notificationStore';
-import { LogOut, Settings, MessageSquare, Users, ChevronLeft, ChevronRight, User, Send, X, UserPlus, MapPin, Phone, Pin, PinOff, Coins } from 'lucide-react';
+import { LogOut, Settings, MessageSquare, Users, ChevronLeft, ChevronRight, User, Send, X, UserPlus, MapPin, Phone, Pin, PinOff, Coins, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import SettingsMenu from '../common/SettingsMenu';
@@ -27,7 +27,7 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
     // Derived Open State
     const isOpen = isPinned || isHovered;
 
-    const { players, movePlayer, activeChat, sendPrivateMessage, closeChat, chatRequests, acceptChatRequest, rejectChatRequest, sendChatRequest } = useGameStore();
+    const { players, movePlayer, activeChat, sendPrivateMessage, closeChat, chatRequests, acceptChatRequest, rejectChatRequest, sendChatRequest, teleportToFriend, sendRoomInvite } = useGameStore();
     const { addNotification } = useNotificationStore();
 
     const [chatInput, setChatInput] = useState("");
@@ -147,10 +147,20 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
     const handleRejectRequest = async (id) => { try { await api.post(`/friends/requests/${id}/reject`); refreshFriends(); } catch (e) { } };
     const handleRemoveFriend = async (id) => { try { await api.delete(`/friends/${id}`); refreshFriends(); } catch (e) { } };
     const handleAddFriendFromChat = async () => { if (activeChat) { try { await api.post('/friends/requests', { target_username: activeChat.partner_name }); refreshFriends(); } catch (e) { } } };
-    const handleTeleportToFriend = (id) => {
-        const f = players.get(String(id));
-        if (f && movePlayer) movePlayer(Number(f.x), Number(f.y));
-    }
+    const handleTeleportToFriend = (friend) => {
+        const isLocal = players.has(String(friend.id));
+        if (isLocal) {
+            const f = players.get(String(friend.id));
+            if (f && movePlayer) movePlayer(Number(f.x), Number(f.y));
+        } else {
+            teleportToFriend(friend.id);
+        }
+    };
+
+    const handleInviteFriend = (friend) => {
+        sendRoomInvite(friend.id);
+        addNotification('success', `¡Invitación enviada a ${friend.username}!`);
+    };
     const handleCallFriend = async (id) => {
         const myId = String(user?.id || '');
         const otherId = String(id || '');
@@ -163,7 +173,7 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
 
     // Sidebar is always rendered but translated off-screen if closed
     const sidebarClass = `fixed top-0 left-0 h-full w-80 bg-black/60 backdrop-blur-xl border-r border-white/10 flex flex-col shadow-[10px_0_40px_rgba(0,0,0,0.8)] transition-transform duration-300 z-40 ${isOpen ? 'translate-x-0' : '-translate-x-full'
-        } relative overflow-y-auto overflow-x-hidden custom-scrollbar`;
+        } overflow-y-auto overflow-x-hidden custom-scrollbar pointer-events-auto`;
 
     // Toggle Button (Visible when closed)
     // We put a transparent trigger zone on the left edge to hover-open?
@@ -174,7 +184,7 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
             {/* Hover Trigger Zone (Left Edge) */}
             {!isPinned && !isOpen && (
                 <div
-                    className="fixed top-0 left-0 w-4 h-full z-50 hover:bg-white/5 transition-colors"
+                    className="fixed top-0 left-0 w-4 h-full z-50 hover:bg-white/5 transition-colors pointer-events-auto"
                     onMouseEnter={() => setIsHovered(true)}
                 />
             )}
@@ -187,7 +197,7 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
                         setIsPinned(true);
                         if (initialToggle) initialToggle();
                     }}
-                    className="fixed top-20 left-4 z-40 bg-black/60 backdrop-blur-md border border-white/10 text-yellow-400 p-2.5 rounded-xl hover:bg-white/10 hover:border-yellow-500/50 transition shadow-xl flex items-center gap-2 cursor-pointer"
+                    className="fixed top-20 left-4 z-40 bg-black/60 backdrop-blur-md border border-white/10 text-yellow-400 p-2.5 rounded-xl hover:bg-white/10 hover:border-yellow-500/50 transition shadow-xl flex items-center gap-2 cursor-pointer pointer-events-auto"
                 >
                     <ChevronRight size={20} />
                     {unreadCount > 0 && (
@@ -418,7 +428,8 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
                                             <span className="text-xs text-gray-200 group-hover:text-yellow-400 transition-colors truncate">{f.username}</span>
                                         </div>
                                         <div className="flex gap-2">
-                                            <button disabled={!players.has(String(f.id))} onClick={() => handleTeleportToFriend(f.id)} className="text-gray-400 hover:text-yellow-400 disabled:opacity-10 transition-colors cursor-pointer"><MapPin size={14} /></button>
+                                            <button disabled={!f.is_online} onClick={() => handleTeleportToFriend(f)} className="text-gray-400 hover:text-yellow-400 disabled:opacity-10 transition-colors cursor-pointer" title={t('lobby.sidebar.teleport') || "Teleport"}><MapPin size={14} /></button>
+                                            <button disabled={!f.is_online} onClick={() => handleInviteFriend(f)} className="text-gray-400 hover:text-yellow-400 disabled:opacity-10 transition-colors cursor-pointer" title={t('lobby.sidebar.invite_to_room') || "Invite to room"}><Mail size={14} /></button>
                                             <button onClick={() => sendChatRequest(f.id)} className="text-gray-400 hover:text-yellow-400 transition-colors cursor-pointer" title={t('lobby.sidebar.chat_request')}><MessageSquare size={14} /></button>
                                             <button onClick={() => handleCallFriend(f.id)} className="text-gray-400 hover:text-white transition-colors cursor-pointer" title={t('lobby.sidebar.call_friend')}><Phone size={14} /></button>
                                             <button onClick={() => handleRemoveFriend(f.id)} className="text-red-400 hover:text-red-300 transition-colors cursor-pointer"><X size={14} /></button>

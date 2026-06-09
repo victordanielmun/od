@@ -192,28 +192,47 @@ export class PlayerManager {
     const dy = player.y - sprite.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    // TAREA 5: Reproducir animaciones de combate recibidas por red
-    const combatAnims = ['slash', 'hurt', 'die'];
-    if (combatAnims.includes(player.anim)) {
-      // EVITAR LOOP: Solo disparar si es un estado nuevo
+    // Reproducir animaciones de combate/acción recibidas por red.
+    // Mapa: nombre de animación → duración de lock en ms
+    const COMBAT_ANIM_LOCKS = {
+      // Combos (sheet 1b fila 1-3)
+      combo1:       450,
+      combo2:       500,
+      combo3:       600,
+      // Habilidades (sheet 1b fila 4-5)
+      special:      1200,
+      projectile:   600,
+      // Acciones base (sheet 1a)
+      potion:       900,
+      block:        0,    // continua mientras dure el estado
+      // Reacciones
+      hurt:         350,
+      dead:         2000,
+      // Legacy: nombres que puedan venir del backend antiguo
+      slash:        500,
+      die:          2000,
+    };
+
+    if (player.anim in COMBAT_ANIM_LOCKS) {
+      // EVITAR LOOP: Solo disparar si cambió el estado
       if (sprite._networkAnim !== player.anim) {
-          const lockDur = player.anim === 'hurt' ? 400 : 500;
-          sprite.playAnimation(player.anim, lockDur);
-          
-          // Auto-recuperar la animación base al terminar el combate
-          if (player.anim !== 'die') {
-              sprite.scene.time.delayedCall(lockDur, () => {
-                  sprite._animLocked = false;
-                  if (sprite._pendingMovementAnim) {
-                      sprite.playAnimation(sprite._pendingMovementAnim);
-                  }
-              });
-          }
+        const lockDur = COMBAT_ANIM_LOCKS[player.anim];
+        sprite.playAnimation(player.anim, lockDur);
+
+        // Auto-recuperar la animación base al terminar el combate (excepto dead/die)
+        const isPermanent = player.anim === 'dead' || player.anim === 'die';
+        if (!isPermanent && lockDur > 0) {
+          sprite.scene.time.delayedCall(lockDur, () => {
+            sprite._animLocked = false;
+            sprite.playAnimation(sprite._pendingMovementAnim || 'idle');
+          });
+        }
+        // 'block' con lock=0 se mantiene hasta que cambie el anim
       }
     } else {
       sprite._pendingMovementAnim = (player.anim === 'walk' || dist > 2) ? 'walk' : 'idle';
       if (!sprite._animLocked) {
-          sprite.playAnimation(sprite._pendingMovementAnim);
+        sprite.playAnimation(sprite._pendingMovementAnim);
       }
     }
     sprite._networkAnim = player.anim;

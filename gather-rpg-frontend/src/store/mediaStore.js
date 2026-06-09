@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { streamManager } from '../services/webrtc/StreamManager';
+import wsClient from '../services/websocket';
 
 export const useMediaStore = create((set, get) => ({
   localStream: null,
@@ -35,6 +36,8 @@ export const useMediaStore = create((set, get) => ({
     const newState = !isAudioEnabled;
     streamManager.toggleAudio(newState);
     set({ isAudioEnabled: newState });
+    // Notify all room participants of our mute state so they can show the mute indicator
+    wsClient.send('audio_mute_state', { is_muted: !newState });
   },
 
   stopMedia: () => {

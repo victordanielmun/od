@@ -83,11 +83,22 @@ func (s *WhatsAppSchedulerService) RunScheduler() {
 		var reminderType models.WAReminderType
 
 		if isActive {
-			// Case A: Active User -> Fetch random Learning Challenge tagged with 'whatsapp'
+			// Fetch player's english level
+			var profile models.UserLearningProfile
+			level := models.DifficultyBeginner
+			if err = database.DB.Where("user_id = ?", contact.UserID).First(&profile).Error; err == nil {
+				level = profile.EnglishLevel
+			}
+
+			// Case A: Active User -> Fetch random Learning Challenge tagged with 'whatsapp' matching their level
 			var challenge models.LearningChallenge
-			err = database.DB.Where("? = ANY(tags)", "whatsapp").Order("RANDOM()").First(&challenge).Error
+			err = database.DB.Where("? = ANY(tags) AND difficulty = ?", "whatsapp", level).Order("RANDOM()").First(&challenge).Error
 			if err != nil {
-				// Fallback: fetch any random learning challenge
+				// Fallback 1: fetch any random learning challenge matching their level
+				err = database.DB.Where("difficulty = ?", level).Order("RANDOM()").First(&challenge).Error
+			}
+			if err != nil {
+				// Fallback 2: fetch any random learning challenge
 				err = database.DB.Order("RANDOM()").First(&challenge).Error
 			}
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import api from '../services/api';
+import { CHARACTER_CONFIG } from '../game/config/CharacterConfig';
 
 const getUserFromToken = (token) => {
   try {
@@ -65,7 +66,8 @@ export const useAuthStore = create((set, get) => ({
   loginGuest: async () => {
     set({ isLoading: true, error: null });
     try {
-      const response = await api.post('/auth/guest');
+      const characterIds = CHARACTER_CONFIG.characters.map(c => c.id);
+      const response = await api.post('/auth/guest', { character_ids: characterIds });
       const { token, user } = response.data;
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));

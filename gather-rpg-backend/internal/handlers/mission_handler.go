@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/services"
+	"net/http"
 	"strconv"
+	"time"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
@@ -17,6 +20,19 @@ type MissionHandler struct {
 
 func NewMissionHandler(service *services.MissionService) *MissionHandler {
 	return &MissionHandler{Service: service}
+}
+
+func levelToInt(l models.DifficultyLevel) int {
+	switch l {
+	case models.DifficultyBeginner:
+		return 1
+	case models.DifficultyIntermediate:
+		return 2
+	case models.DifficultyAdvanced:
+		return 3
+	default:
+		return 1
+	}
 }
 
 func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
@@ -32,6 +48,25 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 		return c.JSON(missions)
 	}
 	userID, _ := uuid.Parse(userIDStr)
+
+	// Fetch player's english level
+	var profile models.UserLearningProfile
+	playerLevel := models.DifficultyBeginner
+	if err := database.DB.Where("user_id = ?", userID).First(&profile).Error; err == nil {
+		playerLevel = profile.EnglishLevel
+	}
+
+	// Filter missions by player level
+	filteredMissions := make([]models.Mission, 0)
+	for _, m := range missions {
+		if levelToInt(m.Difficulty) <= levelToInt(playerLevel) {
+			filteredMissions = append(filteredMissions, m)
+		}
+	}
+	missions = filteredMissions
+	// #region debug-point M1:missions-by-scene-filtered
+	_, _ = http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewBufferString(fmt.Sprintf(`{"sessionId":"mission-not-completing","runId":"pre-fix","hypothesisId":"H1","location":"mission_handler.go:GetMissionsByScene:filtered","msg":"[DEBUG] missions filtered for scene","data":{"sceneKey":"%s","userId":"%s","playerLevel":"%s","missionCount":%d},"ts":%d}`, sceneKey, userID.String(), playerLevel, len(missions), timeNowMillis())))
+	// #endregion
 
 	type TaskWithStatus struct {
 		ID            uint   `json:"id"`
@@ -55,6 +90,9 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 	for _, m := range missions {
 		tasks, _ := h.Service.GetTasks(m.ID)
 		progress, _ := h.Service.GetProgress(userID, m.ID)
+		// #region debug-point M2:missions-by-scene-progress
+		_, _ = http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewBufferString(fmt.Sprintf(`{"sessionId":"mission-not-completing","runId":"pre-fix","hypothesisId":"H2","location":"mission_handler.go:GetMissionsByScene:progress","msg":"[DEBUG] mission progress loaded for scene","data":{"sceneKey":"%s","missionId":%d,"taskCount":%d,"progressNil":%t},"ts":%d}`, sceneKey, m.ID, len(tasks), progress == nil, timeNowMillis())))
+		// #endregion
 		
 		var completedMap map[string]bool
 		if progress != nil && progress.TasksCompleted != nil {
@@ -110,6 +148,10 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 
 	return c.JSON(result)
 }
+
+func timeNowMillis() int64 {
+	return time.Now().UnixMilli()
+}
 func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 	tmplIDStr := c.Params("id")
 	uID, _ := strconv.ParseUint(tmplIDStr, 10, 32)
@@ -142,6 +184,22 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 	}
 	userID, _ := uuid.Parse(userIDStr)
+
+	// Fetch player's english level
+	var profile models.UserLearningProfile
+	playerLevel := models.DifficultyBeginner
+	if err := database.DB.Where("user_id = ?", userID).First(&profile).Error; err == nil {
+		playerLevel = profile.EnglishLevel
+	}
+
+	// Filter missions by player level
+	filteredMissions := make([]models.Mission, 0)
+	for _, m := range missions {
+		if levelToInt(m.Difficulty) <= levelToInt(playerLevel) {
+			filteredMissions = append(filteredMissions, m)
+		}
+	}
+	missions = filteredMissions
 
 	type MissionSummary struct {
 		ID                uint   `json:"id"`

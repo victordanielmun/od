@@ -5,6 +5,7 @@ import (
 
 	"gather-rpg-backend/internal/models"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -242,6 +243,178 @@ func SeedGuides() {
 		log.Printf("[Seed] ✅ Seeded %d guide NPCs", seededCount)
 	} else {
 		log.Println("[Seed] Guide NPCs already exist, skipping")
+	}
+}
+
+// SeedSkillsAndItems populates the database with initial skills and corresponding scroll items.
+func SeedSkillsAndItems() {
+	// 1. Seed initial skills
+	fireRainID := uuid.MustParse("f1a8c3d8-88ff-4dcb-886c-6120a1c7a2cf")
+	fireRainSkill := models.Skill{
+		ID:            fireRainID,
+		Name:          "Fire Rain",
+		Description:   "Conjura una lluvia de fuego del cielo que daña a todos los enemigos.",
+		SkillType:     "attack",
+		MPCost:        15,
+		Power:         120,
+		TargetType:    "enemy",
+		RequiredLevel: 1,
+		AnimationKey:  "special",
+	}
+	var count int64
+	DB.Model(&models.Skill{}).Where("id = ?", fireRainID).Count(&count)
+	if count == 0 {
+		DB.Create(&fireRainSkill)
+		log.Println("[Seed] Seeded skill 'Fire Rain'")
+	}
+
+	waveID := uuid.MustParse("f1a8c3d8-88ff-4dcb-886c-6120a1c7a2d0")
+	waveSkill := models.Skill{
+		ID:            waveID,
+		Name:          "Wave",
+		Description:   "Conjura una ola mágica horizontal que empuja y barre a los enemigos.",
+		SkillType:     "attack",
+		MPCost:        25,
+		Power:         250,
+		TargetType:    "enemy",
+		RequiredLevel: 1,
+		AnimationKey:  "special",
+	}
+	DB.Model(&models.Skill{}).Where("id = ?", waveID).Count(&count)
+	if count == 0 {
+		DB.Create(&waveSkill)
+		log.Println("[Seed] Seeded skill 'Wave'")
+	}
+
+	novaID := uuid.MustParse("f1a8c3d8-88ff-4dcb-886c-6120a1c7a2d1")
+	novaSkill := models.Skill{
+		ID:            novaID,
+		Name:          "Nova",
+		Description:   "Conjura una explosión radial de energía desde el jugador.",
+		SkillType:     "attack",
+		MPCost:        40,
+		Power:         400,
+		TargetType:    "enemy",
+		RequiredLevel: 1,
+		AnimationKey:  "special",
+	}
+	DB.Model(&models.Skill{}).Where("id = ?", novaID).Count(&count)
+	if count == 0 {
+		DB.Create(&novaSkill)
+		log.Println("[Seed] Seeded skill 'Nova'")
+	}
+
+	// 2. Seed corresponding scroll items
+	scrollID := uuid.MustParse("bfd1359a-b574-45a1-9b55-adc7330a788c")
+	fireRainScroll := models.Item{
+		ID:            scrollID,
+		Name:          "Scroll of Fire Rain",
+		Description:   "Un pergamino antiguo que contiene el hechizo Lluvia de Fuego. Úsalo para aprender la habilidad.",
+		ItemType:      "scroll",
+		EffectType:    "grant_skill",
+		EffectValue:   0,
+		Price:         50,
+		MaxStack:      10,
+		IconKey:       "3.png",
+		GrantsSkillID: &fireRainID,
+	}
+	DB.Model(&models.Item{}).Where("id = ?", scrollID).Count(&count)
+	if count == 0 {
+		DB.Create(&fireRainScroll)
+		log.Println("[Seed] Seeded item 'Scroll of Fire Rain'")
+	}
+
+	waveScrollID := uuid.MustParse("bfd1359a-b574-45a1-9b55-adc7330a788d")
+	waveScroll := models.Item{
+		ID:            waveScrollID,
+		Name:          "Scroll of Wave",
+		Description:   "Un pergamino antiguo que contiene el hechizo Ola Mágica. Úsalo para aprender la habilidad.",
+		ItemType:      "scroll",
+		EffectType:    "grant_skill",
+		EffectValue:   0,
+		Price:         75,
+		MaxStack:      10,
+		IconKey:       "3.png",
+		GrantsSkillID: &waveID,
+	}
+	DB.Model(&models.Item{}).Where("id = ?", waveScrollID).Count(&count)
+	if count == 0 {
+		DB.Create(&waveScroll)
+		log.Println("[Seed] Seeded item 'Scroll of Wave'")
+	}
+
+	novaScrollID := uuid.MustParse("bfd1359a-b574-45a1-9b55-adc7330a788e")
+	novaScroll := models.Item{
+		ID:            novaScrollID,
+		Name:          "Scroll of Nova",
+		Description:   "Un pergamino antiguo que contiene el hechizo Nova Radial. Úsalo para aprender la habilidad.",
+		ItemType:      "scroll",
+		EffectType:    "grant_skill",
+		EffectValue:   0,
+		Price:         100,
+		MaxStack:      10,
+		IconKey:       "3.png",
+		GrantsSkillID: &novaID,
+	}
+	DB.Model(&models.Item{}).Where("id = ?", novaScrollID).Count(&count)
+	if count == 0 {
+		DB.Create(&novaScroll)
+		log.Println("[Seed] Seeded item 'Scroll of Nova'")
+	}
+
+	// 3. Seed default potions if they don't exist
+	potionID := uuid.MustParse("bfd1359a-b574-45a1-9b55-adc7330a788f")
+	potion := models.Item{
+		ID:            potionID,
+		Name:          "Health Potion",
+		Description:   "Restores 50 HP",
+		ItemType:      "health",
+		EffectType:    "heal_hp",
+		EffectValue:   50,
+		Price:         10,
+		MaxStack:      10,
+		IconKey:       "2.png",
+	}
+	DB.Model(&models.Item{}).Where("id = ?", potionID).Count(&count)
+	if count == 0 {
+		DB.Create(&potion)
+		log.Println("[Seed] Seeded item 'Health Potion'")
+	}
+
+	manaPotionID := uuid.MustParse("bfd1359a-b574-45a1-9b55-adc7330a7890")
+	manaPotion := models.Item{
+		ID:            manaPotionID,
+		Name:          "Mana Potion",
+		Description:   "Restores 30 MP",
+		ItemType:      "mana",
+		EffectType:    "restore_mp",
+		EffectValue:   30,
+		Price:         15,
+		MaxStack:      10,
+		IconKey:       "4.png",
+	}
+	DB.Model(&models.Item{}).Where("id = ?", manaPotionID).Count(&count)
+	if count == 0 {
+		DB.Create(&manaPotion)
+		log.Println("[Seed] Seeded item 'Mana Potion'")
+	}
+
+	throwingDaggerID := uuid.MustParse("bfd1359a-b574-45a1-9b55-adc7330a7891")
+	throwingDagger := models.Item{
+		ID:            throwingDaggerID,
+		Name:          "Throwing Dagger",
+		Description:   "Inflige 28 de daño al ser arrojada.",
+		ItemType:      "throwable",
+		EffectType:    "damage",
+		EffectValue:   28,
+		Price:         8,
+		MaxStack:      20,
+		IconKey:       "5.png",
+	}
+	DB.Model(&models.Item{}).Where("id = ?", throwingDaggerID).Count(&count)
+	if count == 0 {
+		DB.Create(&throwingDagger)
+		log.Println("[Seed] Seeded item 'Throwing Dagger'")
 	}
 }
 

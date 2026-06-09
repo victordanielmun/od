@@ -1,3 +1,4 @@
+import * as Phaser from 'phaser';
 import { NPCSprite } from './NPCSprite';
 import { ENEMY_CONFIG } from '../config/EnemyConfig';
 
@@ -169,12 +170,18 @@ export default class EnemySprite extends NPCSprite {
   _changeState(newState) {
     if (this.fsm === newState) return;
 
-    // EVITAR LOOP: Si está atacando, no interrumpir con chase/idle hasta terminar
-    if (this.fsm === STATES.ATTACK && (newState === STATES.CHASE || newState === STATES.IDLE)) {
-        const attackAnim = `enemy-${this.npcId}-${this._resolveAnim(STATES.ATTACK)}`;
-        if (this.sprite.anims.currentAnim && this.sprite.anims.currentAnim.key === attackAnim) {
-            return;
-        }
+    // HURT / KNOCKED / DEAD siempre interrumpen cualquier estado (incluido ATTACK)
+    const isInterrupt = (
+      newState === STATES.HURT ||
+      newState === STATES.KNOCKED ||
+      newState === STATES.DEAD
+    );
+
+    // Solo proteger la transición attack→chase/idle (no interrumpir el swing)
+    if (!isInterrupt && this.fsm === STATES.ATTACK &&
+        (newState === STATES.CHASE || newState === STATES.IDLE)) {
+      const attackAnim = `enemy-${this.npcId}-${this._resolveAnim(STATES.ATTACK)}`;
+      if (this.sprite.anims.currentAnim?.key === attackAnim) return;
     }
 
     this.fsm = newState;
@@ -204,6 +211,13 @@ export default class EnemySprite extends NPCSprite {
   // ─── Recibir daño (llamado desde HitboxSystem) ───────────────────────────
   takeDamage(amount, knockbackVec) {
     if (this.fsm === STATES.DEAD) return;
+    // También ignorar golpes mientras ya está en HURT (salvo que sea DEAD)
+    if (this.fsm === STATES.HURT || this.fsm === STATES.KNOCKED) {
+      // Acumular daño pero no re-triggear la animación
+      this.hp -= amount;
+      if (this.hp <= 0) this._changeState(STATES.DEAD);
+      return;
+    }
 
     this.hp -= amount;
 
@@ -215,6 +229,12 @@ export default class EnemySprite extends NPCSprite {
     // Golpe fuerte → knocked (vuela), golpe normal → hurt
     const isStrong = amount >= (this.config?.knockThreshold ?? 20);
     this._changeState(isStrong ? STATES.KNOCKED : STATES.HURT);
+
+    // T03: Reset cooldown → no puede atacar inmediatamente al recuperarse
+    this.attackCooldown = (this.config?.attackRate ?? 1200) * 0.8;
+
+    // T02: Parar inmediatamente antes del knockback
+    if (this.body) this.body.setVelocity(0, 0);
 
     if (knockbackVec && this.body) {
       const force = isStrong ? 400 : 200;
@@ -288,20 +308,15 @@ export default class EnemySprite extends NPCSprite {
         break;
 
       case STATES.HURT:
-        // Frena progresivamente mientras dura la animación de hurt
-        if (this.body) {
-          this.body.setVelocity(
-            this.body.velocity.x * 0.85,
-            this.body.velocity.y * 0.85
-          );
-        }
+        // T02: Inmovilización total — no puede moverse ni atacar
+        if (this.body) this.body.setVelocity(0, 0);
         if (this.stateTimer <= 0) {
           this._changeState(STATES.CHASE);
         }
         break;
 
       case STATES.KNOCKED:
-        // Deslizamiento más largo (ya tiene velocidad del knockback)
+        // Deslizamiento decelerado del knockback (tiene velocidad inicial)
         if (this.body) {
           this.body.setVelocity(
             this.body.velocity.x * 0.88,
@@ -331,6 +346,46 @@ export default class EnemySprite extends NPCSprite {
       this.x, this.y,
       this.target.x, this.target.y
     );
+  }
+
+  isTargetInAttackRange(target = this.target, padding = 0) {
+    if (!target || !target.active) return false;
+
+    const getBodyCenter = (obj) => {
+      const body = obj?.body;
+      if (body) {
+        return {
+          x: body.position.x + body.halfWidth,
+          y: body.position.y + body.halfHeight,
+        };
+      }
+      return { x: obj.x, y: obj.y };
+    };
+
+    const getCombatRadius = (obj, fallback = 25) => {
+      const body = obj?.body;
+      if (body) return Math.max(body.halfWidth, body.halfHeight);
+      return fallback;
+    };
+
+    const selfCenter = getBodyCenter(this);
+    const targetCenter = getBodyCenter(target);
+    const selfRadius = getCombatRadius(this, 30);
+    const targetRadius = getCombatRadius(target, 25);
+
+    const centerDistance = Phaser.Math.Distance.Between(
+      selfCenter.x, selfCenter.y,
+      targetCenter.x, targetCenter.y
+    );
+    const edgeGap = centerDistance - (selfRadius + targetRadius);
+    const verticalGap = Math.abs(selfCenter.y - targetCenter.y);
+    const horizontalGap = Math.abs(selfCenter.x - targetCenter.x) - (selfRadius + targetRadius);
+
+    // Usamos la distancia entre bordes de hitbox, no entre centros de container.
+    // Eso hace que el rango se sienta natural aunque los sprites usen offsets distintos.
+    const extraReach = Math.max(10, (this.config?.attackRange ?? 70) * 0.35) + padding;
+
+    return verticalGap <= 70 && horizontalGap <= extraReach + 18 && edgeGap <= extraReach;
   }
 
   _moveTowardTarget() {
@@ -370,6 +425,7 @@ export default class EnemySprite extends NPCSprite {
 
     // Guard: no atacar si no hay target válido (y somos nosotros)
     if (!this.target || !this.target.active) return;
+    if (!this.isTargetInAttackRange(this.target, 8)) return;
 
     if (this._attackHitDealt) return;
     this._attackHitDealt = true;

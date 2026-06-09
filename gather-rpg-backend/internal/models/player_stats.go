@@ -45,19 +45,20 @@ type PlayerSkill struct {
 }
 
 type Item struct {
-	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	Name         string    `json:"name"`
-	Description  string    `json:"description"`
-	ItemType     string    `json:"item_type"`   // "consumable", "equipment", "throwable", "weapon", "defense", "mission_item"
-	EffectType   string    `json:"effect_type"` // "heal_hp", "restore_mp", "revive", "none"
-	EffectValue  int       `json:"effect_value"`
-	AttackBonus  int       `json:"attack_bonus"`
-	DefenseBonus int       `json:"defense_bonus"`
-	RequiredLevel int      `json:"required_level"`
-	Price        int       `json:"price"`
-	MaxStack     int       `json:"max_stack"`
-	IconKey      string    `json:"icon_key"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID            uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Name          string     `json:"name"`
+	Description   string     `json:"description"`
+	ItemType      string     `json:"item_type"`   // "consumable", "equipment", "throwable", "weapon", "defense", "mission_item", "scroll"
+	EffectType    string     `json:"effect_type"` // "heal_hp", "restore_mp", "revive", "grant_skill", "none"
+	EffectValue   int        `json:"effect_value"`
+	AttackBonus   int        `json:"attack_bonus"`
+	DefenseBonus  int        `json:"defense_bonus"`
+	RequiredLevel int        `json:"required_level"`
+	Price         int        `json:"price"`
+	MaxStack      int        `json:"max_stack"`
+	IconKey       string     `json:"icon_key"`
+	GrantsSkillID *uuid.UUID `gorm:"type:uuid" json:"grants_skill_id,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
 }
 
 type Inventory struct {

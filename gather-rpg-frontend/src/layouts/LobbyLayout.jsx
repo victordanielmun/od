@@ -19,12 +19,16 @@ import MissionTracker from '../components/game/MissionTracker';
 import { NinjaCardHUD } from '../components/combat/NinjaCardHUD';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { VirtualArcadeControls } from '../components/lobby/VirtualArcadeControls';
+import { useDeviceType } from '../hooks/useDeviceType';
 
 export const LobbyLayout = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const logout = useAuthStore(state => state.logout);
   const user = useAuthStore(state => state.user);
+  const { isTouch } = useDeviceType();
+  const virtualControlsMode = useGameStore(state => state.virtualControlsMode);
 
   const [rpgStats, setRpgStats] = useState(null);
 
@@ -56,7 +60,20 @@ export const LobbyLayout = () => {
   const [challengeChatInput, setChallengeChatInput] = useState('');
   const [npcData, setNpcData] = useState(null);
   const [showMissionBanner, setShowMissionBanner] = useState(false);
+  const lastShownMissionIdRef = useRef(null);
   const challengeMessagesEndRef = useRef(null);
+
+  // ── Canvas Input Focus Management ─────────────────────────────────────────
+  // Dispatch phaser-disable-input when any React overlay/modal is open so that
+  // the Phaser canvas stops consuming keyboard events (SPACE, L, J, K, etc.)
+  useEffect(() => {
+    const hasOverlay = !!(activeOverlay || isRoomModalOpen || isSidebarOpen);
+    if (hasOverlay) {
+      window.dispatchEvent(new CustomEvent('phaser-disable-input'));
+    } else {
+      window.dispatchEvent(new CustomEvent('phaser-enable-input'));
+    }
+  }, [activeOverlay, isRoomModalOpen, isSidebarOpen]);
 
   const activeChallengeId = useGameStore(state => state.activeChallengeId);
   const challengeParticipants = useGameStore(state => state.challengeParticipants);
@@ -174,15 +191,32 @@ export const LobbyLayout = () => {
 
   // Improved Mission Banner Logic: Show when mission data arrives AND game is ready
   useEffect(() => {
+    if (activeMission && !activeOverlay && currentSceneKey !== 'lobby') {
+      const missionId = activeMission.id || activeMission.title;
+      if (lastShownMissionIdRef.current !== missionId) {
+        lastShownMissionIdRef.current = missionId;
+        setShowMissionBanner(true);
+      }
+    } else {
+      setShowMissionBanner(false);
+      if (!activeMission) {
+        lastShownMissionIdRef.current = null;
+      }
+    }
+  }, [activeMission, activeOverlay, currentSceneKey]);
+
+  // Handle the auto-hide timer when showMissionBanner is activated
+  useEffect(() => {
     let timer;
-    if (activeMission && !activeOverlay) {
-      setShowMissionBanner(true);
-      timer = setTimeout(() => setShowMissionBanner(false), 6000);
+    if (showMissionBanner) {
+      timer = setTimeout(() => {
+        setShowMissionBanner(false);
+      }, 3000);
     }
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [activeMission, activeOverlay]);
+  }, [showMissionBanner]);
 
 
   const gameRef = useRef(null); // Add ref to control game from UI
@@ -194,6 +228,11 @@ export const LobbyLayout = () => {
     window.addEventListener('editor-mode-changed', onEditorMode);
     return () => window.removeEventListener('editor-mode-changed', onEditorMode);
   }, []);
+
+  const showVirtualControls = !isEditorMode && (
+    virtualControlsMode === 'always' ||
+    (virtualControlsMode === 'auto' && isTouch)
+  );
 
   return (
     <div className="h-screen w-screen bg-gray-950 overflow-hidden relative font-sans selection:bg-yellow-500 selection:text-black">
@@ -229,6 +268,9 @@ export const LobbyLayout = () => {
         </div>
       </div>
 
+      {/* Virtual Controls Overlay */}
+      {showVirtualControls && <VirtualArcadeControls />}
+
       {/* Notification Layer (Z-Index 100) */}
       <NotificationContainer />
 
@@ -237,7 +279,7 @@ export const LobbyLayout = () => {
       <NinjaCardHUD />
 
       {/* Mission Welcome Banner */}
-      {showMissionBanner && activeMission && (
+      {showMissionBanner && activeMission && currentSceneKey !== 'lobby' && (
         <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-top-10 duration-1000 pointer-events-none">
           <div className="bg-black/60 backdrop-blur-xl border-t-4 border-b-4 border-yellow-500/50 p-8 shadow-[0_0_50px_rgba(234,179,8,0.3)] flex flex-col items-center min-w-[500px] rounded-2xl">
             <div className="text-yellow-500 font-extrabold text-xs uppercase tracking-[0.5em] mb-2 opacity-80">Aventura Iniciada</div>
@@ -309,13 +351,11 @@ export const LobbyLayout = () => {
       {/* Sidebar Layer — hidden in editor mode */}
       {!isEditorMode && (
         <div className="absolute top-0 left-0 h-full z-30 pointer-events-none">
-          <div className="pointer-events-auto h-full">
-            <Sidebar 
-              isOpen={isSidebarOpen} 
-              toggle={() => setIsSidebarOpen(!isSidebarOpen)} 
-              rpgStats={rpgStats}
-            />
-          </div>
+          <Sidebar
+            isOpen={isSidebarOpen}
+            toggle={() => setIsSidebarOpen(!isSidebarOpen)}
+            rpgStats={rpgStats}
+          />
         </div>
       )}
 
@@ -381,11 +421,11 @@ export const LobbyLayout = () => {
                 <div className="flex items-center gap-2">
                   {activeChallengeId && (
                     <button
-                       onClick={leaveChallenge}
-                       className="bg-orange-700 hover:bg-orange-600 text-white px-4 py-2 rounded shadow transition pointer-events-auto"
-                     >
-                       {t('lobby.challenge.leave')}
-                     </button>
+                      onClick={leaveChallenge}
+                      className="bg-orange-700 hover:bg-orange-600 text-white px-4 py-2 rounded shadow transition pointer-events-auto"
+                    >
+                      {t('lobby.challenge.leave')}
+                    </button>
                   )}
                   {!activeChallengeId && (
                     <button
@@ -481,10 +521,10 @@ export const LobbyLayout = () => {
                     <CharacterSelector onSelect={() => setActiveOverlay(null)} />
                   </div>
                 )}
-                
+
                 {activeOverlay === 'npc_dialogue' && npcData && (
-                  <NPCDialogue 
-                    npcData={npcData} 
+                  <NPCDialogue
+                    npcData={npcData}
                     onClose={() => {
                       setActiveOverlay(null);
                       setNpcData(null);
@@ -493,9 +533,9 @@ export const LobbyLayout = () => {
                 )}
                 {activeOverlay === 'route' && (
                   <div className="w-full h-full flex flex-col pt-6">
-                    <iframe 
-                      src={routeUrl} 
-                      className="w-full flex-grow border-0 rounded-lg min-h-[70vh]" 
+                    <iframe
+                      src={routeUrl}
+                      className="w-full flex-grow border-0 rounded-lg min-h-[70vh]"
                       title={t('lobby.overlays.route_viewer')}
                     />
                   </div>

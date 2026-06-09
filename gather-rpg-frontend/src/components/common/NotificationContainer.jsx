@@ -23,10 +23,32 @@ export const NotificationContainer = () => {
             {notification.type === 'error' && <AlertCircle size={18} />}
             {notification.type === 'info' && <Info size={18} />}
           </div>
-          <p className="text-sm flex-1">{notification.message}</p>
+          <div className="flex-grow min-w-0">
+            <p className="text-sm">{notification.message}</p>
+            {notification.actions && notification.actions.length > 0 && (
+              <div className="flex gap-2 mt-2.5 pt-2.5 border-t border-white/10 w-full pointer-events-auto">
+                {notification.actions.map((action, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      action.onClick();
+                      removeNotification(notification.id);
+                    }}
+                    className={`px-3 py-1.5 rounded text-[10px] uppercase tracking-wider font-extrabold transition cursor-pointer ${
+                      action.primary
+                        ? 'bg-yellow-500 hover:bg-yellow-400 text-black border border-yellow-300 shadow-md'
+                        : 'bg-white/10 hover:bg-white/20 text-white border border-white/10'
+                    }`}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button 
             onClick={() => removeNotification(notification.id)}
-            className="text-white/60 hover:text-white"
+            className="text-white/60 hover:text-white flex-shrink-0"
           >
             <X size={16} />
           </button>

@@ -1285,12 +1285,6 @@ INSERT INTO "public"."npc_room_instances" ("id", "room_id", "npc_template_id", "
 (168, 'f13d4015-bfdc-4816-9906-955c9672e3aa', 19, 'idle', 'f', '2026-05-21 04:22:26.15212+00'),
 (169, '5280ede4-34e6-4433-a014-aabfb9fa0ac3', 18, 'idle', 'f', '2026-05-21 17:38:12.171684+00'),
 (170, '5280ede4-34e6-4433-a014-aabfb9fa0ac3', 19, 'idle', 'f', '2026-05-21 17:38:12.187348+00');
-INSERT INTO "public"."npc_templates" ("id", "scene_key", "npc_definition_id", "position_x", "position_y", "facing_direction", "interaction_radius", "created_at", "movement_type", "movement_range", "movement_speed", "instructions", "success_message", "greeting") VALUES
-(25, 'greeting village', 9, 350, 250, 'south', 64, '2026-05-05 03:02:44.258921+00', 'static', 0, 50, 'Saluda al Jugador en español, En tu rol de aldeano dile que como forastero debe aprender a saludar, una manera informal es usando Hi, el usuario debe intentarlo, si lo hace bien se da como cumplido el proposito para este NPC', 'Great now you learn to say Hi', 'Hello stranger!'),
-(24, 'greeting village', 9, 50, 350, 'south', 64, '2026-04-24 18:45:26.26899+00', 'static', 0, 50, 'Explicar en español al jugador primero saludo como Hola extraño, luego dile que debe aprender a comunicarse con el lenguaje local que una forma facil de saludar es diciendo Good morning, Good afternoon, good Evening  y que lo intente solo si dice las 3 saludos puede cumplir la tarea', 'Great, ahora sabes saludar en cualquier hora del dia', 'Hello '),
-(26, 'greeting village', 9, 350, 450, 'south', 64, '2026-05-05 03:03:04.799202+00', 'static', 0, 50, 'Learn to communicate in the local language, that an easy way to greet is by saying "Hi," "Hey," or "What''s up?" and that they should try it; only if they say all three greetings can they complete the task.', 'Hey you did it', 'Hi you'),
-(18, 'lobby', 7, 150, 350, 'south', 64, '2026-04-24 05:01:16.124497+00', 'static', 0, 50, '', '', ''),
-(19, 'lobby', 8, 150, 550, 'south', 64, '2026-04-24 05:05:43.82035+00', 'static', 0, 50, '', '', '');
 
 
 INSERT INTO "public"."player_mission_progresses" ("id", "player_id", "mission_id", "room_id", "status", "tasks_completed", "started_at", "completed_at", "kill_counts") VALUES

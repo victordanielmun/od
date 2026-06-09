@@ -1,10 +1,12 @@
 import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 import api from '../services/api';
 import wsClient from '../services/websocket';
 import { useAuthStore } from './authStore';
 import { useNotificationStore } from './notificationStore';
+import { usePeerStore } from './peerStore';
 
-export const useGameStore = create((set, get) => ({
+export const useGameStore = create(subscribeWithSelector((set, get) => ({
     isConnected: false,
     players: new Map(),
     messages: [],
@@ -17,6 +19,9 @@ export const useGameStore = create((set, get) => ({
     challengeMessages: [],
     activeMission: null,
     inventory: [],
+    virtualControlsMode: 'auto', // 'auto' | 'always' | 'never'
+
+    setVirtualControlsMode: (mode) => set({ virtualControlsMode: mode }),
 
     // Ninja Cards
     ninjaCardData: null,
@@ -371,6 +376,15 @@ export const useGameStore = create((set, get) => ({
                     peerManager.removePeer(peerId, payload.session_id);
                 });
 
+                wsClient.on('audio_mute_state', (payload) => {
+                    if (!payload?.user_id || !payload?.session_id) return;
+                    usePeerStore.getState().setUserSelfMuted(
+                        payload.session_id,
+                        String(payload.user_id),
+                        !!payload.is_muted
+                    );
+                });
+
                 wsClient.on('friend_request_received', (payload) => {
                     const { addNotification } = useNotificationStore.getState();
                     addNotification('info', `New friend request from ${payload.requester_username}`);
@@ -381,6 +395,37 @@ export const useGameStore = create((set, get) => ({
 
                 wsClient.on('friend_list_update', () => {
                     window.dispatchEvent(new CustomEvent('friend-request-update'));
+                });
+
+                wsClient.on('room_invite_received', (payload) => {
+                    const { inviter_name, scene_key, invite_code } = payload;
+                    const { addNotification } = useNotificationStore.getState();
+                    addNotification(
+                        'info',
+                        `⚔️ ¡${inviter_name} te invita a unirte a su sala en ${scene_key}!`,
+                        15000,
+                        [
+                            {
+                                label: 'Aceptar',
+                                primary: true,
+                                onClick: () => {
+                                    window.dispatchEvent(new CustomEvent('lobby-change-map', {
+                                        detail: { 
+                                            targetMap: scene_key,
+                                            targetX: 1000,
+                                            targetY: 350,
+                                            pin: invite_code
+                                        }
+                                    }));
+                                }
+                            },
+                            {
+                                label: 'Rechazar',
+                                primary: false,
+                                onClick: () => {}
+                            }
+                        ]
+                    );
                 });
 
                 wsClient.on('emoji_broadcast', (payload) => {
@@ -432,6 +477,9 @@ export const useGameStore = create((set, get) => ({
 
                 wsClient.on('enemy_kill_progress', (payload) => {
                     const { mission_id, task_id, kills_done, required_kills, task_completed } = payload;
+                    // #region debug-point M8:enemy-kill-progress-received
+                    fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"mission-not-completing",runId:"pre-fix",hypothesisId:"H5",location:"gameStore.js:enemy_kill_progress",msg:"[DEBUG] enemy_kill_progress received",data:{missionId:mission_id,taskId:task_id,killsDone:kills_done,requiredKills:required_kills,taskCompleted:task_completed,activeMissionId:get().activeMission?.id,activeTaskIds:(get().activeMission?.tasks||[]).map(t=>t.id)},ts:Date.now()})}).catch(()=>{});
+                    // #endregion
                     console.log(`[gameStore] Kill progress: task ${task_id} → ${kills_done}/${required_kills}`);
                     
                     // Mostrar notificación de progreso
@@ -604,14 +652,20 @@ export const useGameStore = create((set, get) => ({
     fetchActiveMission: async (sceneKey) => {
         set({ activeMission: null }); // Clear previous mission state
         try {
+            // #region debug-point M5:fetch-active-mission-request
+            fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"mission-not-completing",runId:"pre-fix",hypothesisId:"H4",location:"gameStore.js:fetchActiveMission:request",msg:"[DEBUG] fetchActiveMission requested",data:{sceneKey},ts:Date.now()})}).catch(()=>{});
+            // #endregion
             const response = await api.get(`/missions/scene/${sceneKey}`);
             if (response.data && response.data.length > 0) {
-                const mission = response.data[0];
+                const mission = response.data.find(m => m?.status !== 'completed') || null;
+                // #region debug-point M6:fetch-active-mission-response
+                fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"mission-not-completing",runId:"pre-fix",hypothesisId:"H4",location:"gameStore.js:fetchActiveMission:response",msg:"[DEBUG] fetchActiveMission selected first non-completed mission",data:{sceneKey,missionId:mission?.id||null,taskCount:(mission?.tasks||[]).length,taskTypes:(mission?.tasks||[]).map(t=>t.type),status:mission?.status||null,totalMissions:response?.data?.length||0},ts:Date.now()})}).catch(()=>{});
+                // #endregion
                 set({ activeMission: mission });
 
                 // Multi-user mission mode notifications
                 const { addNotification } = useNotificationStore.getState();
-                switch (mission.mode) {
+                switch (mission?.mode) {
                     case 'cooperative':
                         addNotification('info', "🤝 Modo Cooperativo: ¡Luchen juntos por el objetivo!");
                         break;
@@ -623,6 +677,9 @@ export const useGameStore = create((set, get) => ({
                         break;
                 }
             } else {
+                // #region debug-point M7:fetch-active-mission-empty
+                fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"mission-not-completing",runId:"pre-fix",hypothesisId:"H4",location:"gameStore.js:fetchActiveMission:empty",msg:"[DEBUG] fetchActiveMission returned empty result",data:{sceneKey},ts:Date.now()})}).catch(()=>{});
+                // #endregion
                 set({ activeMission: null });
             }
         } catch (err) {
@@ -687,19 +744,31 @@ export const useGameStore = create((set, get) => ({
     },
 
     useItem: async (inventoryId) => {
-        // Placeholder for now as we need UseItem endpoint in backend
-        console.log("Using item:", inventoryId);
+        try {
+            const response = await api.post(`/inventory/use/${inventoryId}`);
+            if (response.data.status === 'success') {
+                get().fetchInventory();
+                useNotificationStore.getState().addNotification('success', response.data.message || '¡Objeto usado!');
+                return true;
+            }
+        } catch (err) {
+            console.error("Failed to use item:", err);
+            const errorMsg = err.response?.data?.error || 'Error al usar el objeto';
+            useNotificationStore.getState().addNotification('error', errorMsg);
+            return false;
+        }
     },
 
     sendNinjaCardAnswer: (targetInstanceId, challengeId, selectedOption) => {
-        const roomId = get().currentRoomId;
-        if (roomId && targetInstanceId) {
-            wsClient.send("ninja_card_answer", {
-                target_instance_id: targetInstanceId,
-                challenge_id: challengeId,
-                selected_option: selectedOption,
-            });
+        if (!targetInstanceId || !challengeId) {
+            return;
         }
+
+        wsClient.send("ninja_card_answer", {
+            target_instance_id: targetInstanceId,
+            challenge_id: challengeId,
+            selected_option: selectedOption,
+        });
     },
 
     clearNinjaCardData: () => {
@@ -716,5 +785,13 @@ export const useGameStore = create((set, get) => ({
                 room_id: roomId
             });
         }
+    },
+
+    teleportToFriend: (friendId) => {
+        wsClient.send('teleport_to_friend', { target_user_id: friendId });
+    },
+
+    sendRoomInvite: (friendId) => {
+        wsClient.send('send_room_invite', { target_user_id: friendId });
     }
-}));
+})));

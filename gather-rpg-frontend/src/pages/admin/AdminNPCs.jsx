@@ -108,7 +108,13 @@ const NPCCard = ({ npcDef }) => {
             audio: { disableWebAudio: true, noAudio: true },
             physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
             scale: { mode: Phaser.Scale.NONE },
-            render: { pixelArt: true }
+            render: { pixelArt: true },
+            input: {
+                keyboard: false,
+                mouse: false,
+                touch: false,
+                gamepad: false
+            }
         });
         gameRef.current = game;
 

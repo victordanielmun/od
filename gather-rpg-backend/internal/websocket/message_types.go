@@ -30,6 +30,8 @@ const (
 	MsgStartPeerConnection = "start_peer_connection"
 	MsgClosePeerConnection = "close_peer_connection"
 	MsgAudioVolumeUpdate   = "audio_volume_update"
+	MsgAudioMuteState      = "audio_mute_state" // Broadcast: user toggled self-mute in a session
+
 
 	// Combat
 	MsgEncounterEnemy = "encounter_enemy"
@@ -73,4 +75,9 @@ const (
 	MsgNinjaCardTriggered = "ninja_card_triggered"
 	MsgNinjaCardAnswer    = "ninja_card_answer"
 	MsgNinjaCardResult    = "ninja_card_result"
+
+	// Friend Teleportation & Room Invitations
+	MsgTeleportToFriend   = "teleport_to_friend"
+	MsgSendRoomInvite     = "send_room_invite"
+	MsgRoomInviteReceived = "room_invite_received"
 )

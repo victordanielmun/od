@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronDown, ShoppingBag, MapPin, Compass, ShieldCheck, Map } from 'lucide-react';
+import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronRight, ShoppingBag, MapPin, Compass, ShieldCheck, Map } from 'lucide-react';
 import api from '../../services/api';
 import { analyzeDialogueAudio, generateTTS, getTTSAudioUrl } from '../../services/voiceApi';
 import ShopModal from '../common/ShopModal';
@@ -191,6 +191,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
         fetchMissions();
 
         return () => {
+            stopAudio();
             window.dispatchEvent(new CustomEvent('npc-interaction-end', {
                 detail: { templateId: npcData.templateId }
             }));
@@ -198,6 +199,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     }, [user, npcData.templateId]);
 
     const handleSelectMission = async (mission) => {
+        stopAudio();
         if (loadingMissionId) return;
         setLoadingMissionId(mission.id);
         
@@ -427,7 +429,8 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     };
 
     const lastMessage = messages[messages.length - 1] || { text: '...', sender: 'npc' };
-    const isAudioOnly = npcData.interactionMode === 'audio_only';
+    const interactionMode = npcData.interactionMode || npcData.interaction_mode || definition?.interaction_mode || definition?.interactionMode || 'hybrid';
+    const isAudioOnly = interactionMode === 'audio_only';
 
     const handleClose = () => {
         if (hasPendingCompletion) {
@@ -814,7 +817,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                 disabled={!inputText.trim() || isProcessing || isAudioOnly}
                                 className="bg-[var(--color-orange-vibrant)] text-white p-4 border-2 border-[var(--color-gold)] hover:bg-[var(--color-accent-blue)] disabled:opacity-50 transition-all flex items-center justify-center shadow-lg active:translate-y-1"
                             >
-                                <ChevronDown size={28} />
+                                <ChevronRight size={28} />
                             </button>
                         </div>
                     </div>

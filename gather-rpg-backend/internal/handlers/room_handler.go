@@ -62,11 +62,22 @@ func (h *RoomHandler) CreateRoom(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid user ID in token"})
 	}
 
+	roomType := req.Type
+	if roomType == "" {
+		roomType = "public"
+	}
+	sceneKey := req.SceneKey
+	if sceneKey == "" {
+		sceneKey = "lobby"
+	}
+
 	room := &models.Room{
 		Name:      req.Name,
 		MaxUsers:  req.MaxUsers,
 		IsPublic:  req.IsPublic,
 		MapData:   req.MapData,
+		Type:      roomType,
+		SceneKey:  sceneKey,
 		CreatedBy: userID,
 	}
 

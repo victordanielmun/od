@@ -44,7 +44,13 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 }
 
 func (h *AuthHandler) GuestLogin(c *fiber.Ctx) error {
-	res, err := h.Service.LoginGuest()
+	var req struct {
+		CharacterIDs []string `json:"character_ids"`
+	}
+	// Parse optionally provided character_ids from the body
+	_ = c.BodyParser(&req)
+
+	res, err := h.Service.LoginGuest(req.CharacterIDs)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Package, Plus, Trash2, Edit2, Search, X, AlertCircle, Save, HelpCircle, Heart, Zap, Shield, Sparkles, Target } from 'lucide-react';
+import { Package, Plus, Trash2, Edit2, Search, X, AlertCircle, Save, HelpCircle, Heart, Zap, Shield, Sparkles, Target, Scroll } from 'lucide-react';
 import api from '../../services/api';
 import { ItemIcon } from '../../components/common/ItemIcon';
 
@@ -11,6 +11,7 @@ const ITEM_TYPES = [
     { value: 'throwable', label: 'Arma Arrojable', icon: Target },
     { value: 'weapon', label: 'Arma', icon: Target },
     { value: 'defense', label: 'Defensa', icon: Shield },
+    { value: 'scroll', label: 'Pergamino de Habilidad', icon: Scroll },
     { value: 'mission_item', label: 'Ítem de Misión', icon: Sparkles },
     { value: 'other', label: 'Otro / Material', icon: HelpCircle }
 ];
@@ -20,6 +21,7 @@ const EFFECT_TYPES = [
     { value: 'restore_mp', label: 'Restaurar Maná (MP)' },
     { value: 'revive', label: 'Revivir Jugador' },
     { value: 'damage', label: 'Daño (Arrojable)' },
+    { value: 'grant_skill', label: 'Otorgar Habilidad' },
     { value: 'none', label: 'Ninguno' }
 ];
 
@@ -65,6 +67,7 @@ export const AdminItems = () => {
         { value: 'throwable', label: t('admin.items.effect_types.damage'), icon: Target },
         { value: 'weapon', label: t('items.types.weapon'), icon: Target },
         { value: 'defense', label: t('items.types.armor'), icon: Shield },
+        { value: 'scroll', label: t('items.types.scroll') || 'Pergamino de Habilidad', icon: Scroll },
         { value: 'mission_item', label: t('items.types.quest'), icon: Sparkles },
         { value: 'other', label: t('items.types.material'), icon: HelpCircle }
     ];
@@ -74,10 +77,12 @@ export const AdminItems = () => {
         { value: 'restore_mp', label: t('admin.items.effect_types.restore_mp') },
         { value: 'revive', label: t('admin.items.effect_types.revive') },
         { value: 'damage', label: t('admin.items.effect_types.damage') },
+        { value: 'grant_skill', label: t('admin.items.effect_types.grant_skill') || 'Otorgar Habilidad' },
         { value: 'none', label: t('admin.items.effect_types.none') }
     ];
 
     const [items, setItems] = useState([]);
+    const [skills, setSkills] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [search, setSearch] = useState('');
@@ -96,18 +101,21 @@ export const AdminItems = () => {
         required_level: 1,
         price: 10,
         max_stack: 99,
-        icon_key: ''
+        icon_key: '',
+        grants_skill_id: ''
     });
 
     const fetchData = async () => {
         try {
             setLoading(true);
-            const [itemsRes, spritesRes] = await Promise.all([
+            const [itemsRes, spritesRes, skillsRes] = await Promise.all([
                 api.get('/admin/items'),
-                api.get('/admin/item-sprites')
+                api.get('/admin/item-sprites'),
+                api.get('/admin/skills').catch(() => ({ data: [] }))
             ]);
             setItems(itemsRes.data);
             setAvailableSprites(spritesRes.data || []);
+            setSkills(skillsRes.data || []);
             setError(null);
         } catch (err) {
             setError(t('common.error_load') || 'Error al cargar items');
@@ -159,7 +167,8 @@ export const AdminItems = () => {
             required_level: 1,
             price: 10,
             max_stack: 99,
-            icon_key: ''
+            icon_key: '',
+            grants_skill_id: ''
         });
         setIsModalOpen(true);
     };
@@ -177,7 +186,8 @@ export const AdminItems = () => {
             required_level: item.required_level || 1,
             price: item.price,
             max_stack: item.max_stack,
-            icon_key: item.icon_key || ''
+            icon_key: item.icon_key || '',
+            grants_skill_id: item.grants_skill_id || ''
         });
         setIsModalOpen(true);
     };
@@ -363,7 +373,7 @@ export const AdminItems = () => {
                                 </div>
                             </div>
 
-                            {(formData.item_type === 'health' || formData.item_type === 'mana' || formData.item_type === 'reviver' || formData.item_type === 'throwable') && (
+                            {(formData.item_type === 'health' || formData.item_type === 'mana' || formData.item_type === 'reviver' || formData.item_type === 'throwable' || formData.item_type === 'scroll') && (
                                 <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-800 space-y-4">
                                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                                         <Sparkles size={12} className="text-yellow-400" />
@@ -389,6 +399,21 @@ export const AdminItems = () => {
                                                 className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-white focus:outline-none"
                                             />
                                         </div>
+                                        {formData.effect_type === 'grant_skill' && (
+                                            <div className="col-span-2">
+                                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1.5 px-1">Habilidad que Otorga</label>
+                                                <select 
+                                                    value={formData.grants_skill_id || ''}
+                                                    onChange={e => setFormData({...formData, grants_skill_id: e.target.value || null})}
+                                                    className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none"
+                                                >
+                                                    <option value="">Selecciona una habilidad...</option>
+                                                    {skills.map(sk => (
+                                                        <option key={sk.id} value={sk.id}>{sk.name} ({sk.skill_type})</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}

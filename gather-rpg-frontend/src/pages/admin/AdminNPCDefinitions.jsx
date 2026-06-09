@@ -92,7 +92,13 @@ const DefinitionCard = ({ definition, onEdit, onDelete }) => {
             backgroundColor: '#1a1a2e',
             scene: new DefinitionPreviewScene(definition.sprite || '1'),
             audio: { disableWebAudio: true, noAudio: true },
-            render: { pixelArt: true }
+            render: { pixelArt: true },
+            input: {
+                keyboard: false,
+                mouse: false,
+                touch: false,
+                gamepad: false
+            }
         });
         gameRef.current = game;
         return () => game.destroy(true);

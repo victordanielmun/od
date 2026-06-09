@@ -1,0 +1,424 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useGameStore } from '../../store/gameStore';
+import { Swords, Hand, RefreshCw, Flame, Zap, Sparkles } from 'lucide-react';
+
+export const VirtualArcadeControls = () => {
+  const currentSceneKey = useGameStore(state => state.currentSceneKey);
+  const containerRef = useRef(null);
+
+  // Track button active state for visual feedback
+  const [activeInputs, setActiveInputs] = useState({
+    shift: false,
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+    potion: false,
+    manaPotion: false,
+    throw: false,
+    interact: false,
+    dash: false,
+    combo: false,
+    attack: false,
+    spell: false
+  });
+
+  // Ref to always have the latest state inside event listeners
+  const activeInputsRef = useRef(activeInputs);
+  useEffect(() => {
+    activeInputsRef.current = activeInputs;
+  }, [activeInputs]);
+
+  // Helper to determine if the map is a combat map
+  const isCombat = currentSceneKey?.toLowerCase().includes('fight') || 
+                   currentSceneKey?.toLowerCase().includes('boss') || 
+                   currentSceneKey?.toLowerCase().includes('combat') || 
+                   currentSceneKey?.toLowerCase().includes('level');
+
+  // Dispatch custom window events that the LobbyScene will listen to
+  const handleButtonPress = (key, isDown) => {
+    console.log(`[VirtualArcadeControls] handleButtonPress key=${key}, isDown=${isDown}`);
+    setActiveInputs(prev => ({
+      ...prev,
+      [key]: isDown
+    }));
+    window.dispatchEvent(new CustomEvent('virtual-input', {
+      detail: { key, isDown }
+    }));
+  };
+
+  // Reset inputs when transitioning scenes/maps to avoid stuck states
+  useEffect(() => {
+    const defaultStates = {
+      shift: false,
+      up: false,
+      down: false,
+      left: false,
+      right: false,
+      potion: false,
+      manaPotion: false,
+      throw: false,
+      interact: false,
+      dash: false,
+      combo: false,
+      attack: false,
+      spell: false
+    };
+    setActiveInputs(defaultStates);
+
+    // Dispatch clear events for game engine
+    Object.keys(defaultStates).forEach(key => {
+      window.dispatchEvent(new CustomEvent('virtual-input', {
+        detail: { key, isDown: false }
+      }));
+    });
+  }, [currentSceneKey]);
+
+  // Touch handlers with special logic for SPRINT ('shift') which behaves as a toggle
+  const handlePress = (action) => {
+    if (action === 'shift') {
+      const currentShift = activeInputsRef.current.shift;
+      handleButtonPress('shift', !currentShift);
+    } else {
+      handleButtonPress(action, true);
+    }
+  };
+
+  const handleRelease = (action) => {
+    if (action === 'shift') {
+      // Ignore release events for SPRINT to allow toggle behavior
+    } else {
+      handleButtonPress(action, false);
+    }
+  };
+
+  // Attach non-passive touch listeners using event delegation
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleTouchStart = (e) => {
+      const target = e.target.closest('[data-action]');
+      if (target) {
+        // Prevent default browser touch actions (scrolling/panning)
+        if (e.cancelable) e.preventDefault();
+        const action = target.getAttribute('data-action');
+        handlePress(action);
+      }
+    };
+
+    const handleTouchEnd = (e) => {
+      const target = e.target.closest('[data-action]');
+      if (target) {
+        if (e.cancelable) e.preventDefault();
+        const action = target.getAttribute('data-action');
+        handleRelease(action);
+      }
+    };
+
+    const handleTouchCancel = (e) => {
+      const target = e.target.closest('[data-action]');
+      if (target) {
+        const action = target.getAttribute('data-action');
+        handleRelease(action);
+      }
+    };
+
+    // Use passive: false to allow e.preventDefault() to block touch scrolling
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: false });
+    container.addEventListener('touchcancel', handleTouchCancel, { passive: false });
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchCancel);
+    };
+  }, []);
+
+  return (
+    <div 
+      ref={containerRef}
+      className="absolute inset-0 z-10 pointer-events-none select-none touch-none flex justify-between p-4 md:p-6"
+    >
+      {/* LEFT SIDE: Directional D-Pad & Sprint (Shift) */}
+      <div className="absolute bottom-4 left-4 md:bottom-6 md:left-6 flex flex-col items-center md:flex-row md:items-end gap-2 md:gap-4 pointer-events-none">
+        {/* Sprint Button (Toggles on touch/click) */}
+        <button
+          data-action="shift"
+          onMouseDown={() => {
+            const currentShift = activeInputsRef.current.shift;
+            handleButtonPress('shift', !currentShift);
+          }}
+          className={`w-12 h-12 md:w-16 md:h-16 border rounded-full flex flex-col items-center justify-center font-bold text-[8px] md:text-xs backdrop-blur-sm transition-all duration-150 cursor-pointer pointer-events-auto select-none touch-none ${
+            activeInputs.shift
+              ? 'bg-blue-500/60 border-blue-400 text-white scale-90 shadow-[0_0_25px_rgba(59,130,246,0.6)]'
+              : 'bg-blue-600/25 border-blue-500/40 text-blue-200 shadow-[0_0_15px_rgba(59,130,246,0.3)]'
+          }`}
+        >
+          <Zap size={14} className="md:size-20 mb-0.5 animate-pulse" />
+          <span className="text-[7px] md:text-[9px] tracking-wider font-extrabold">SPRINT</span>
+        </button>
+
+        {/* Circular D-Pad */}
+        <div className="w-32 h-32 md:w-44 md:h-44 bg-black/45 border-2 border-white/10 rounded-full flex items-center justify-center relative backdrop-blur-sm shadow-[0_10px_25px_rgba(0,0,0,0.6)] pointer-events-auto">
+          {/* Inner ring */}
+          <div className="absolute inset-6 md:inset-8 border border-white/5 rounded-full pointer-events-none"></div>
+
+          {/* D-Pad Buttons */}
+          {/* UP */}
+          <button
+            data-action="up"
+            onMouseDown={() => handleButtonPress('up', true)}
+            onMouseUp={() => handleButtonPress('up', false)}
+            onMouseLeave={() => handleButtonPress('up', false)}
+            className={`absolute top-1 left-1/2 -translate-x-1/2 w-11 h-9 md:top-2 md:w-14 md:h-12 border rounded-t-xl flex items-center justify-center transition-all cursor-pointer pointer-events-auto select-none touch-none ${
+              activeInputs.up
+                ? 'bg-white/25 border-white/30 text-white scale-90 shadow-[0_0_15px_rgba(255,255,255,0.4)]'
+                : 'bg-white/5 border-white/10 text-white/50 hover:text-white'
+            }`}
+            aria-label="Move Up"
+          >
+            <span className="text-sm md:text-xl font-bold">▲</span>
+          </button>
+
+          {/* DOWN */}
+          <button
+            data-action="down"
+            onMouseDown={() => handleButtonPress('down', true)}
+            onMouseUp={() => handleButtonPress('down', false)}
+            onMouseLeave={() => handleButtonPress('down', false)}
+            className={`absolute bottom-1 left-1/2 -translate-x-1/2 w-11 h-9 md:bottom-2 md:w-14 md:h-12 border rounded-b-xl flex items-center justify-center transition-all cursor-pointer pointer-events-auto select-none touch-none ${
+              activeInputs.down
+                ? 'bg-white/25 border-white/30 text-white scale-90 shadow-[0_0_15px_rgba(255,255,255,0.4)]'
+                : 'bg-white/5 border-white/10 text-white/50 hover:text-white'
+            }`}
+            aria-label="Move Down"
+          >
+            <span className="text-sm md:text-xl font-bold">▼</span>
+          </button>
+
+          {/* LEFT */}
+          <button
+            data-action="left"
+            onMouseDown={() => handleButtonPress('left', true)}
+            onMouseUp={() => handleButtonPress('left', false)}
+            onMouseLeave={() => handleButtonPress('left', false)}
+            className={`absolute left-1 top-1/2 -translate-y-1/2 w-9 h-11 md:left-2 md:w-12 md:h-14 border rounded-l-xl flex items-center justify-center transition-all cursor-pointer pointer-events-auto select-none touch-none ${
+              activeInputs.left
+                ? 'bg-white/25 border-white/30 text-white scale-90 shadow-[0_0_15px_rgba(255,255,255,0.4)]'
+                : 'bg-white/5 border-white/10 text-white/50 hover:text-white'
+            }`}
+            aria-label="Move Left"
+          >
+            <span className="text-sm md:text-xl font-bold">◀</span>
+          </button>
+
+          {/* RIGHT */}
+          <button
+            data-action="right"
+            onMouseDown={() => handleButtonPress('right', true)}
+            onMouseUp={() => handleButtonPress('right', false)}
+            onMouseLeave={() => handleButtonPress('right', false)}
+            className={`absolute right-1 top-1/2 -translate-y-1/2 w-9 h-11 md:right-2 md:w-12 md:h-14 border rounded-r-xl flex items-center justify-center transition-all cursor-pointer pointer-events-auto select-none touch-none ${
+              activeInputs.right
+                ? 'bg-white/25 border-white/30 text-white scale-90 shadow-[0_0_15px_rgba(255,255,255,0.4)]'
+                : 'bg-white/5 border-white/10 text-white/50 hover:text-white'
+            }`}
+            aria-label="Move Right"
+          >
+            <span className="text-sm md:text-xl font-bold">▶</span>
+          </button>
+
+          {/* Center Knob */}
+          <div className="w-8 h-8 md:w-10 md:h-10 bg-white/10 border border-white/20 rounded-full shadow-inner pointer-events-none flex items-center justify-center">
+            <div className="w-2.5 h-2.5 bg-white/20 rounded-full"></div>
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT SIDE: Action Buttons (Arcade curved layout) */}
+      <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 pointer-events-none">
+        {isCombat ? (
+          /* Combat Map Action Cluster */
+          <div className="relative w-44 h-36 md:w-80 md:h-56 select-none pointer-events-none">
+            {/* Top Row Actions */}
+            {/* Potion (Q) */}
+            <button
+              data-action="potion"
+              onMouseDown={() => handleButtonPress('potion', true)}
+              onMouseUp={() => handleButtonPress('potion', false)}
+              onMouseLeave={() => handleButtonPress('potion', false)}
+              className={`absolute top-1 right-36 w-12 h-12 md:top-0 md:right-56 md:w-16 md:h-16 border text-emerald-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+                activeInputs.potion
+                  ? 'bg-emerald-500/60 border-emerald-400 text-white scale-90 shadow-[0_0_20px_rgba(16,185,129,0.6)]'
+                  : 'bg-emerald-600/30 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.3)]'
+              }`}
+              title="Potion (Q)"
+            >
+              <Sparkles size={14} className="md:size-18" />
+              <span className="text-[6px] md:text-[8px] font-black tracking-tighter">POT (Q)</span>
+            </button>
+
+            {/* Mana Potion (R) */}
+            <button
+              data-action="manaPotion"
+              onMouseDown={() => handleButtonPress('manaPotion', true)}
+              onMouseUp={() => handleButtonPress('manaPotion', false)}
+              onMouseLeave={() => handleButtonPress('manaPotion', false)}
+              className={`absolute top-1 right-24 w-12 h-12 md:top-0 md:right-40 md:w-16 md:h-16 border text-sky-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+                activeInputs.manaPotion
+                  ? 'bg-sky-500/60 border-sky-400 text-white scale-90 shadow-[0_0_20px_rgba(14,165,233,0.6)]'
+                  : 'bg-sky-600/30 border-sky-500/40 shadow-[0_0_12px_rgba(14,165,233,0.3)]'
+              }`}
+              title="Mana Potion (R)"
+            >
+              <Zap size={14} className="md:size-18 text-sky-300" />
+              <span className="text-[6px] md:text-[8px] font-black tracking-tighter">MANA (R)</span>
+            </button>
+
+            {/* Throw (U) */}
+            <button
+              data-action="throw"
+              onMouseDown={() => handleButtonPress('throw', true)}
+              onMouseUp={() => handleButtonPress('throw', false)}
+              onMouseLeave={() => handleButtonPress('throw', false)}
+              className={`absolute top-1 right-12 w-12 h-12 md:top-0 md:right-24 md:w-16 md:h-16 border text-teal-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+                activeInputs.throw
+                  ? 'bg-teal-500/60 border-teal-400 text-white scale-90 shadow-[0_0_20px_rgba(20,184,166,0.6)]'
+                  : 'bg-teal-600/30 border-teal-500/40 shadow-[0_0_12px_rgba(20,184,166,0.3)]'
+              }`}
+              title="Throw (U)"
+            >
+              <Flame size={14} className="md:size-18 rotate-45" />
+              <span className="text-[6px] md:text-[8px] font-black tracking-tighter">THR (U)</span>
+            </button>
+
+            {/* Interact (E) */}
+            <button
+              data-action="interact"
+              onMouseDown={() => handleButtonPress('interact', true)}
+              onMouseUp={() => handleButtonPress('interact', false)}
+              onMouseLeave={() => handleButtonPress('interact', false)}
+              className={`absolute top-2 right-0 w-12 h-12 md:top-2 md:right-8 md:w-16 md:h-16 border text-amber-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+                activeInputs.interact
+                  ? 'bg-amber-500/60 border-amber-400 text-white scale-90 shadow-[0_0_20px_rgba(245,158,11,0.6)]'
+                  : 'bg-amber-600/30 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
+              }`}
+              title="Interact (E)"
+            >
+              <Hand size={14} className="md:size-18" />
+              <span className="text-[6px] md:text-[8px] font-black tracking-tighter">INT (E)</span>
+            </button>
+
+            {/* Bottom Row Actions */}
+            {/* Dodge/Dash (SPACE) */}
+            <button
+              data-action="dash"
+              onMouseDown={() => handleButtonPress('dash', true)}
+              onMouseUp={() => handleButtonPress('dash', false)}
+              onMouseLeave={() => handleButtonPress('dash', false)}
+              className={`absolute bottom-1 right-36 w-12 h-12 md:bottom-2 md:right-52 md:w-16 md:h-16 border text-slate-200 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+                activeInputs.dash
+                  ? 'bg-slate-500/60 border-slate-400 text-white scale-90 shadow-[0_0_18px_rgba(100,116,139,0.6)]'
+                  : 'bg-slate-600/30 border-slate-500/40 shadow-[0_0_10px_rgba(100,116,139,0.3)]'
+              }`}
+              title="Dash (Space)"
+            >
+              <RefreshCw size={14} className="md:size-18" />
+              <span className="text-[6px] md:text-[8px] font-black tracking-tighter">DASH</span>
+            </button>
+
+            {/* Combo (K) */}
+            <button
+              data-action="combo"
+              onMouseDown={() => handleButtonPress('combo', true)}
+              onMouseUp={() => handleButtonPress('combo', false)}
+              onMouseLeave={() => handleButtonPress('combo', false)}
+              className={`absolute bottom-6 right-24 w-12 h-12 md:bottom-2 md:right-36 md:w-16 md:h-16 border text-cyan-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+                activeInputs.combo
+                  ? 'bg-cyan-500/60 border-cyan-400 text-white scale-90 shadow-[0_0_25px_rgba(6,182,212,0.7)]'
+                  : 'bg-cyan-600/30 border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.4)]'
+              }`}
+              title="Combo (K)"
+            >
+              <Swords size={14} className="md:size-18" />
+              <span className="text-[6px] md:text-[8px] font-black tracking-tight">COMBO</span>
+            </button>
+
+            {/* Attack (J) */}
+            <button
+              data-action="attack"
+              onMouseDown={() => handleButtonPress('attack', true)}
+              onMouseUp={() => handleButtonPress('attack', false)}
+              onMouseLeave={() => handleButtonPress('attack', false)}
+              className={`absolute bottom-1 right-12 w-12 h-12 md:bottom-2 md:right-20 md:w-16 md:h-16 border text-red-200 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+                activeInputs.attack
+                  ? 'bg-red-500/75 border-red-400 text-white scale-90 shadow-[0_0_30px_rgba(239,68,68,0.8)]'
+                  : 'bg-red-600/35 border-red-500/50 shadow-[0_0_20px_rgba(239,68,68,0.5)]'
+              }`}
+              title="Attack (J)"
+            >
+              <Swords size={16} className="md:size-20 animate-pulse" />
+              <span className="text-[7px] md:text-[9px] font-black tracking-wide">ATTACK</span>
+            </button>
+
+            {/* Spell (L) */}
+            <button
+              data-action="spell"
+              onMouseDown={() => handleButtonPress('spell', true)}
+              onMouseUp={() => handleButtonPress('spell', false)}
+              onMouseLeave={() => handleButtonPress('spell', false)}
+              className={`absolute bottom-1 right-0 w-12 h-12 md:bottom-2 md:right-4 md:w-16 md:h-16 border text-purple-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+                activeInputs.spell
+                  ? 'bg-purple-500/60 border-purple-400 text-white scale-90 shadow-[0_0_20px_rgba(168,85,247,0.6)]'
+                  : 'bg-purple-600/30 border-purple-500/40 shadow-[0_0_12px_rgba(168,85,247,0.3)]'
+              }`}
+              title="Spell (L)"
+            >
+              <Zap size={14} className="md:size-18" />
+              <span className="text-[6px] font-black tracking-tighter">SPELL</span>
+            </button>
+          </div>
+        ) : (
+          /* Peaceful Map Action Cluster */
+          <div className="flex items-end gap-3 pointer-events-none select-none">
+            {/* Dash (SPACE) */}
+            <button
+              data-action="dash"
+              onMouseDown={() => handleButtonPress('dash', true)}
+              onMouseUp={() => handleButtonPress('dash', false)}
+              onMouseLeave={() => handleButtonPress('dash', false)}
+              className={`w-12 h-12 md:w-16 md:h-16 border text-slate-200 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+                activeInputs.dash
+                  ? 'bg-slate-500/60 border-slate-400 text-white scale-90 shadow-[0_0_20px_rgba(100,116,139,0.6)]'
+                  : 'bg-slate-600/30 border-slate-500/40 shadow-[0_0_12px_rgba(100,116,139,0.3)]'
+              }`}
+              title="Dash (Space)"
+            >
+              <RefreshCw size={14} className="md:size-18" />
+              <span className="text-[6px] md:text-[8px] font-black tracking-wider">DASH</span>
+            </button>
+
+            {/* Interact (E) */}
+            <button
+              data-action="interact"
+              onMouseDown={() => handleButtonPress('interact', true)}
+              onMouseUp={() => handleButtonPress('interact', false)}
+              onMouseLeave={() => handleButtonPress('interact', false)}
+              className={`w-12 h-12 md:w-16 md:h-16 border text-amber-200 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+                activeInputs.interact
+                  ? 'bg-amber-500/65 border-amber-400 text-white scale-90 shadow-[0_0_25px_rgba(245,158,11,0.7)]'
+                  : 'bg-amber-600/35 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.4)] animate-pulse'
+              }`}
+              title="Interact (E)"
+            >
+              <Hand size={14} className="md:size-18" />
+              <span className="text-[6px] md:text-[8px] font-black tracking-wide">INTERACT</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

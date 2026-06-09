@@ -63,12 +63,13 @@ func (s *NPCService) EnsureRoomInstances(roomID uuid.UUID, sceneKey string) ([]m
 	filteredInstances := make([]models.NPCRoomInstance, 0)
 	for _, inst := range allInstances {
 		// Preload template if missing (GORM sometimes doesn't if it was already in allInstances)
-		if inst.NPCTemplate.ID == 0 {
+		if inst.NPCTemplate.ID == 0 || inst.NPCTemplate.NPCDefinition.ID == 0 {
 			// More efficient: GORM auto-preload is better handled in the repository, 
 			// but here we filter by the pre-loaded template's scene_key.
 			var fullTmpl models.NPCTemplate
-			database.DB.Preload("NPCDefinition").First(&fullTmpl, inst.NPCTemplateID)
-			inst.NPCTemplate = fullTmpl
+			if err := database.DB.Preload("NPCDefinition").First(&fullTmpl, inst.NPCTemplateID).Error; err == nil {
+				inst.NPCTemplate = fullTmpl
+			}
 		}
 
 		if inst.NPCTemplate.SceneKey == sceneKey {

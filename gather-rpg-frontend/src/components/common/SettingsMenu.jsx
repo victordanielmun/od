@@ -10,7 +10,7 @@ import { Heart, Zap, Shield, Target, Sparkles, HelpCircle, Swords, Info } from '
 export default function SettingsMenu({ onClose, initialTab = 'config' }) {
     const { t } = useTranslation();
     const { musicVolume, sfxVolume, voiceVolume, setVolume } = useAudioStore();
-    const { activeChat, sendPrivateMessage, chatRequests, acceptChatRequest, rejectChatRequest, sendEmoji, inventory, fetchInventory, useItem } = useGameStore();
+    const { activeChat, sendPrivateMessage, chatRequests, acceptChatRequest, rejectChatRequest, sendEmoji, inventory, fetchInventory, useItem, virtualControlsMode, setVirtualControlsMode } = useGameStore();
     const { user } = useAuthStore();
     
     const [activeTab, setActiveTab] = useState(initialTab);
@@ -317,6 +317,24 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
                                 </div>
                                 <input type="range" min="0" max="1" step="0.01" value={voiceVolume} onChange={(e) => setVolume('voiceVolume', parseFloat(e.target.value))} 
                                        className="w-full h-1.5 bg-black/40 rounded-lg appearance-none cursor-pointer accent-[var(--color-gold)] shadow-inner" />
+                            </div>
+
+                            <div className="flex flex-col gap-3 pt-4 border-t border-[var(--color-gold-dark)]/25">
+                                <div className="flex justify-between items-center">
+                                    <label className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-gold-dark)]"><Swords size={16} /> Controles en Pantalla</label>
+                                </div>
+                                <select 
+                                    value={virtualControlsMode || 'auto'} 
+                                    onChange={(e) => setVirtualControlsMode(e.target.value)}
+                                    className="bg-black/60 border-2 border-[var(--color-gold-dark)] text-white text-xs p-2.5 outline-none focus:border-[var(--color-gold)] font-sans"
+                                >
+                                    <option value="auto">Automático (Pantallas Táctiles)</option>
+                                    <option value="always">Siempre Activados</option>
+                                    <option value="never">Desactivados (Ocultar)</option>
+                                </select>
+                                <p className="text-[10px] text-[var(--color-parchment-dark)] italic">
+                                    Permite forzar o desactivar la visualización del control táctil en pantalla en caso de que se haya activado por error.
+                                </p>
                             </div>
 
                         </div>

@@ -1,15 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useGameStore } from '../../store/gameStore';
-import { useTranslation } from 'react-i18next';
 
 export const NinjaCardHUD = () => {
-  const { t } = useTranslation();
   const ninjaCardData = useGameStore(state => state.ninjaCardData);
   const sendNinjaCardAnswer = useGameStore(state => state.sendNinjaCardAnswer);
   const clearNinjaCardData = useGameStore(state => state.clearNinjaCardData);
 
   const [resultEffect, setResultEffect] = useState(null);
   const [isCorrect, setIsCorrect] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const handleResult = (e) => {
@@ -17,11 +16,13 @@ export const NinjaCardHUD = () => {
       console.log('[NinjaCard] HUD Received result:', data);
       setResultEffect(data.effect);
       setIsCorrect(data.correct);
+      setIsSubmitting(false);
 
       // Clear HUD after showing result for 2 seconds
       setTimeout(() => {
         setResultEffect(null);
         setIsCorrect(null);
+        setIsSubmitting(false);
         clearNinjaCardData();
       }, 2000);
     };
@@ -36,7 +37,8 @@ export const NinjaCardHUD = () => {
   if (!challenge) return null;
 
   const handleOptionClick = (optionId) => {
-    if (resultEffect) return; // Prevent multiple clicks
+    if (resultEffect || isSubmitting) return;
+    setIsSubmitting(true);
     console.log('[NinjaCard] Option selected:', optionId);
     sendNinjaCardAnswer(ninjaCardData.target_instance_id, challenge.id, optionId);
   };
@@ -80,7 +82,7 @@ export const NinjaCardHUD = () => {
               <button
                 key={optNum}
                 onClick={() => handleOptionClick(optNum)}
-                disabled={!!resultEffect}
+                disabled={!!resultEffect || isSubmitting}
                 className="w-full p-4 rounded-lg bg-slate-800 text-left hover:bg-slate-700 transition border border-slate-600 hover:border-amber-400 flex items-center gap-4 group"
               >
                 <div className="w-8 h-8 rounded-full bg-slate-700 group-hover:bg-amber-500 flex items-center justify-center text-white font-bold transition">

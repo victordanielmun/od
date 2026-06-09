@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 const Phaser = window.Phaser;
 
 import { LobbyScene } from '../../game/scenes/LobbyScene';
+import BeatEmUpScene from '../../game/scenes/BeatEmUpScene';
 import { useGameStore } from '../../store/gameStore';
 import { useRoomStore } from '../../store/roomStore';
 
@@ -77,8 +78,10 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
     };
 
     const handleMapJoinApproved = (e) => {
-      const { room_id, scene_key, type, invite_code } = e.detail;
+      const { room_id, scene_key, type, invite_code, x, y } = e.detail;
       const transition = pendingTransitionRef.current || {};
+      const spawnX = x !== undefined ? x : transition.x;
+      const spawnY = y !== undefined ? y : transition.y;
 
       if (transition.map && transition.map !== scene_key) {
         console.warn('[LobbyGameCanvas] Approval for unexpected map:', scene_key, 'expected:', transition.map);
@@ -94,17 +97,65 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
       }
 
       // 1. Join websocket room (with spawn coordinates)
-      joinRoom(room_id, transition.x, transition.y);
+      joinRoom(room_id, spawnX, spawnY);
 
-      // 2. Restart Phaser Scene with map + spawn
+      // 2. Transition Phaser Scenes
       const game = internalGameRef.current;
-      const lobbyScene = game?.scene?.getScene('LobbyScene');
-      if (lobbyScene) {
-        lobbyScene.scene.restart({
-          map: scene_key,
-          spawnX: transition.x,
-          spawnY: transition.y,
-        });
+      if (game) {
+        if (scene_key.startsWith('beatemup')) {
+          const activeMission = useGameStore.getState().activeMission;
+          const inventory = useGameStore.getState().inventory || [];
+
+          // Count scrolls and potions from inventory
+          let fire_rain = 0;
+          let wave = 0;
+          let nova = 0;
+          let potions = 0;
+          let manaPotions = 0;
+          let throwingDaggers = 0;
+
+          inventory.forEach(inv => {
+            const itemName = inv.item?.name;
+            if (itemName === 'Scroll of Fire Rain') fire_rain += inv.quantity;
+            else if (itemName === 'Scroll of Wave') wave += inv.quantity;
+            else if (itemName === 'Scroll of Nova') nova += inv.quantity;
+            else if (itemName === 'Health Potion') potions += inv.quantity;
+            else if (itemName === 'Mana Potion') manaPotions += inv.quantity;
+            else if (itemName === 'Throwing Dagger') throwingDaggers += inv.quantity;
+          });
+
+          game.scene.stop('LobbyScene');
+          game.scene.start('BeatEmUpScene', {
+            levelId: scene_key,
+            missionId: activeMission?.id,
+            spells: { fire_rain, wave, nova },
+            potions,
+            manaPotions,
+            throwingDaggers
+          });
+        } else {
+          if (game.scene.isActive('BeatEmUpScene')) {
+            game.scene.stop('BeatEmUpScene');
+          }
+          const lobbyScene = game.scene.getScene('LobbyScene');
+          if (lobbyScene) {
+            if (lobbyScene.scene.isActive()) {
+              lobbyScene.scene.restart({
+                map: scene_key,
+                roomId: room_id,
+                spawnX: spawnX,
+                spawnY: spawnY,
+              });
+            } else {
+              game.scene.start('LobbyScene', {
+                map: scene_key,
+                roomId: room_id,
+                spawnX: spawnX,
+                spawnY: spawnY,
+              });
+            }
+          }
+        }
       }
 
       // Restore focus to canvas so keyboard works.
@@ -121,9 +172,9 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
       // 3. Update URL silently
       const url = new URL(window.location);
       url.searchParams.set('map', scene_key);
-      if (transition.x != null) url.searchParams.set('spawnX', transition.x);
+      if (spawnX != null) url.searchParams.set('spawnX', spawnX);
       else url.searchParams.delete('spawnX');
-      if (transition.y != null) url.searchParams.set('spawnY', transition.y);
+      if (spawnY != null) url.searchParams.set('spawnY', spawnY);
       else url.searchParams.delete('spawnY');
       url.searchParams.delete('edit_map');
       window.history.pushState({}, '', url);
@@ -178,7 +229,9 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
             name: 'Main Lobby',
             max_users: 50,
             is_public: true,
-            map_data: {}
+            map_data: {},
+            scene_key: 'lobby',
+            type: 'public'
           });
         }
 
@@ -241,7 +294,7 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
         desynchronized: false,
         preserveDrawingBuffer: true
       },
-      scene: [LobbyScene]
+      scene: [LobbyScene, BeatEmUpScene]
     };
 
     _phaserLobbyInstance = new Phaser.Game(config);

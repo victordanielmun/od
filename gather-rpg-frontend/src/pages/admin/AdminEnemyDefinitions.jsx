@@ -70,7 +70,13 @@ const EnemyDefinitionCard = ({ definition, onEdit, onDelete }) => {
             backgroundColor: '#1a1a2e',
             scene: new EnemyDefinitionPreviewScene(definition.sprite_key || '1'),
             audio: { disableWebAudio: true, noAudio: true },
-            render: { pixelArt: true }
+            render: { pixelArt: true },
+            input: {
+                keyboard: false,
+                mouse: false,
+                touch: false,
+                gamepad: false
+            }
         });
         return () => game.destroy(true);
     }, [definition.sprite_key]);

@@ -255,6 +255,7 @@ CREATE TABLE "public"."missions" (
     "reward_quantity" int8 DEFAULT 0,
     "reward_gold" int8 DEFAULT 0,
     "reward_xp" int8 DEFAULT 0,
+    "difficulty" varchar(20) NOT NULL DEFAULT 'beginner'::character varying,
     "created_at" timestamptz,
     PRIMARY KEY ("id")
 );

@@ -1,4 +1,5 @@
 import * as Phaser from 'phaser';
+import { CHARACTER_CONFIG } from '../config/CharacterConfig';
 
 export class PlayerSprite extends Phaser.GameObjects.Container {
   constructor(scene, x, y, characterId, frame, username, isSelf = false) {
@@ -21,8 +22,9 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
     // Ideally pass scale in constructor or read global config.
     this.sprite.setOrigin(0.5, 0.85); // Anchor at feet (adjusted for larger sprite)
     
-    // Safety guard: ensure scale is never 0 or NaN
-    const s = 1.0;
+    // Read character-specific scale from CharacterConfig
+    const charDef = CHARACTER_CONFIG.characters.find(c => c.id === this.characterId);
+    const s = charDef?.scale ?? 1.0;
     this.sprite.setScale(Number.isFinite(s) && s > 0 ? s : 1.0);
 
     // Add name tag - Unified style with NPCs but with white color
@@ -55,11 +57,16 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
   playAnimation(key, lockDuration = 0) {
     // If we are currently locked by a previous animation, don't play a new one
     if (this._animLocked && this.scene.time.now < this._animLockTime) {
-      // Allow overriding a lock if we are dying
-      if (key !== 'die' && !key.endsWith('-die')) {
+      // Allow overriding a lock if we are dying or taking hurt
+      const isOverride = key === 'die' || key === 'dead' || key === 'hurt' ||
+                         key.endsWith('-die') || key.endsWith('-dead') || key.endsWith('-hurt');
+      if (!isOverride) {
         return;
       }
     }
+
+    // Alias: 'dead' → 'die' (PlayerController uses 'dead'; generated file uses 'die')
+    if (key === 'dead') key = 'die';
 
     // If key is just 'walk' or 'slash', prepend character ID
     if (!key.startsWith('char-')) {
@@ -119,6 +126,12 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
     if (this.scene.textures.exists(newTexture)) {
         console.log(`[PlayerSprite] ${this.username} updating texture to ${newTexture}`);
         this.sprite.setTexture(newTexture);
+        
+        // Update scale factor for the new character ID
+        const charDef = CHARACTER_CONFIG.characters.find(c => c.id === this.characterId);
+        const s = charDef?.scale ?? 1.0;
+        this.sprite.setScale(Number.isFinite(s) && s > 0 ? s : 1.0);
+
         this.playAnimation('idle'); // Force restart animation with new ID
     } else {
         console.warn(`[PlayerSprite] Texture ${newTexture} not found when updating character sync.`);

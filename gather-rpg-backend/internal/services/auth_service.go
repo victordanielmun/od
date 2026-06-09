@@ -25,7 +25,7 @@ func NewAuthService(repo *repository.UserRepository) *AuthService {
 	return &AuthService{Repo: repo}
 }
 
-func (s *AuthService) LoginGuest() (*models.AuthResponse, error) {
+func (s *AuthService) LoginGuest(characterIDs []string) (*models.AuthResponse, error) {
 	guestID := uuid.New().String()
 	username := fmt.Sprintf("Guest_%s", guestID[:8])
 	email := fmt.Sprintf("%s@guest.local", guestID)
@@ -36,9 +36,14 @@ func (s *AuthService) LoginGuest() (*models.AuthResponse, error) {
 		return nil, err
 	}
 
-	// Select a random character ID between 1 and 3 for the guest
+	// Select a random character ID from the available ones, or fallback to random 1-3
+	var randomCharID string
 	charSeed := rand.New(rand.NewSource(time.Now().UnixNano()))
-	randomCharID := strconv.Itoa(charSeed.Intn(3) + 1)
+	if len(characterIDs) > 0 {
+		randomCharID = characterIDs[charSeed.Intn(len(characterIDs))]
+	} else {
+		randomCharID = strconv.Itoa(charSeed.Intn(3) + 1)
+	}
 
 	user := &models.User{
 		Username:    username,

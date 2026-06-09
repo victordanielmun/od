@@ -78,6 +78,7 @@ func main() {
 	database.SeedLearningChallenges()
 	database.SeedMotivations()
 	database.SeedGuides()
+	database.SeedSkillsAndItems()
 
 	// Repositories & Services
 	userRepo := repository.NewUserRepository()
@@ -221,6 +222,7 @@ func main() {
 	
 	// Item & Shop Admin Routes
 	admin.Get("/items", adminHandler.ListItems)
+	admin.Get("/skills", adminHandler.ListSkills)
 	admin.Get("/enemies", adminHandler.ListEnemies)
 	admin.Post("/enemies", adminHandler.CreateEnemy)
 	admin.Put("/enemies/:id", adminHandler.UpdateEnemy)
@@ -282,6 +284,7 @@ func main() {
 	inventory.Post("/test-add", inventoryHandler.AddTestItem)
 	inventory.Post("/pickup/:id", pickupHandler.Pickup)
 	inventory.Get("/pickups/:scene", pickupHandler.GetPickups)
+	inventory.Post("/use/:id", inventoryHandler.UseItem)
 
 	// Shop Routes
 	shop := app.Group("/shop", middleware.Protected(cfg))

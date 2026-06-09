@@ -381,6 +381,23 @@ func (h *Hub) HandleMessage(client *Client, message []byte) {
 
 	case MsgNinjaCardAnswer:
 		h.handleNinjaCardAnswer(client, wsMsg.Payload)
+
+	case MsgAudioMuteState:
+		h.handleAudioMuteState(client, wsMsg.Payload)
+
+	case MsgTeleportToFriend:
+		var payload struct {
+			TargetUserID string `json:"target_user_id"`
+		}
+		parsePayload(wsMsg.Payload, &payload)
+		h.handleTeleportToFriend(client, payload.TargetUserID)
+
+	case MsgSendRoomInvite:
+		var payload struct {
+			TargetUserID string `json:"target_user_id"`
+		}
+		parsePayload(wsMsg.Payload, &payload)
+		h.handleSendRoomInvite(client, payload.TargetUserID)
 	}
 }
 
@@ -1073,6 +1090,13 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 		return
 	}
 
+	// Mientras la Ninja Card este pendiente, cualquier golpe adicional debe ignorarse.
+	// Esto evita que ataques en vuelo maten al enemigo antes de responder la tarjeta.
+	if enemy.FSMState == "ninja_card" {
+		room.mu.Unlock()
+		return
+	}
+
 	// Ninja Cards logic: If this blow would kill the enemy
 	if enemy.HP-p.Damage <= 0 && enemy.FSMState != "ninja_card" {
 		log.Printf("[NinjaCard] Enemy %s is about to die from player %s. Triggering Ninja Card.", instanceUUID, client.ID)
@@ -1080,10 +1104,22 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 		enemy.PendingNinjaCard = client.ID.String()
 		room.mu.Unlock()
 
-		// Get a random challenge
-		challenge, err := h.LearningService.GetRandomChallenge("vocabulary", "beginner")
+		// Get a random challenge matching player's english level
+		var profile models.UserLearningProfile
+		level := models.DifficultyBeginner
+		if database.DB != nil {
+			if dbErr := database.DB.Where("user_id = ?", client.ID).First(&profile).Error; dbErr == nil {
+				level = profile.EnglishLevel
+			}
+		}
+
+		challenge, err := h.LearningService.GetRandomChallenge("vocabulary", string(level))
 		if err != nil || challenge == nil {
-			log.Printf("[NinjaCard Warning] Vocabulary beginner challenge not found. Falling back to any available challenge.")
+			log.Printf("[NinjaCard Warning] Vocabulary %s challenge not found. Falling back to any challenge of that level.", level)
+			challenge, err = h.LearningService.GetRandomChallenge("", string(level))
+		}
+		if err != nil || challenge == nil {
+			log.Printf("[NinjaCard Warning] Fallback to any challenge.")
 			challenge, err = h.LearningService.GetRandomChallenge("", "")
 		}
 
@@ -1557,6 +1593,50 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 		},
 	}
 	h.broadcastToRoomSimple(room, msg)
+
+	// COOPERATIVE AUDIO: connect new client with every existing peer immediately.
+	// In cooperative rooms the session acts as a "meeting room" — all participants
+	// hear each other at full volume regardless of their map position.
+	if room.Type == "cooperative" {
+		sessionID := "room:" + roomID
+		room.mu.RLock()
+		for existingClient := range room.Clients {
+			if existingClient == client {
+				continue
+			}
+			// Register the peer connection on both sides
+			h.PeerService.Manager.AddPeerConnection(client.ID.String(), existingClient.ID.String(), sessionID, roomID)
+			h.PeerService.Manager.AddPeerConnection(existingClient.ID.String(), client.ID.String(), sessionID, roomID)
+
+			// Deterministic initiator: lexicographically smaller ID starts the offer
+			newIsInitiator := client.ID.String() < existingClient.ID.String()
+
+			// Tell the new client to connect to each existing peer
+			client.SendJSON(&models.WSMessage{
+				Type: MsgStartPeerConnection,
+				Payload: models.StartPeerConnectionPayload{
+					PeerUserID:   existingClient.ID,
+					PeerUsername: existingClient.Username,
+					Distance:     0,
+					Initiator:    newIsInitiator,
+					SessionID:    sessionID,
+				},
+			})
+			// Tell each existing peer to connect back to the new client
+			existingClient.SendJSON(&models.WSMessage{
+				Type: MsgStartPeerConnection,
+				Payload: models.StartPeerConnectionPayload{
+					PeerUserID:   client.ID,
+					PeerUsername: client.Username,
+					Distance:     0,
+					Initiator:    !newIsInitiator,
+					SessionID:    sessionID,
+				},
+			})
+		}
+		room.mu.RUnlock()
+		log.Printf("[CoopAudio] Connected user %s with existing peers in room %s (session=%s)", client.ID, roomID, sessionID)
+	}
 }
 
 func (h *Hub) handlePlayerMove(client *Client, payload models.PlayerMovePayload) {
@@ -2006,7 +2086,7 @@ func (h *Hub) handleWebRTCDisconnect(client *Client, payload interface{}) {
 		Type: MsgWebRTCDisconnect,
 		Payload: map[string]string{
 			"from_user_id": client.ID.String(),
-			"peer_user_id": client.ID.String(),
+			"peer_user_id": disc.PeerUserID, // Fixed: was incorrectly sending client.ID instead of the peer being disconnected
 			"session_id":   disc.SessionID,
 		},
 	})
@@ -2014,7 +2094,53 @@ func (h *Hub) handleWebRTCDisconnect(client *Client, payload interface{}) {
 
 // Proximity Logic
 
+// handleAudioMuteState broadcasts a user's self-mute state change to the entire room.
+// The event is purely informational — the actual audio suppression is already handled
+// by the browser (track.enabled = false on the sender's MediaStream).
+func (h *Hub) handleAudioMuteState(client *Client, payload interface{}) {
+	var p struct {
+		IsMuted   bool   `json:"is_muted"`
+		SessionID string `json:"session_id"`
+	}
+	parsePayload(payload, &p)
+
+	roomID := client.RoomID
+	if roomID == "" {
+		return
+	}
+
+	h.mu.RLock()
+	room, ok := h.Rooms[roomID]
+	h.mu.RUnlock()
+	if !ok {
+		return
+	}
+
+	// Broadcast to every OTHER client in the room so they can update their UI
+	broadcastMsg := &models.WSMessage{
+		Type: MsgAudioMuteState,
+		Payload: map[string]interface{}{
+			"user_id":    client.ID,
+			"username":   client.Username,
+			"is_muted":   p.IsMuted,
+			"session_id": "room:" + roomID,
+		},
+	}
+
+	room.mu.RLock()
+	for c := range room.Clients {
+		if c == client {
+			continue
+		}
+		c.SendJSON(broadcastMsg)
+	}
+	room.mu.RUnlock()
+
+	log.Printf("[CoopAudio] User %s (%s) self-mute state → %v in room %s", client.Username, client.ID, p.IsMuted, roomID)
+}
+
 func (h *Hub) proximityLoop() {
+
 	ticker := time.NewTicker(2 * time.Second)
 	for range ticker.C {
 		h.mu.RLock()
@@ -2456,3 +2582,102 @@ func (h *Hub) handlePlayerEmoji(client *Client, payload models.PlayerEmojiPayloa
 	// Broadcast to all clients in the room
 	h.broadcastToRoomSimple(room, broadcast)
 }
+
+func (h *Hub) handleTeleportToFriend(client *Client, targetUserID string) {
+	targetUUID, err := uuid.Parse(targetUserID)
+	if err != nil {
+		client.SendError("Invalid target user ID")
+		return
+	}
+
+	h.mu.RLock()
+	var friendClient *Client
+	for c := range h.Clients {
+		if c.ID == targetUUID {
+			friendClient = c
+			break
+		}
+	}
+	h.mu.RUnlock()
+
+	if friendClient == nil {
+		client.SendError("El amigo no está conectado")
+		return
+	}
+
+	if friendClient.RoomID == "" {
+		client.SendError("El amigo no se encuentra en ninguna sala activa")
+		return
+	}
+
+	h.mu.RLock()
+	targetRoom, exists := h.Rooms[friendClient.RoomID]
+	h.mu.RUnlock()
+
+	if !exists {
+		client.SendError("No se pudo localizar la sala del amigo")
+		return
+	}
+
+	// Approve map join for the target room with direct x, y coordinates of the friend
+	client.SendJSON(&models.WSMessage{
+		Type: MsgMapJoinApproved,
+		Payload: map[string]interface{}{
+			"room_id":     targetRoom.ID,
+			"scene_key":   targetRoom.SceneKey,
+			"type":        targetRoom.Type,
+			"invite_code": targetRoom.InviteCode,
+			"x":           friendClient.X,
+			"y":           friendClient.Y,
+		},
+	})
+}
+
+func (h *Hub) handleSendRoomInvite(client *Client, targetUserID string) {
+	targetUUID, err := uuid.Parse(targetUserID)
+	if err != nil {
+		client.SendError("Invalid target user ID")
+		return
+	}
+
+	if client.RoomID == "" {
+		client.SendError("Debes estar en una sala para poder enviar invitaciones")
+		return
+	}
+
+	h.mu.RLock()
+	room, exists := h.Rooms[client.RoomID]
+	h.mu.RUnlock()
+
+	if !exists {
+		client.SendError("No se pudo localizar tu sala actual")
+		return
+	}
+
+	h.mu.RLock()
+	var targetClient *Client
+	for c := range h.Clients {
+		if c.ID == targetUUID {
+			targetClient = c
+			break
+		}
+	}
+	h.mu.RUnlock()
+
+	if targetClient == nil {
+		client.SendError("El amigo no está conectado")
+		return
+	}
+
+	targetClient.SendJSON(&models.WSMessage{
+		Type: MsgRoomInviteReceived,
+		Payload: map[string]interface{}{
+			"inviter_id":   client.ID.String(),
+			"inviter_name": client.Username,
+			"room_id":      room.ID,
+			"scene_key":    room.SceneKey,
+			"invite_code":  room.InviteCode,
+		},
+	})
+}
+

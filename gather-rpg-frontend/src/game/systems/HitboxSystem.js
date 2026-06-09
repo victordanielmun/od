@@ -49,8 +49,16 @@ export default class HitboxSystem {
     this.currentAttack = { type: attackType, def };
     this.hitEnemiesThisSwing.clear();
 
-    // Reproducir animación en el jugador
-    this.player.playAnimation(attackType);
+    // Intentar animar con el sheet 'combo' (1d) primero; luego 'combat' (1b)
+    const charId = this.player.characterId || '1';
+    const comboKey  = `char-${charId}-${attackType}`; // e.g. char-1-combo1
+    const fallbackKey = attackType;                    // PlayerSprite prependea char-id
+
+    if (this.player.scene.anims.exists(comboKey)) {
+      this.player.playAnimation(attackType, 0); // PlayerSprite resuelve la key completa
+    } else {
+      this.player.playAnimation(attackType, 0);
+    }
   }
 
   _onAnimationFrame(animation, frame) {
@@ -122,7 +130,15 @@ export default class HitboxSystem {
     enemy.takeDamage(def.damage, knockback);
 
     this._spawnHitEffect(enemy.x, enemy.y, def.damage);
-    this._applyHitstop(80);
+
+    // Hitstop configurable por ataque
+    const stopMs = def.hitStopMs ?? 80;
+    if (stopMs > 0) this._applyHitstop(stopMs);
+
+    // Screen shake en ataques pesados
+    if (def.screenShake) {
+      this.scene.cameras.main.shake(200, 0.010);
+    }
 
     this.scene.events.emit('player-hit', {
       damage:  def.damage,

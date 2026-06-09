@@ -1,4 +1,3 @@
-import * as Phaser from 'phaser';
 import { useAuthStore } from '../../store/authStore';
 
 export class EditorController {
@@ -13,6 +12,7 @@ export class EditorController {
     this.textureFrame = 'sprite1'; // Default terrain sprite
     this.history = [];
     this.redoStack = [];
+    this._currentBatch = null;
 
     // Editor UI state
     this.cursorPreview = null;
@@ -273,12 +273,14 @@ export class EditorController {
   setMoveMode(mode) {
     if (!this.enabled) return;
     this.moveMode = mode;
+    this.scene.editorMoveMode = mode;
     this._applyMoveMode(mode);
     window.dispatchEvent(new CustomEvent('editor-move-mode-changed', { detail: { mode } }));
   }
 
   _applyMoveMode(mode) {
     if (!this.scene.player) return;
+    this.scene.editorMoveMode = mode;
 
     const markersVisible = this.enabled;
     if (this.scene.gridGraphics) this.scene.gridGraphics.setVisible(markersVisible);
@@ -366,7 +368,6 @@ export class EditorController {
   applyBuildMetadataToAll() {
     if (!this.buildMetadata) return;
     const { targetMap, targetX, targetY, targetRoute, interactionText } = this.buildMetadata;
-    let count = 0;
     this.scene.builds?.getChildren().forEach(gObj => {
       if (targetMap !== undefined) gObj.data.set('targetMap', targetMap);
       if (targetRoute !== undefined) gObj.data.set('targetRoute', targetRoute);
@@ -378,10 +379,16 @@ export class EditorController {
       const scale = this.buildMetadata.buildScale || 2;
       gObj.setScale(scale);
       gObj.data.set('buildScale', scale);
-      
-      count++;
     });
     this.scene.cameras.main.flash(200, 0, 255, 0);
+  }
+
+  _pushHistory(entry) {
+    if (this._currentBatch) {
+      this._currentBatch.push(entry);
+    } else {
+      this.history.push(entry);
+    }
   }
 
   _editorPlaceOrErase(gx, gy) {
@@ -400,7 +407,7 @@ export class EditorController {
         }
 
         if (toErase) {
-          this.history.push({ action: 'remove', type: toErase.type, x: gx, y: gy });
+          this._pushHistory({ action: 'remove', type: toErase.type, x: gx, y: gy });
           this.redoStack = [];
           
           toErase.tile.destroy();
@@ -453,7 +460,7 @@ export class EditorController {
       else if (this.tileType === 'enemy') newMetadata = this.enemyMetadata;
       else if (this.tileType === 'item') newMetadata = this.pickupMetadata;
 
-      this.history.push({ 
+      this._pushHistory({ 
         action: 'replace', 
         oldType: replacing.type, 
         oldMetadata: oldMetadata,
@@ -476,18 +483,21 @@ export class EditorController {
       }
       else if (this.tileType === 'item') currentMetadata = this.pickupMetadata;
 
-      this.history.push({ 
+      this._pushHistory({ 
         action: 'place', 
         type: this.tileType, 
         x: gx, y: gy, 
-        frame: this.textureFrame, 
+        frame: this.textureFrame || this._getDefaultFrameForType(this.tileType), 
         metadata: currentMetadata, 
         scale: this.buildScale 
       });
     }
     this.redoStack = [];
 
-    this.scene._placeTileDirect(this.tileType, gx, gy, this.textureFrame, 
+    // Determinar el frame efectivo según el tipo de tile
+    const effectiveFrame = this.textureFrame || this._getDefaultFrameForType(this.tileType);
+
+    this.scene._placeTileDirect(this.tileType, gx, gy, effectiveFrame, 
       this.tileType === 'build' ? this.buildMetadata : 
       this.tileType === 'npc' ? this.npcMetadata : 
       this.tileType === 'enemy' ? this.enemyMetadata : 
@@ -497,6 +507,18 @@ export class EditorController {
     this.emitStats();
   }
 
+  /** Retorna el frame por defecto para cada tipo de tile con atlas propio */
+  _getDefaultFrameForType(type) {
+    switch (type) {
+      case 'forest': return 'sprite1';
+      case 'wall': return 'sprite1';
+      case 'build': return 'sprite1';
+      case 'store': return 'sprite1';
+      case 'furniture': return 'sprite1';
+      default: return 'sprite1';
+    }
+  }
+
   _editorFillRect(x1, y1, x2, y2) {
     const G = this.GRID_SIZE;
     const minX = Math.min(x1, x2);
@@ -504,11 +526,23 @@ export class EditorController {
     const minY = Math.min(y1, y2);
     const maxY = Math.max(y1, y2);
 
+    this._currentBatch = [];
+
     for (let x = minX; x <= maxX; x += G) {
       for (let y = minY; y <= maxY; y += G) {
         this._editorPlaceOrErase(x, y);
       }
     }
+
+    if (this._currentBatch.length > 0) {
+      this.history.push({
+        action: 'batch',
+        entries: this._currentBatch
+      });
+      this.redoStack = [];
+    }
+    this._currentBatch = null;
+    this.emitStats();
   }
 
   _drawRectPreview(x1, y1, x2, y2) {
@@ -531,6 +565,19 @@ export class EditorController {
     const entry = this.history.pop();
     this.redoStack.push(entry);
 
+    this._executeUndoEntry(entry);
+    this.emitStats();
+  }
+
+  _executeUndoEntry(entry) {
+    if (entry.action === 'batch') {
+      // Undo batch in reverse order
+      for (let i = entry.entries.length - 1; i >= 0; i--) {
+        this._executeUndoEntry(entry.entries[i]);
+      }
+      return;
+    }
+
     if (entry.action === 'place') {
       const found = this.scene._findTileAt(entry.x, entry.y, entry.type);
       if (found) found.tile.destroy();
@@ -541,13 +588,25 @@ export class EditorController {
       if (found) found.tile.destroy();
       this.scene._placeTileDirect(entry.oldType, entry.x, entry.y);
     }
-    this.emitStats();
   }
 
   redo() {
     if (this.redoStack.length === 0) return;
     const entry = this.redoStack.pop();
     this.history.push(entry);
+
+    this._executeRedoEntry(entry);
+    this.emitStats();
+  }
+
+  _executeRedoEntry(entry) {
+    if (entry.action === 'batch') {
+      // Redo batch in original order
+      for (let i = 0; i < entry.entries.length; i++) {
+        this._executeRedoEntry(entry.entries[i]);
+      }
+      return;
+    }
 
     if (entry.action === 'place') {
       this.scene._placeTileDirect(entry.type, entry.x, entry.y, entry.frame, entry.metadata);
@@ -559,7 +618,6 @@ export class EditorController {
       if (found) found.tile.destroy();
       this.scene._placeTileDirect(entry.newType, entry.x, entry.y);
     }
-    this.emitStats();
   }
 
   clearAllTiles() {
