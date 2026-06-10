@@ -1,13 +1,11 @@
 package handlers
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/services"
-	"net/http"
 	"strconv"
 	"time"
 	"github.com/gofiber/fiber/v2"
@@ -64,9 +62,7 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 		}
 	}
 	missions = filteredMissions
-	// #region debug-point M1:missions-by-scene-filtered
-	_, _ = http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewBufferString(fmt.Sprintf(`{"sessionId":"mission-not-completing","runId":"pre-fix","hypothesisId":"H1","location":"mission_handler.go:GetMissionsByScene:filtered","msg":"[DEBUG] missions filtered for scene","data":{"sceneKey":"%s","userId":"%s","playerLevel":"%s","missionCount":%d},"ts":%d}`, sceneKey, userID.String(), playerLevel, len(missions), timeNowMillis())))
-	// #endregion
+
 
 	type TaskWithStatus struct {
 		ID            uint   `json:"id"`
@@ -90,9 +86,7 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 	for _, m := range missions {
 		tasks, _ := h.Service.GetTasks(m.ID)
 		progress, _ := h.Service.GetProgress(userID, m.ID)
-		// #region debug-point M2:missions-by-scene-progress
-		_, _ = http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewBufferString(fmt.Sprintf(`{"sessionId":"mission-not-completing","runId":"pre-fix","hypothesisId":"H2","location":"mission_handler.go:GetMissionsByScene:progress","msg":"[DEBUG] mission progress loaded for scene","data":{"sceneKey":"%s","missionId":%d,"taskCount":%d,"progressNil":%t},"ts":%d}`, sceneKey, m.ID, len(tasks), progress == nil, timeNowMillis())))
-		// #endregion
+
 		
 		var completedMap map[string]bool
 		if progress != nil && progress.TasksCompleted != nil {

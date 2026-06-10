@@ -1,13 +1,11 @@
 package services
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/repository"
-	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,9 +73,7 @@ func (s *MissionService) GetProgress(userID uuid.UUID, missionID uint) (*models.
 
 	progress, err := s.Repo.GetPlayerProgress(playerID, missionID)
 	if err != nil {
-		// #region debug-point M3:get-progress-create
-		_, _ = http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewBufferString(fmt.Sprintf(`{"sessionId":"mission-not-completing","runId":"pre-fix","hypothesisId":"H3","location":"mission_service.go:GetProgress:create","msg":"[DEBUG] creating missing mission progress","data":{"userId":"%s","playerId":"%s","missionId":%d},"ts":%d}`, userID.String(), playerID.String(), missionID, time.Now().UnixMilli())))
-		// #endregion
+
 		// If not found, create a new one
 		newProgress := &models.PlayerMissionProgress{
 			PlayerID:       playerID,
@@ -91,9 +87,7 @@ func (s *MissionService) GetProgress(userID uuid.UUID, missionID uint) (*models.
 		}
 		return newProgress, nil
 	}
-	// #region debug-point M4:get-progress-found
-	_, _ = http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewBufferString(fmt.Sprintf(`{"sessionId":"mission-not-completing","runId":"pre-fix","hypothesisId":"H3","location":"mission_service.go:GetProgress:found","msg":"[DEBUG] existing mission progress found","data":{"userId":"%s","playerId":"%s","missionId":%d,"status":"%s"},"ts":%d}`, userID.String(), playerID.String(), missionID, progress.Status, time.Now().UnixMilli())))
-	// #endregion
+
 	return progress, nil
 }
 

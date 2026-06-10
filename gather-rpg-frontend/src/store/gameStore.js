@@ -477,9 +477,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
 
                 wsClient.on('enemy_kill_progress', (payload) => {
                     const { mission_id, task_id, kills_done, required_kills, task_completed } = payload;
-                    // #region debug-point M8:enemy-kill-progress-received
-                    fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"mission-not-completing",runId:"pre-fix",hypothesisId:"H5",location:"gameStore.js:enemy_kill_progress",msg:"[DEBUG] enemy_kill_progress received",data:{missionId:mission_id,taskId:task_id,killsDone:kills_done,requiredKills:required_kills,taskCompleted:task_completed,activeMissionId:get().activeMission?.id,activeTaskIds:(get().activeMission?.tasks||[]).map(t=>t.id)},ts:Date.now()})}).catch(()=>{});
-                    // #endregion
+
                     console.log(`[gameStore] Kill progress: task ${task_id} → ${kills_done}/${required_kills}`);
                     
                     // Mostrar notificación de progreso
@@ -652,15 +650,11 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     fetchActiveMission: async (sceneKey) => {
         set({ activeMission: null }); // Clear previous mission state
         try {
-            // #region debug-point M5:fetch-active-mission-request
-            fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"mission-not-completing",runId:"pre-fix",hypothesisId:"H4",location:"gameStore.js:fetchActiveMission:request",msg:"[DEBUG] fetchActiveMission requested",data:{sceneKey},ts:Date.now()})}).catch(()=>{});
-            // #endregion
+
             const response = await api.get(`/missions/scene/${sceneKey}`);
             if (response.data && response.data.length > 0) {
                 const mission = response.data.find(m => m?.status !== 'completed') || null;
-                // #region debug-point M6:fetch-active-mission-response
-                fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"mission-not-completing",runId:"pre-fix",hypothesisId:"H4",location:"gameStore.js:fetchActiveMission:response",msg:"[DEBUG] fetchActiveMission selected first non-completed mission",data:{sceneKey,missionId:mission?.id||null,taskCount:(mission?.tasks||[]).length,taskTypes:(mission?.tasks||[]).map(t=>t.type),status:mission?.status||null,totalMissions:response?.data?.length||0},ts:Date.now()})}).catch(()=>{});
-                // #endregion
+
                 set({ activeMission: mission });
 
                 // Multi-user mission mode notifications
@@ -677,9 +671,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                         break;
                 }
             } else {
-                // #region debug-point M7:fetch-active-mission-empty
-                fetch("http://127.0.0.1:7777/event",{method:"POST",body:JSON.stringify({sessionId:"mission-not-completing",runId:"pre-fix",hypothesisId:"H4",location:"gameStore.js:fetchActiveMission:empty",msg:"[DEBUG] fetchActiveMission returned empty result",data:{sceneKey},ts:Date.now()})}).catch(()=>{});
-                // #endregion
+
                 set({ activeMission: null });
             }
         } catch (err) {
