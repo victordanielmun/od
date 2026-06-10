@@ -119,6 +119,7 @@ type NPCTemplate struct {
 	PositionX         int           `json:"position_x"`
 	PositionY         int           `json:"position_y"`
 	FacingDirection   string        `gorm:"size:10;default:'south'" json:"facing_direction"`
+	DefaultState      NPCState      `gorm:"type:npc_state;default:'idle'" json:"default_state"`
 	InteractionRadius int           `gorm:"default:64" json:"interaction_radius"`
 	MovementType      string        `gorm:"size:20;default:'static'" json:"movement_type"`
 	MovementRange     int           `gorm:"default:0" json:"movement_range"`

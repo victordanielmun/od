@@ -115,7 +115,7 @@ export const MapEditorUI = ({ gameRef }) => {
   const [activeTile, setActiveTile] = useState('wall');
   const [activeTexture, setActiveTexture] = useState('sprite1');
   const [buildMeta, setBuildMeta] = useState({ portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '' });
-  const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [] });
+  const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [], state: 'idle' });
   const [enemyMeta, setEnemyMeta] = useState({ npcId: '', waveNum: 1, hp: 50, speed: 120, damage: 10, attackRate: 1000 });
   const [buildScale, setBuildScale] = useState(2);
   const [availableMaps, setAvailableMaps] = useState([]);
@@ -199,7 +199,8 @@ export const MapEditorUI = ({ gameRef }) => {
       } else if (type === 'npc') {
         setNpcMeta({
           definitionId: metadata.definitionId || '',
-          missionIds: Array.isArray(metadata.missionIds) ? metadata.missionIds : (metadata.missionId ? [metadata.missionId] : [])
+          missionIds: Array.isArray(metadata.missionIds) ? metadata.missionIds : (metadata.missionId ? [metadata.missionId] : []),
+          state: metadata.state || 'idle'
         });
         setPickupMeta({
           itemId: metadata.itemId || '',
@@ -1013,6 +1014,22 @@ export const MapEditorUI = ({ gameRef }) => {
                     {npcDefinitions.map(d => (
                       <option key={d.id} value={d.id}>{d.name} (ID: {d.id})</option>
                     ))}
+                  </select>
+                </div>
+
+                <div className="mb-2">
+                  <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.initial_state') || 'Initial State'}</label>
+                  <select value={npcMeta.state || 'idle'} onChange={e => updateNpcMeta('state', e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none">
+                    <option value="idle">Idle</option>
+                    <option value="talking">Talking</option>
+                    <option value="happy">Happy</option>
+                    <option value="angry">Angry</option>
+                    <option value="sad">Sad</option>
+                    <option value="surprised">Surprised</option>
+                    <option value="thinking">Thinking</option>
+                    <option value="grateful">Grateful</option>
+                    <option value="waiting">Waiting</option>
                   </select>
                 </div>
 

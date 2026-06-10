@@ -44,10 +44,14 @@ func (s *NPCService) EnsureRoomInstances(roomID uuid.UUID, sceneKey string) ([]m
 	// 4. Compare and create missing instances ONLY for the templates in this scene
 	for _, tmpl := range templates {
 		if _, exists := instanceMap[tmpl.ID]; !exists {
+			initialState := tmpl.DefaultState
+			if initialState == "" {
+				initialState = models.NPCStateIdle
+			}
 			newInst := &models.NPCRoomInstance{
 				RoomID:        roomID,
 				NPCTemplateID: tmpl.ID,
-				CurrentState:  models.NPCStateIdle,
+				CurrentState:  initialState,
 			}
 			if err := s.Repo.CreateRoomInstance(newInst); err != nil {
 				return nil, err
@@ -177,6 +181,7 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 		MissionID    string   `json:"missionId"`
 		MissionIDs   []string `json:"missionIds"`
 		TemplateID   string   `json:"templateId"`
+		State        string   `json:"state"`
 	}
 	type mapConfig struct {
 		NPCZones []mapObject `json:"npcZones"`
@@ -213,7 +218,7 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 			continue
 		}
 		
-		log.Printf("[NPCService] Processing Zone for NPC: %s (ID: %d) at [%d, %d]", def.Name, def.ID, zone.X, zone.Y)
+		log.Printf("[NPCService] Processing Zone for NPC: %s (ID: %d) at [%d, %d] with state '%s'", def.Name, def.ID, zone.X, zone.Y, zone.State)
 
 		roleStr := zone.Role
 		if def.Type == models.NPCTypeQuest && roleStr == "" {
@@ -254,16 +259,24 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 			// Update
 			foundTmpl.PositionX = zone.X
 			foundTmpl.PositionY = zone.Y
+			if zone.State != "" {
+				foundTmpl.DefaultState = models.NPCState(zone.State)
+			}
 			s.Repo.UpdateTemplate(foundTmpl)
 			matchedTemplateIDs[foundTmpl.ID] = true
 			finalTmplID = foundTmpl.ID
 		} else {
 			// Create
+			initialState := models.NPCState(zone.State)
+			if initialState == "" {
+				initialState = models.NPCStateIdle
+			}
 			newTmpl := &models.NPCTemplate{
 				SceneKey:        sceneKey,
 				NPCDefinitionID: uint(defID),
 				PositionX:       zone.X,
 				PositionY:       zone.Y,
+				DefaultState:    initialState,
 			}
 			if err := s.Repo.CreateTemplate(newTmpl); err == nil {
 				matchedTemplateIDs[newTmpl.ID] = true
