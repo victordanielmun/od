@@ -467,11 +467,6 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                     window.dispatchEvent(new CustomEvent('enemies-update', { detail: payload }));
                 });
 
-                wsClient.on('npc_update', (payload) => {
-                    // Dispatch to Phaser scenes
-                    window.dispatchEvent(new CustomEvent('npcs-update', { detail: payload }));
-                });
-
                 wsClient.on('enemy_died', (payload) => {
                     // Dispatch to Phaser scenes
                     window.dispatchEvent(new CustomEvent('enemy-died-broadcast', { detail: payload }));

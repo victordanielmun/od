@@ -8,7 +8,6 @@ import { useAuthStore } from '../../store/authStore';
 import { useGameStore } from '../../store/gameStore';
 import { ItemIcon } from '../common/ItemIcon';
 import { STATE_TO_ANIM, NPC_CONFIG } from '../../game/config/NPCConfig';
-import wsClient from '../../services/websocket';
 
 const NPCPortrait = ({ npcId, state, size = 'small' }) => {
     // Normalize ID: sprite2 -> 2
@@ -147,9 +146,6 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     useEffect(() => {
         console.log("[NPCDialogue] MOUNTED. Props npcData:", npcData);
         
-        // Notify server that dialogue started
-        wsClient.send('start_dialogue', { npc_template_id: npcData.templateId });
-
         window.dispatchEvent(new CustomEvent('npc-interaction-start', {
             detail: { templateId: npcData.templateId }
         }));
@@ -232,15 +228,10 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             }
         };
 
-        const hasLoggedDebug = false; // dummy mapping context
-
         fetchMissions();
 
         return () => {
             stopAudio();
-            // Notify server that dialogue ended
-            wsClient.send('end_dialogue', { npc_template_id: npcData.templateId });
-            
             window.dispatchEvent(new CustomEvent('npc-interaction-end', {
                 detail: { templateId: npcData.templateId }
             }));

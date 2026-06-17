@@ -15,6 +15,7 @@ import { CameraSystem } from '../map/CameraSystem';
 import { EditorController } from '../editor/EditorController';
 import { PlayerManager } from '../players/PlayerManager';
 import { InteractionSystem } from '../interactions/InteractionSystem';
+import { MinigameOverlayManager } from '../interactions/MinigameOverlayManager';
 
 const Phaser = window.Phaser;
 
@@ -70,6 +71,7 @@ export class LobbyScene extends Phaser.Scene {
     this.mapManager = new MapManager(this);
     this.cameraSystem = new CameraSystem(this);
     this.interactionSystem = new InteractionSystem(this);
+    this.minigameOverlayManager = new MinigameOverlayManager(this);
     this.playerManager = new PlayerManager(this);
     this.editorController = new EditorController(this);
     this.editor = this.editorController;
@@ -141,6 +143,22 @@ export class LobbyScene extends Phaser.Scene {
     // Capture data passed when restarting the scene
     this.initData = data || {};
 
+    // Clear references in mapManager to avoid keeping destroyed physics groups from previous runs
+    if (this.mapManager) {
+      this.mapManager.walls = null;
+      this.mapManager.floors = null;
+      this.mapManager.forest = null;
+      this.mapManager.builds = null;
+      this.mapManager.spawns = null;
+      this.mapManager.npcZones = null;
+      this.mapManager.pickups = null;
+      this.mapManager.voids = null;
+      this.mapManager.colliders = null;
+      this.mapManager.storeTiles = null;
+      this.mapManager.storeFurniture = null;
+      this.mapManager.enemySpawns = null;
+    }
+
     // STABILIZATION: Initialize myPlayerId as early as possible from authStore
     // to prevent race conditions during the first positions_snapshot.
     const user = useAuthStore.getState().user;
@@ -158,6 +176,11 @@ export class LobbyScene extends Phaser.Scene {
     this.playerMp = 100;
     this.playerMaxMp = 100;
     this.playerAttackIFrames = 0;
+
+    if (!this.editorController) {
+      this.editorController = new EditorController(this);
+      this.editor = this.editorController;
+    }
   }
 
   preload() {
@@ -227,35 +250,28 @@ export class LobbyScene extends Phaser.Scene {
 
     // Load Atlases — guard with textures.exists() to prevent 'frame already exists'
     // warnings when the scene restarts (e.g., map portal transition).
-    // --- Optimized Asset Loading ---
-    // Only load what's needed for the current map, or everything if admin (for editor)
-    const sceneKey = this.initData?.map || 'lobby';
-    
     // Load Enemy assets
     loadEnemySprites(this);
-    
-    const isStoreMap = sceneKey.toLowerCase().includes('store') || sceneKey.toLowerCase().includes('pantry') || sceneKey.toLowerCase().includes('shop');
-    const isNatureMap = sceneKey.toLowerCase().includes('forest') || sceneKey.toLowerCase().includes('woods') || sceneKey.toLowerCase().includes('garden') || sceneKey === 'lobby';
-    const isAdmin = useAuthStore.getState().isAdmin();
 
-    // Core Atlases — always needed
+    // Load Atlases — always load all atlases for map editor support and runtime stability
     if (!this.textures.exists('terrain'))
-      this.load.atlas('terrain', '/terrain/terrain-spritesheet.png', '/terrain/terrain-sprites.json');
+      this.load.atlas('terrain', '/terrain/terrain-spritesheet_extruido.png', '/terrain/terrain-sprites_extruido.json');
     if (!this.textures.exists('walls'))
       this.load.atlas('walls', '/wall/wall-spritesheet.png', '/wall/wall-sprites.json');
 
-    // Conditional Atlases
-    if ((isNatureMap || isAdmin) && !this.textures.exists('forest'))
+    if (!this.textures.exists('forest'))
       this.load.atlas('forest', '/forest/forest-spritesheet.png', '/forest/forest-sprites.json');
     
-    if ((isNatureMap || isAdmin) && !this.textures.exists('builds'))
+    if (!this.textures.exists('builds'))
       this.load.atlas('builds', '/builds/build-spritesheet.png', '/builds/build-sprites.json');
 
-    if ((isStoreMap || isAdmin) && !this.textures.exists('store-tiles'))
+    if (!this.textures.exists('store-tiles'))
       this.load.atlas('store-tiles', '/store/tiles.png', '/store/tiles.json');
     
-    if ((isStoreMap || isAdmin) && !this.textures.exists('store-furniture'))
+    if (!this.textures.exists('store-furniture'))
       this.load.atlas('store-furniture', '/store/furniture.png', '/store/furniture.json');
+    if (!this.textures.exists('store-furniture2'))
+      this.load.atlas('store-furniture2', '/store/furniture2.png', '/store/furniture2.json');
 
     // Load Audio (BGM) — guard to avoid re-loading on scene restart
     const audioKeys = [
@@ -290,11 +306,14 @@ export class LobbyScene extends Phaser.Scene {
     // 0. Animations
     this.createAnimations();
     createEnemyAnimations(this);
-    this.interactionSystem.initialize();
-    this.editorController.setupUI();
 
     // 1. Map / Ground
     this.mapManager.createMap();
+
+    // Initialize systems that depend on map groups
+    this.interactionSystem.initialize();
+    this.minigameOverlayManager.initialize();
+    this.editorController.setupUI();
 
     // 2. Input
     this.cursors = this.input.keyboard.createCursorKeys();
@@ -372,7 +391,7 @@ export class LobbyScene extends Phaser.Scene {
       ({ master, music }) => {
         // Apply global master volume to the Phaser Sound Manager
         this.sound.volume = master;
-        this.sound.mute = (master === 0 || music === 0);
+        this.sound.mute = (master === 0);
 
         // Apply specific music volume to the current playing BGM
         if (this.currentBgm && this.currentBgm.isPlaying) {
@@ -430,6 +449,13 @@ export class LobbyScene extends Phaser.Scene {
       this.combatSystem.handlePlayerDash();
     });
 
+    // H: abrir/cerrar popup de ayuda
+    this.keyH = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H);
+    this.keyH.on('down', () => {
+      if (this.isTyping() || !this._isCanvasFocused()) return;
+      window.dispatchEvent(new CustomEvent('lobby-open-help'));
+    });
+
     // Listener para botones virtuales táctiles
     this.onVirtualInput = (e) => {
       const { key, isDown } = e.detail;
@@ -458,7 +484,7 @@ export class LobbyScene extends Phaser.Scene {
 
     // Stop Phaser from calling preventDefault() on WASD, Arrows, and Space.
     // This allows React input fields to receive these keystrokes normally!
-    this.input.keyboard.removeCapture('W,A,S,D,UP,DOWN,LEFT,RIGHT,SPACE,J,K,L,U,Q,R');
+    this.input.keyboard.removeCapture('W,A,S,D,UP,DOWN,LEFT,RIGHT,SPACE,J,K,L,U,Q,R,H');
 
     // Track canvas focus state so we know when the game canvas is truly active
     this._canvasHasFocus = false;
@@ -566,27 +592,6 @@ export class LobbyScene extends Phaser.Scene {
     window.addEventListener('npc-interaction-start', this.onNPCInteractionStart);
     window.addEventListener('npc-interaction-end', this.onNPCInteractionEnd);
 
-    this.onNPCsUpdate = (e) => {
-      const payload = e.detail;
-      if (!payload || !payload.npcs) return;
-
-      payload.npcs.forEach(serverNpc => {
-        const container = this.npcSprites.get(serverNpc.template_id);
-        if (container) {
-          const data = container.npcData;
-          if (data) {
-            data.serverX = serverNpc.x;
-            data.serverY = serverNpc.y;
-            data.targetX = serverNpc.target_x;
-            data.targetY = serverNpc.target_y;
-            data.isTalking = serverNpc.is_talking;
-            data.state = serverNpc.state;
-          }
-        }
-      });
-    };
-    window.addEventListener('npcs-update', this.onNPCsUpdate);
-
     this.onSpectate = () => this._onSpectate();
     window.addEventListener('spectate-player', this.onSpectate);
 
@@ -658,7 +663,6 @@ export class LobbyScene extends Phaser.Scene {
     window.removeEventListener('map-pickups-updated', this.onPickupsUpdated);
     window.removeEventListener('npc-interaction-start', this.onNPCInteractionStart);
     window.removeEventListener('npc-interaction-end', this.onNPCInteractionEnd);
-    window.removeEventListener('npcs-update', this.onNPCsUpdate);
     window.removeEventListener('spectate-player', this.onSpectate);
     window.removeEventListener('reset-player-state', this.onResetPlayerState);
     
@@ -882,6 +886,10 @@ export class LobbyScene extends Phaser.Scene {
     const facing = tmpl.facing_direction || 'south';
     sprite.setFacing(facing);
 
+    const defState = tmpl.default_state || def.default_state || 'idle';
+    const initialAnim = STATE_TO_ANIM[defState] || STATE_TO_ANIM.idle;
+    sprite.playAnimation(initialAnim.body);
+
     container.add(sprite);
 
     // Store essential data for interactions
@@ -894,6 +902,7 @@ export class LobbyScene extends Phaser.Scene {
       role: instance.role || tmpl.role || 'ambient',
       interactionMode: def.interaction_mode || 'hybrid',
       voiceType: def.voice_type || 'male',
+      defaultState: defState,
       missionId: instance.mission_id,
       shopId: def.shop_id,
       roomId: instance.room_id,
@@ -950,8 +959,8 @@ export class LobbyScene extends Phaser.Scene {
 
     if (trackId && trackId !== 'none') {
       if (this.cache.audio.exists(trackId)) {
-        const { bgmVolume } = useAudioStore.getState();
-        const volume = (typeof bgmVolume === 'number' && isFinite(bgmVolume)) ? bgmVolume / 100 : 0.5;
+        const { musicVolume } = useAudioStore.getState();
+        const volume = (typeof musicVolume === 'number' && isFinite(musicVolume)) ? musicVolume : 0.5;
         this.currentBgm = this.sound.add(trackId, {
           loop: true,
           volume: volume
@@ -1434,70 +1443,50 @@ export class LobbyScene extends Phaser.Scene {
         npc.setDepth(npc.y + 1);
 
         const data = npc.npcData;
-        if (!data) return;
-
-        const sprite = npc.list.find(item => item instanceof NPCSprite);
-
-        // Handle talking state (which should play 'talking' animation and stop movement)
-        if (data.isTalking || data.state === 'talking') {
+        if (!data || data.movementType === 'static' || data.isTalking) {
             if (npc.body) npc.body.setVelocity(0);
+            const sprite = npc.list.find(item => item instanceof NPCSprite);
             if (sprite) {
-                sprite.playAnimation('talking');
-            }
-            return;
-        }
-
-        // If the server tells us the NPC is in dying animation
-        if (data.state === 'dying') {
-            if (npc.body) npc.body.setVelocity(0);
-            if (sprite) {
-                sprite.playAnimation('dying');
-            }
-            return;
-        }
-
-        if (data.movementType !== 'wander') {
-            if (npc.body) npc.body.setVelocity(0);
-            if (sprite) {
-                const defState = data.defaultState || 'idle';
-                const animConfig = STATE_TO_ANIM[defState] || STATE_TO_ANIM.idle;
-                sprite.playAnimation(animConfig.body || 'idle-waiting');
-            }
-            return;
-        }
-
-        // Wander logic synchronized with server positions
-        // 1. Teleport if drifted too far (>80px) from server coordinates
-        if (typeof data.serverX === 'number' && typeof data.serverY === 'number') {
-            const drift = Phaser.Math.Distance.Between(npc.x, npc.y, data.serverX, data.serverY);
-            if (drift > 80) {
-                npc.x = data.serverX;
-                npc.y = data.serverY;
-                if (npc.body) {
-                    npc.body.reset(npc.x, npc.y);
+                if (data.isTalking) {
+                    sprite.playAnimation('talking');
+                } else {
+                    const defState = data.defaultState || 'idle';
+                    const animConfig = STATE_TO_ANIM[defState] || STATE_TO_ANIM.idle;
+                    sprite.playAnimation(animConfig.body || 'idle-waiting');
                 }
             }
+            return;
         }
 
-        // 2. Move towards target
-        const distToTarget = Phaser.Math.Distance.Between(npc.x, npc.y, data.targetX, data.targetY);
-        if (distToTarget < 5) {
-            if (npc.body) npc.body.setVelocity(0);
-            if (sprite) {
-                const defState = data.defaultState || 'idle';
-                const animConfig = STATE_TO_ANIM[defState] || STATE_TO_ANIM.idle;
-                sprite.playAnimation(animConfig.body || 'idle-waiting');
-            }
-        } else {
-            // Move using Phaser physics to target
-            this.physics.moveTo(npc, data.targetX, data.targetY, data.movementSpeed);
-            if (sprite) {
-                sprite.playAnimation('walking');
-                // Flip sprite based on velocity
-                if (npc.body && npc.body.velocity.x < 0) {
-                    sprite.sprite.setFlipX(true);
-                } else if (npc.body && npc.body.velocity.x > 0) {
-                    sprite.sprite.setFlipX(false);
+        if (data.movementType === 'wander') {
+            const distToTarget = Phaser.Math.Distance.Between(npc.x, npc.y, data.targetX, data.targetY);
+            const sprite = npc.list.find(item => item instanceof NPCSprite);
+
+            if (distToTarget < 5) {
+                // We reached the target
+                if (npc.body) npc.body.setVelocity(0);
+                if (sprite) {
+                    const defState = data.defaultState || 'idle';
+                    const animConfig = STATE_TO_ANIM[defState] || STATE_TO_ANIM.idle;
+                    sprite.playAnimation(animConfig.body || 'idle-waiting');
+                }
+
+                // Wait before picking next target
+                if (time > data.moveTimer) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = Math.random() * data.movementRange;
+                    data.targetX = data.spawnX + Math.cos(angle) * dist;
+                    data.targetY = data.spawnY + Math.sin(angle) * dist;
+                    data.moveTimer = time + 2000 + Math.random() * 3000; // Wait 2-5 seconds
+                }
+            } else {
+                // Move towards target
+                this.physics.moveTo(npc, data.targetX, data.targetY, data.movementSpeed);
+                if (sprite) {
+                    sprite.playAnimation('walking');
+                    // Flip sprite based on velocity
+                    if (npc.body.velocity.x < 0) sprite.sprite.setFlipX(true);
+                    else if (npc.body.velocity.x > 0) sprite.sprite.setFlipX(false);
                 }
             }
         }
@@ -1542,6 +1531,25 @@ export class LobbyScene extends Phaser.Scene {
 
   shutdown() {
     console.log('[LobbyScene] Shutting down scene...');
+    if (this.minigameOverlayManager) {
+      this.minigameOverlayManager.shutdown();
+    }
+
+    // Clear references in mapManager to avoid keeping destroyed physics groups
+    if (this.mapManager) {
+      this.mapManager.walls = null;
+      this.mapManager.floors = null;
+      this.mapManager.forest = null;
+      this.mapManager.builds = null;
+      this.mapManager.spawns = null;
+      this.mapManager.npcZones = null;
+      this.mapManager.pickups = null;
+      this.mapManager.voids = null;
+      this.mapManager.colliders = null;
+      this.mapManager.storeTiles = null;
+      this.mapManager.storeFurniture = null;
+      this.mapManager.enemySpawns = null;
+    }
     
     if (this.unsubscribe) {
       this.unsubscribe();
@@ -1584,9 +1592,12 @@ export class LobbyScene extends Phaser.Scene {
       window.removeEventListener('enemies-update', this.onEnemyUpdate);
       this.onEnemyUpdate = null;
     }
-    if (this.onEditorEvent) {
-      window.removeEventListener('editor-command', this.onEditorEvent);
-      this.onEditorEvent = null;
+    
+    if (this.editorController) {
+      if (typeof this.editorController.destroy === 'function') {
+        this.editorController.destroy();
+      }
+      this.editorController = null;
     }
 
     if (this.currentBgm) {

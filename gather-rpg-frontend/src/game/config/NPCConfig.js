@@ -103,8 +103,7 @@ export const createNPCAnimations = (scene) => {
             key: animKey,
             frames: validFrames,
             frameRate: config.frameRate,
-            repeat: config.repeat,
-            holdAtEnd: config.repeat === 0
+            repeat: config.repeat
           });
         } else {
           console.warn(`[NPCConfig] Animation ${animKey} has no valid frames in texture ${textureKey}`);
