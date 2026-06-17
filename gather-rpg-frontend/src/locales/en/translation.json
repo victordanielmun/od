@@ -396,7 +396,12 @@
       "close": "Close",
       "music": "Music",
       "sfx": "Effects",
-      "voice": "Voice"
+      "voice": "Voice",
+      "on_screen_controls": "On-Screen Controls",
+      "controls_auto": "Automatic (Touch Screens)",
+      "controls_always": "Always Enabled",
+      "controls_never": "Disabled (Hide)",
+      "controls_desc": "Allows you to force or disable the display of touch controls on screen in case they were activated by mistake."
     },
     "character_selector": {
       "title": "Choose your Hero",
@@ -430,13 +435,18 @@
       "buy": "Buy",
       "insufficient_gold": "Insufficient gold",
       "close": "Close Shop",
+      "voice_instruction": "To purchase items, talk to the merchant using voice or type in the dialogue chat.",
+      "voice_only": "Voice/Chat",
       "categories": {
         "health": "Health",
         "mana": "Mana",
         "attack": "Attack",
         "defense": "Defense",
         "item": "Item"
-      }
+      },
+      "level_abbr": "Lv. {{level}}",
+      "max_stack": "x{{stack}} max",
+      "effect_abbr": "EFF"
     },
     "interactions": {
       "press_e": "Press [E]",
@@ -448,6 +458,7 @@
       "enter": "Press [E] to Enter",
       "exit": "Teleporting...",
       "press_e_custom": "Press [E]: {{text}}",
+      "press_e_read": "Press [E] to read",
       "no_destination": "⚠ Build without target configured"
     },
     "editor": {
@@ -486,7 +497,8 @@
       "tile_void": "Void",
       "tile_collider": "Collider",
       "tile_store": "Store Tiles",
-      "tile_furniture": "Furniture",
+      "tile_furniture": "Furniture 1",
+      "tile_furniture2": "Furniture 2",
       "tile_enemy": "Enemy Spawn",
       "texture": "Texture",
       "no_texture_options": "No texture options",
@@ -525,7 +537,8 @@
       "stat_pickups": "Items",
       "stat_colliders": "Colliders",
       "stat_store": "Store Tiles",
-      "stat_furniture": "Furniture",
+      "stat_furniture": "Furniture 1",
+      "stat_furniture2": "Furniture 2",
       "stat_enemies": "Enemies",
       "history": "History",
       "redo": "Redo",
@@ -544,6 +557,30 @@
       "upload": "Upload JSON",
       "import_confirm": "Import map? This will erase current content.",
       "import_error": "Error importing JSON file."
+    },
+    "room_list": {
+      "loading": "Loading rooms...",
+      "empty": "No rooms available. Create one to get started!",
+      "max_users": "{{count}} Max",
+      "public_room": "Public Room",
+      "join_room": "Join Room"
+    },
+    "death": {
+      "has_fallen": "You Have Fallen",
+      "desc": "Your adventure has ended for now. What do you wish to do?",
+      "spectate": "Spectate",
+      "return": "Return"
+    },
+    "read_popup": {
+      "title": "Notice",
+      "close": "Understood"
+    },
+    "mission": {
+      "started_banner": "Adventure Started",
+      "mysterious_adventure": "Mysterious Adventure",
+      "task_completed_badge": "✅ Completed",
+      "task_objective_badge": "⚔️ Objective",
+      "enemies_defeated": "Enemies defeated: {{done}}/{{req}}"
     }
   },
   "items": {
@@ -564,5 +601,154 @@
     "save": "Save",
     "delete": "Delete",
     "edit": "Edit"
+  },
+  "chess": {
+    "title": "♟️ Multiplayer Chess",
+    "white": "White ⚪",
+    "black": "Black ⚫",
+    "instructions": "Play by dictating coordinates (e.g., \"e2 to e4\") or using the keyboard.",
+    "mute_mic": "Mute room microphone",
+    "unmute_mic": "Unmute room microphone",
+    "mute_sounds": "Mute sounds",
+    "unmute_sounds": "Unmute sounds",
+    "confirm_reset": "Do you want to reset the game?",
+    "reset": "Reset game",
+    "exit": "Exit minigame",
+    "room_status": "Room Status",
+    "player_1_white": "⚪ Player 1 (White):",
+    "player_2_black": "⚫ Player 2 (Black):",
+    "you": "You",
+    "waiting": "Waiting...",
+    "current_turn": "Current Turn",
+    "your_turn": "👉 It's your turn!",
+    "waiting_opponent": "⏳ Waiting for opponent...",
+    "voice_control": "Voice Control",
+    "listening": "Listening...",
+    "press_to_speak": "Press to Speak",
+    "voice_text": "Voice: \"{{text}}\"",
+    "keyboard_control": "Keyboard Control",
+    "keyboard_placeholder": "E.g., e2e4, a1 c3",
+    "error_voice_parse": "Did not understand the move: \"{{text}}\". Say something like: \"e2 to e4\"",
+    "error_voice_service": "Voice error: {{error}}",
+    "voice_not_supported": "Speech recognition not supported in this browser.",
+    "not_your_turn": "It is not your turn to move.",
+    "invalid_move": "Invalid move: {{from}} to {{to}}",
+    "incorrect_format": "Incorrect format. Type something like \"e2e4\"",
+    "opponent_disconnected": "The opponent has disconnected from the match."
+  },
+  "npc": {
+    "dialogue": {
+      "default_greeting": "Hello {{username}}! How can I help you today?",
+      "teleport_msg": "Excellent choice! I will send you to {{scene}} immediately. Good luck on your adventure!",
+      "mission_completed": "Mission Completed!",
+      "mission_completed_desc": "You have shown great courage and skill in completing:",
+      "rewards_obtained": "Rewards Obtained",
+      "gold": "Gold",
+      "special_item": "Special Item",
+      "claim_and_lobby": "Claim and Return to Lobby",
+      "mission_board": "Mission Board",
+      "how_can_i_help": "How can I help you today?",
+      "no_missions": "No missions available at this time.",
+      "no_missions_desc": "Come back later or consult with another Quest Master.",
+      "view_goods": "View Goods",
+      "view_goods_desc": "Explore the treasures and supplies of my shop.",
+      "status_completed": "✓ Completed",
+      "status_in_progress": "↻ In Progress",
+      "loading": "Loading...",
+      "status_new": "★ New",
+      "location": "Location: {{scene}}",
+      "speaks": "{{name}} speaks...",
+      "you_responded": "You responded:",
+      "silence_req": "SILENCE REQ.",
+      "completed": "Completed",
+      "in_progress": "In Progress",
+      "current_task": "Current Task",
+      "listen_closely": "Listen closely to the words...",
+      "anything_else": "What else can I help you with?",
+      "missions_menu": "Missions Menu",
+      "auto_voice": "Auto-voice",
+      "silence_required_placeholder": "Silence required...",
+      "type_words_placeholder": "Type your words...",
+      "show_text": "Show text",
+      "transcript": "Transcript"
+    }
+  },
+  "landing": {
+    "navbar": {
+      "challenges": "Challenges",
+      "agenda": "Agenda",
+      "speakers": "Speakers",
+      "join": "JOIN",
+      "join_now": "JOIN NOW"
+    }
+  },
+  "register": {
+    "timeline": {
+      "account": "Account",
+      "guide": "Choose Guide",
+      "whatsapp": "WhatsApp"
+    },
+    "step1": {
+      "title": "Begin your Odyssey",
+      "subtitle": "Create your linguistic avatar to enter the realm of Gather RPG.",
+      "error_all_fields": "Please complete all fields.",
+      "error_mismatch": "Passwords do not match.",
+      "error_generic": "Error registering account. Try again.",
+      "username": "Hero Name (Username)",
+      "username_placeholder": "e.g. EldarGamer",
+      "email": "Email Address",
+      "email_placeholder": "you@odyssey.com",
+      "password": "Secret Password",
+      "confirm_password": "Confirm Secret",
+      "submitting": "Invoking Account...",
+      "submit": "Create Account",
+      "has_account": "Already have a character created?",
+      "login_link": "Log In"
+    },
+    "step2": {
+      "title": "Choose your Combat Guide",
+      "subtitle": "If you had to save one from the abyss... who would you choose? This will be the NPC you communicate with daily.",
+      "error_select": "Please select a guide.",
+      "error_save": "We couldn't save your guide selection. Please try again.",
+      "loading": "Invoking guide options...",
+      "mentor": "Mentor",
+      "companion": "Companion Guide",
+      "ready": "Ready to accompany you on your journey!",
+      "prev": "Previous",
+      "next": "Next",
+      "submitting": "Binding Alliance...",
+      "submit": "Choose my Guide"
+    },
+    "step3": {
+      "title": "Link your WhatsApp",
+      "subtitle": "Daily repetition is the key to consolidating your English in the brain. Would you like to receive practice notifications and reminders?",
+      "error_phone": "Please enter your WhatsApp number.",
+      "error_save": "Could not save WhatsApp settings. Try again.",
+      "error_terms": "Could not save terms acceptance. Try again.",
+      "yes_reminders": "Yes, I want reminders",
+      "no_reminders": "No, I prefer to go alone",
+      "phone_label": "WhatsApp Phone Number (with Country Code)",
+      "phone_help": "Select your country of origin from the list and then type your mobile number.",
+      "timezone_label": "Timezone",
+      "hours_label": "Preferred Hours",
+      "hours_start": "START",
+      "hours_end": "END",
+      "hours_to": "to",
+      "training_title": "Adventurer Training",
+      "training_desc": "Your chosen guide will send you small oral challenges and personalized motivations within these preferred hours so it doesn't interrupt your sleeping hours.",
+      "opt_out_text": "Understood! You will continue without automatic WhatsApp alerts. Your guide will wait for you inside the game lobby for your practices.",
+      "legal_title": "Legal Notice, Terms and Privacy (Odyssey)",
+      "legal_checkbox": "I declare under oath that I am 18 years of age or older and that I fully accept the Legal Notice, Terms of Use and Privacy Policy of Odyssey.",
+      "submitting": "Synchronizing Alchemy...",
+      "submit": "Complete Registration"
+    },
+    "step4": {
+      "title": "Activate Notifications",
+      "subtitle": "To activate your guide's alerts and verify your number, scan the QR code with your phone's camera or press the button below to open WhatsApp and send the predefined message.",
+      "send_message": "Send this message from your cell phone:",
+      "waiting_activation": "Waiting for activation message...",
+      "open_whatsapp": "Open WhatsApp",
+      "skip_step": "Skip step for now"
+    }
   }
 }

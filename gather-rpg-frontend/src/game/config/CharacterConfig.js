@@ -1,7 +1,7 @@
 import { animationsByCharacter } from '../../../public/characters/_animationsByCharacter_generated.js';
 
-// Agrega aquí los IDs de los nuevos personajes que vayas subiendo a /public/characters/
-const AVAILABLE_CHARACTERS = ['1'];
+// Los IDs de los personajes se detectan automáticamente desde el script generado
+const AVAILABLE_CHARACTERS = Object.keys(animationsByCharacter);
 
 export const CHARACTER_CONFIG = {
   // Configuración base para todos los spritesheets de personajes
@@ -13,8 +13,8 @@ export const CHARACTER_CONFIG = {
   // Generamos la lista de personajes dinámicamente basada en los IDs
   characters: AVAILABLE_CHARACTERS.map(id => ({
     id,
-    // Escala del personaje en el mapa: por defecto 1.0, 0.25 para el grande (ID 1)
-    scale: id === '1' ? 0.25 : 1.0,
+    // Escala del personaje en el mapa: 0.25 para todos los sprites de alta resolución
+    scale: 0.25,
     sheets: [
       { type: 'base', path: `/characters/${id}b.png`, json: `/characters/${id}b.json` },
       { type: 'combat', path: `/characters/${id}a.png`, json: `/characters/${id}a.json` },

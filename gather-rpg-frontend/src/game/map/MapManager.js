@@ -136,6 +136,10 @@ export class MapManager {
             if (md?.defaultSpawnX != null) this.mapDefaultSpawnX = Number(md.defaultSpawnX);
             if (md?.defaultSpawnY != null) this.mapDefaultSpawnY = Number(md.defaultSpawnY);
 
+            if (md?.furniture) config.furniture = md.furniture;
+            if (md?.furniture2) config.furniture2 = md.furniture2;
+            if (md?.enemySpawns) config.enemySpawns = md.enemySpawns;
+
             if (md?.bgmTrack && md.bgmTrack !== 'none') {
               this.scene.playBGM?.(md.bgmTrack);
             } else {

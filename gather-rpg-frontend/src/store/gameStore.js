@@ -330,6 +330,11 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                     });
                 });
 
+                wsClient.on('challenge_capacity_update', (payload) => {
+                    console.log("[gameStore] Challenge capacity update:", payload);
+                    window.dispatchEvent(new CustomEvent('minigame-capacity-update', { detail: payload }));
+                });
+
                 wsClient.on('challenge_user_joined', (payload) => {
                     set(state => ({
                         challengeParticipants: [
@@ -460,6 +465,11 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                     // console.log(`[gameStore] Received enemy_update for ${payload.enemies?.length} enemies`);
                     // Dispatch to Phaser scenes (LobbyScene)
                     window.dispatchEvent(new CustomEvent('enemies-update', { detail: payload }));
+                });
+
+                wsClient.on('npc_update', (payload) => {
+                    // Dispatch to Phaser scenes
+                    window.dispatchEvent(new CustomEvent('npcs-update', { detail: payload }));
                 });
 
                 wsClient.on('enemy_died', (payload) => {
@@ -647,8 +657,8 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
         wsClient.send('request_map_join', { scene_key: sceneKey, type, invite_code: inviteCode });
     },
 
-    fetchActiveMission: async (sceneKey) => {
-        set({ activeMission: null }); // Clear previous mission state
+    fetchActiveMission: async (sceneKey, silent = false) => {
+        if (!silent) set({ activeMission: null }); // Clear previous mission state
         try {
 
             const response = await api.get(`/missions/scene/${sceneKey}`);
@@ -657,18 +667,20 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
 
                 set({ activeMission: mission });
 
-                // Multi-user mission mode notifications
-                const { addNotification } = useNotificationStore.getState();
-                switch (mission?.mode) {
-                    case 'cooperative':
-                        addNotification('info', "🤝 Modo Cooperativo: ¡Luchen juntos por el objetivo!");
-                        break;
-                    case 'competitive':
-                        addNotification('warning', "⚔️ Modo Competitivo: ¡Sé el primero en conseguirlo!");
-                        break;
-                    case 'individual':
-                        addNotification('info', "👤 Modo Individual: Tu progreso es personal.");
-                        break;
+                if (!silent) {
+                    // Multi-user mission mode notifications
+                    const { addNotification } = useNotificationStore.getState();
+                    switch (mission?.mode) {
+                        case 'cooperative':
+                            addNotification('info', "🤝 Modo Cooperativo: ¡Luchen juntos por el objetivo!");
+                            break;
+                        case 'competitive':
+                            addNotification('warning', "⚔️ Modo Competitivo: ¡Sé el primero en conseguirlo!");
+                            break;
+                        case 'individual':
+                            addNotification('info', "👤 Modo Individual: Tu progreso es personal.");
+                            break;
+                    }
                 }
             } else {
 
@@ -676,7 +688,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
             }
         } catch (err) {
             console.error("Failed to fetch missions:", err);
-            set({ activeMission: null });
+            if (!silent) set({ activeMission: null });
         }
     },
 

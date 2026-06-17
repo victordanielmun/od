@@ -566,6 +566,27 @@ export class LobbyScene extends Phaser.Scene {
     window.addEventListener('npc-interaction-start', this.onNPCInteractionStart);
     window.addEventListener('npc-interaction-end', this.onNPCInteractionEnd);
 
+    this.onNPCsUpdate = (e) => {
+      const payload = e.detail;
+      if (!payload || !payload.npcs) return;
+
+      payload.npcs.forEach(serverNpc => {
+        const container = this.npcSprites.get(serverNpc.template_id);
+        if (container) {
+          const data = container.npcData;
+          if (data) {
+            data.serverX = serverNpc.x;
+            data.serverY = serverNpc.y;
+            data.targetX = serverNpc.target_x;
+            data.targetY = serverNpc.target_y;
+            data.isTalking = serverNpc.is_talking;
+            data.state = serverNpc.state;
+          }
+        }
+      });
+    };
+    window.addEventListener('npcs-update', this.onNPCsUpdate);
+
     this.onSpectate = () => this._onSpectate();
     window.addEventListener('spectate-player', this.onSpectate);
 
@@ -637,6 +658,7 @@ export class LobbyScene extends Phaser.Scene {
     window.removeEventListener('map-pickups-updated', this.onPickupsUpdated);
     window.removeEventListener('npc-interaction-start', this.onNPCInteractionStart);
     window.removeEventListener('npc-interaction-end', this.onNPCInteractionEnd);
+    window.removeEventListener('npcs-update', this.onNPCsUpdate);
     window.removeEventListener('spectate-player', this.onSpectate);
     window.removeEventListener('reset-player-state', this.onResetPlayerState);
     
@@ -1412,39 +1434,70 @@ export class LobbyScene extends Phaser.Scene {
         npc.setDepth(npc.y + 1);
 
         const data = npc.npcData;
-        if (!data || data.movementType === 'static' || data.isTalking) {
+        if (!data) return;
+
+        const sprite = npc.list.find(item => item instanceof NPCSprite);
+
+        // Handle talking state (which should play 'talking' animation and stop movement)
+        if (data.isTalking || data.state === 'talking') {
             if (npc.body) npc.body.setVelocity(0);
-            // Ensure child NPCSprite is idle
-            const sprite = npc.list.find(item => item instanceof NPCSprite);
-            if (sprite) sprite.playAnimation('idle-waiting');
+            if (sprite) {
+                sprite.playAnimation('talking');
+            }
             return;
         }
 
-        if (data.movementType === 'wander') {
-            const distToTarget = Phaser.Math.Distance.Between(npc.x, npc.y, data.targetX, data.targetY);
-            const sprite = npc.list.find(item => item instanceof NPCSprite);
+        // If the server tells us the NPC is in dying animation
+        if (data.state === 'dying') {
+            if (npc.body) npc.body.setVelocity(0);
+            if (sprite) {
+                sprite.playAnimation('dying');
+            }
+            return;
+        }
 
-            if (distToTarget < 5) {
-                // We reached the target
-                if (npc.body) npc.body.setVelocity(0);
-                if (sprite) sprite.playAnimation('idle-waiting');
+        if (data.movementType !== 'wander') {
+            if (npc.body) npc.body.setVelocity(0);
+            if (sprite) {
+                const defState = data.defaultState || 'idle';
+                const animConfig = STATE_TO_ANIM[defState] || STATE_TO_ANIM.idle;
+                sprite.playAnimation(animConfig.body || 'idle-waiting');
+            }
+            return;
+        }
 
-                // Wait before picking next target
-                if (time > data.moveTimer) {
-                    const angle = Math.random() * Math.PI * 2;
-                    const dist = Math.random() * data.movementRange;
-                    data.targetX = data.spawnX + Math.cos(angle) * dist;
-                    data.targetY = data.spawnY + Math.sin(angle) * dist;
-                    data.moveTimer = time + 2000 + Math.random() * 3000; // Wait 2-5 seconds
+        // Wander logic synchronized with server positions
+        // 1. Teleport if drifted too far (>80px) from server coordinates
+        if (typeof data.serverX === 'number' && typeof data.serverY === 'number') {
+            const drift = Phaser.Math.Distance.Between(npc.x, npc.y, data.serverX, data.serverY);
+            if (drift > 80) {
+                npc.x = data.serverX;
+                npc.y = data.serverY;
+                if (npc.body) {
+                    npc.body.reset(npc.x, npc.y);
                 }
-            } else {
-                // Move towards target
-                this.physics.moveTo(npc, data.targetX, data.targetY, data.movementSpeed);
-                if (sprite) {
-                    sprite.playAnimation('walking');
-                    // Flip sprite based on velocity
-                    if (npc.body.velocity.x < 0) sprite.sprite.setFlipX(true);
-                    else if (npc.body.velocity.x > 0) sprite.sprite.setFlipX(false);
+            }
+        }
+
+        // 2. Move towards target
+        const distToTarget = Phaser.Math.Distance.Between(npc.x, npc.y, data.targetX, data.targetY);
+        if (distToTarget < 5) {
+            if (npc.body) npc.body.setVelocity(0);
+            if (sprite) {
+                const defState = data.defaultState || 'idle';
+                const animConfig = STATE_TO_ANIM[defState] || STATE_TO_ANIM.idle;
+                sprite.playAnimation(animConfig.body || 'idle-waiting');
+            }
+        } else {
+            // Move using Phaser physics to target
+            this.physics.moveTo(npc, data.targetX, data.targetY, data.movementSpeed);
+            if (sprite) {
+                sprite.playAnimation('walking');
+                // Flip sprite based on velocity
+                if (npc.body && npc.body.velocity.x < 0) {
+                    sprite.sprite.setFlipX(true);
+                } else if (npc.body && npc.body.velocity.x > 0) {
+                    sprite.sprite.setFlipX(false);
                 }
             }
         }

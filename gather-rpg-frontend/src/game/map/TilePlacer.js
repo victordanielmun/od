@@ -64,7 +64,11 @@ export class TilePlacer {
         break;
 
       case 'furniture':
-        this._placeFurniture(group, gx, gy, frame);
+        this._placeFurniture(group, gx, gy, frame, metadata, 'store-furniture');
+        break;
+
+      case 'furniture2':
+        this._placeFurniture(group, gx, gy, frame, metadata, 'store-furniture2');
         break;
 
       case 'npc':
@@ -79,6 +83,7 @@ export class TilePlacer {
         this._placeItem(group, gx, gy, texture, metadata);
         break;
 
+      case 'spawn':
       case 'void':
       case 'collider':
         this._placeHidden(group, gx, gy, texture);
@@ -118,22 +123,29 @@ export class TilePlacer {
 
   _placeBuild(group, gx, gy, frame, metadata, scale) {
     const f = sanitizeFrame(frame);
-    const s = scale || (metadata?.buildScale) || 2.5;
+    const originalScale = scale || (metadata?.buildScale) || 2.5;
+    const renderedScale = originalScale * 1.25;
     const sprite = group.create(gx, gy, 'builds', f);
-    sprite.setScale(s);
+    sprite.setScale(renderedScale);
     sprite.data = new Phaser.Data.DataManager(sprite);
     if (metadata) {
       const keys = ['targetMap', 'targetRoute', 'targetX', 'targetY', 'interactionText', 'portalType'];
       keys.forEach(k => { if (metadata[k] !== undefined) sprite.data.set(k, metadata[k]); });
-      sprite.data.set('buildScale', s);
     }
+    sprite.data.set('buildScale', originalScale);
     this._setupBuildSprite(sprite);
   }
 
-  _placeFurniture(group, gx, gy, frame) {
+  _placeFurniture(group, gx, gy, frame, metadata, atlas = 'store-furniture') {
     const f = sanitizeFrame(frame);
-    const sprite = group.create(gx, gy, 'store-furniture', f);
+    const sprite = group.create(gx, gy, atlas, f);
     sprite.setScale(1.0);
+    sprite.data = new Phaser.Data.DataManager(sprite);
+    if (metadata) {
+      if (metadata.minigameType !== undefined) sprite.data.set('minigameType', metadata.minigameType);
+      if (metadata.minigameId !== undefined)   sprite.data.set('minigameId', metadata.minigameId);
+      if (metadata.readText !== undefined)     sprite.data.set('readText', metadata.readText);
+    }
     this._setupFurnitureSprite(sprite);
   }
 

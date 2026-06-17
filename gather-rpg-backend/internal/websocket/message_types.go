@@ -80,4 +80,9 @@ const (
 	MsgTeleportToFriend   = "teleport_to_friend"
 	MsgSendRoomInvite     = "send_room_invite"
 	MsgRoomInviteReceived = "room_invite_received"
+
+	// Dialogue & NPC Synchronization
+	MsgStartDialogue = "start_dialogue"
+	MsgEndDialogue   = "end_dialogue"
+	MsgNPCUpdate     = "npc_update"
 )

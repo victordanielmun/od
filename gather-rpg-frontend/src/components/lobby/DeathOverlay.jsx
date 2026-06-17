@@ -66,10 +66,10 @@ export const DeathOverlay = () => {
 
                 <div className="space-y-2">
                     <h1 className="text-5xl font-black text-white uppercase tracking-tighter">
-                        Has Caído
+                        {t('lobby.death.has_fallen')}
                     </h1>
                     <p className="text-gray-400 text-lg font-light">
-                        Tu aventura ha terminado por ahora. ¿Qué deseas hacer?
+                        {t('lobby.death.desc')}
                     </p>
                 </div>
 
@@ -81,7 +81,7 @@ export const DeathOverlay = () => {
                         >
                             <div className="absolute inset-0 bg-indigo-600/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                             <Eye size={20} className="text-indigo-400 relative z-10" />
-                            <span className="text-white font-medium relative z-10">Observar</span>
+                            <span className="text-white font-medium relative z-10">{t('lobby.death.spectate')}</span>
                         </button>
                     )}
 
@@ -91,7 +91,7 @@ export const DeathOverlay = () => {
                     >
                         <div className="absolute inset-0 bg-red-600/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                         <Home size={20} className="text-red-400 relative z-10" />
-                        <span className="text-white font-medium relative z-10">Regresar</span>
+                        <span className="text-white font-medium relative z-10">{t('lobby.death.return')}</span>
                     </button>
                 </div>
 

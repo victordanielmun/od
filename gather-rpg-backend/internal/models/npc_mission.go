@@ -21,6 +21,8 @@ const (
 	NPCStateThinking  NPCState = "thinking"
 	NPCStateGrateful  NPCState = "grateful"
 	NPCStateWaiting   NPCState = "waiting"
+	NPCStateWalking   NPCState = "walking"
+	NPCStateDying     NPCState = "dying"
 )
 
 type NPCType string

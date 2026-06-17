@@ -116,3 +116,29 @@ func (h *AuthHandler) AcceptTerms(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{"message": "Terms accepted successfully"})
 }
+
+// SetSprite allows the user to choose their character sprite once
+func (h *AuthHandler) SetSprite(c *fiber.Ctx) error {
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	var req struct {
+		CharacterID string `json:"character_id"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.CharacterID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Character ID is required"})
+	}
+
+	if err := h.Service.UpdateSprite(userIDStr, req.CharacterID); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "Sprite updated successfully"})
+}
+

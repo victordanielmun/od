@@ -3,27 +3,6 @@
     {
       "filename": "portrait-idle",
       "frame": {
-        "x": 337,
-        "y": 18,
-        "w": 154,
-        "h": 145
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 154,
-        "h": 145
-      },
-      "sourceSize": {
-        "w": 154,
-        "h": 145
-      }
-    },
-    {
-      "filename": "portrait-talking",
-      "frame": {
         "x": 14,
         "y": 19,
         "w": 149,
@@ -43,7 +22,7 @@
       }
     },
     {
-      "filename": "portrait-happy",
+      "filename": "portrait-talking",
       "frame": {
         "x": 176,
         "y": 19,
@@ -61,6 +40,27 @@
       "sourceSize": {
         "w": 148,
         "h": 144
+      }
+    },
+    {
+      "filename": "portrait-happy",
+      "frame": {
+        "x": 337,
+        "y": 18,
+        "w": 154,
+        "h": 145
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 154,
+        "h": 145
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 145
       }
     },
     {

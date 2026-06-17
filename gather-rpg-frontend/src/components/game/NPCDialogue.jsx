@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronRight, ShoppingBag, MapPin, Compass, ShieldCheck, Map } from 'lucide-react';
 import api from '../../services/api';
 import { analyzeDialogueAudio, generateTTS, getTTSAudioUrl } from '../../services/voiceApi';
@@ -7,6 +8,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useGameStore } from '../../store/gameStore';
 import { ItemIcon } from '../common/ItemIcon';
 import { STATE_TO_ANIM, NPC_CONFIG } from '../../game/config/NPCConfig';
+import wsClient from '../../services/websocket';
 
 const NPCPortrait = ({ npcId, state, size = 'small' }) => {
     // Normalize ID: sprite2 -> 2
@@ -74,6 +76,7 @@ const NPCPortrait = ({ npcId, state, size = 'small' }) => {
 };
 
 export const NPCDialogue = ({ npcData, onClose }) => {
+    const { t } = useTranslation();
     const [messages, setMessages] = useState([]);
     const [inputText, setInputText] = useState('');
     const [isRecording, setIsRecording] = useState(false);
@@ -93,6 +96,8 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const [isMissionComplete, setIsMissionComplete] = useState(false);
     const [hasPendingCompletion, setHasPendingCompletion] = useState(false);
     const [completedMissionData, setCompletedMissionData] = useState(null);
+    const [showAudioTranscript, setShowAudioTranscript] = useState(false);
+    const [showTooltip, setShowTooltip] = useState(false);
     const hasPlayedGreeting = useRef(false);
     
     const mediaRecorderRef = useRef(null);
@@ -101,19 +106,40 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const scrollRef = useRef(null);
     const recordingTimeoutRef = useRef(null);
     const user = useAuthStore(state => state.user);
-    const { currentSceneKey, requestMapJoin } = useGameStore();
+    const { currentSceneKey, requestMapJoin, fetchActiveMission } = useGameStore();
 
     // Normalize NPC data (Handle nested definition if it's an instance)
     const definition = npcData.npc_template?.npc_definition || npcData;
-    const npcType = definition.type || npcData.type;
+    const npcType = definition.type || npcData.type || npcData.role;
     const npcName = definition.name || npcData.name;
 
-    console.log("[NPCDialogue] DEBUG DATA:", {
-        rawType: npcData.type,
-        defType: definition.type,
-        finalType: npcType,
-        npcData
-    });
+    // Log debug data once on mount to avoid console clutter
+    const hasLoggedDebug = useRef(false);
+    useEffect(() => {
+        if (!hasLoggedDebug.current && npcData) {
+            hasLoggedDebug.current = true;
+            console.log("[NPCDialogue] DEBUG DATA:", {
+                rawType: npcData.type,
+                defType: definition?.type,
+                role: npcData.role,
+                finalType: npcType,
+                npcData
+            });
+        }
+    }, [npcData, definition, npcType]);
+
+    const getTranslation = (msg) => {
+        if (!msg) return '';
+        if (msg.translation) return msg.translation;
+        if (!msg.text) return '';
+        const cleanKey = msg.text.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+        const key = `npc.dialogue.custom.${cleanKey}`;
+        const translated = t(key);
+        if (translated && translated !== key) {
+            return translated;
+        }
+        return '';
+    };
 
     const selectedMission = availableMissions.find(m => m.id === selectedMissionId);
     const needsTeleport = selectedMission && selectedMission.scene_key && selectedMission.scene_key !== currentSceneKey;
@@ -121,6 +147,9 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     useEffect(() => {
         console.log("[NPCDialogue] MOUNTED. Props npcData:", npcData);
         
+        // Notify server that dialogue started
+        wsClient.send('start_dialogue', { npc_template_id: npcData.templateId });
+
         window.dispatchEvent(new CustomEvent('npc-interaction-start', {
             detail: { templateId: npcData.templateId }
         }));
@@ -128,24 +157,39 @@ export const NPCDialogue = ({ npcData, onClose }) => {
         const fetchMissions = async () => {
             try {
                 console.log("[NPCDialogue] Fetching missions for templateId:", npcData.templateId);
-                const res = await api.get(`/missions/npc/${npcData.templateId}`);
+                const res = await api.get(`/missions/npc/${npcData.templateId}${npcData.roomId ? `?room_id=${npcData.roomId}` : ''}`);
                 const data = res.data;
                 console.log("[NPCDialogue] API Response (data):", data);
                 
-                // Set custom greeting or default
-                const npcGreeting = data.greeting || `Hello ${user?.username || 'traveler'}! How can I help you today?`;
+                // Set custom greeting or default (in English)
+                const npcGreetingEn = data.greeting || t('npc.dialogue.default_greeting', { lng: 'en', username: user?.username || t('lobby.sidebar.traveler', { lng: 'en' }) });
+                
+                // Set custom greeting or default (in Spanish translation)
+                let npcGreetingEs = '';
+                if (!data.greeting) {
+                    npcGreetingEs = t('npc.dialogue.default_greeting', { lng: 'es', username: user?.username || t('lobby.sidebar.traveler', { lng: 'es' }) });
+                } else {
+                    const cleanKey = data.greeting.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+                    const key = `npc.dialogue.custom.${cleanKey}`;
+                    const translated = t(key);
+                    if (translated && translated !== key) {
+                        npcGreetingEs = translated;
+                    }
+                }
+
                 setMessages([{
                     sender: 'npc',
-                    text: npcGreeting,
+                    text: npcGreetingEn,
+                    translation: npcGreetingEs,
                     timestamp: new Date()
                 }]);
 
                 // AUTO-PLAY: Play the first greeting automatically
                 if (autoPlay && !hasPlayedGreeting.current) {
                     hasPlayedGreeting.current = true;
-                    console.log("[NPCDialogue] Playing initial greeting audio:", npcGreeting);
+                    console.log("[NPCDialogue] Playing initial greeting audio:", npcGreetingEn);
                     setTimeout(() => {
-                        handleListen(npcGreeting, 'en', false);
+                        handleListen(npcGreetingEn, 'en', false);
                     }, 500);
                 }
                 
@@ -188,10 +232,15 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             }
         };
 
+        const hasLoggedDebug = false; // dummy mapping context
+
         fetchMissions();
 
         return () => {
             stopAudio();
+            // Notify server that dialogue ended
+            wsClient.send('end_dialogue', { npc_template_id: npcData.templateId });
+            
             window.dispatchEvent(new CustomEvent('npc-interaction-end', {
                 detail: { templateId: npcData.templateId }
             }));
@@ -213,7 +262,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             // Show a simple teleport message before switching
             setMessages(prev => [...prev, {
                 sender: 'npc',
-                text: `¡Excelente elección! Te enviaré de inmediato a ${mission.scene_key}. ¡Buena suerte en tu aventura!`,
+                text: t('npc.dialogue.teleport_msg', { scene: mission.scene_key }),
                 timestamp: new Date()
             }]);
 
@@ -254,11 +303,13 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
     const handleListen = async (text, language = 'en', isManual = false) => {
         if (!text) return;
-        console.log(`[NPCDialogue] handleListen triggered (Manual: ${isManual}) for ${language}:`, text);
+        const startTtsTotal = performance.now();
+        console.log(`\n[Performance] === Frontend: TTS Request Start ===`);
+        console.log(`[Performance] Text: "${text}" | Language: ${language} | Manual: ${isManual}`);
         
         // If it's a manual click and we are already playing, stop it (Toggle behavior)
         if (isManual && isTtsPlaying) {
-            console.log("[NPCDialogue] Manual stop requested");
+            console.log("[Performance] Frontend: Manual stop requested for active TTS");
             stopAudio();
             return;
         }
@@ -271,21 +322,22 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             let url = lastTtsUrl;
             // If the text is different from last cached TTS, fetch new
             if (!url || text !== messages[messages.length-1]?.text) {
-                let npcVoice = NPC_CONFIG.voices[npcData.templateId] || NPC_CONFIG.voices.default;
+                let npcVoice = definition.voice_type || definition.voiceType || NPC_CONFIG.voices[npcData.characterId] || NPC_CONFIG.voices[npcData.templateId] || NPC_CONFIG.voices.default;
                 
                 if (language === 'es') {
                     // Spanish Voices
-                    npcVoice = npcData.voiceType === 'female' ? 'es-ES-ElviraNeural' : 'es-ES-AlvaroNeural';
-                } else {
-                    // English Voices
-                    if (npcData.voiceType === 'female') {
-                        npcVoice = 'en-US-AriaNeural';
-                    } else if (npcData.voiceType === 'male') {
-                        npcVoice = 'en-US-GuyNeural';
-                    }
+                    const voiceVal = (definition.voice_type || definition.voiceType || '').toLowerCase();
+                    const isFemale = voiceVal === 'female' || voiceVal === 'amy' || voiceVal === 'lessac' || voiceVal === 'kristin' || voiceVal === 'ana' || voiceVal === 'aria' || voiceVal === 'natasha' || voiceVal === 'maisie' || voiceVal === 'jenny' || voiceVal === 'emily' || voiceVal === 'sonia';
+                    npcVoice = isFemale ? 'es-ES-ElviraNeural' : 'es-ES-AlvaroNeural';
                 }
+                // Si es inglés, conservamos la voz asignada en NPC_CONFIG.voices, la cual ya tiene la variedad de modelos.
 
+                const startTtsGeneration = performance.now();
+                console.log(`[Performance] Frontend: Sending generateTTS request to Voice Backend (Voice: ${npcVoice})...`);
                 const tts = await generateTTS(text, npcVoice);
+                const generationDuration = performance.now() - startTtsGeneration;
+                console.log(`[Performance] Frontend: generateTTS response received. Took ${generationDuration.toFixed(2)} ms.`);
+
                 url = tts.audio_url || getTTSAudioUrl(tts.cache_key);
                 
                 if (url.includes('/audio/')) {
@@ -293,28 +345,48 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 }
                 
                 setLastTtsUrl(url);
+            } else {
+                console.log("[Performance] Frontend: Using cached local TTS URL from last turn");
             }
 
+            console.log(`[Performance] Frontend: Initializing Audio object with URL: ${url}`);
             const audio = new Audio(url);
             audioRef.current = audio;
-            audio.onended = () => setIsTtsPlaying(false);
+            audio.onended = () => {
+                console.log("[Performance] Frontend: TTS Audio playback finished naturally");
+                setIsTtsPlaying(false);
+            };
+            
+            const startAudioLoad = performance.now();
+            audio.oncanplaythrough = () => {
+                const loadTime = performance.now() - startAudioLoad;
+                console.log(`[Performance] Frontend: Audio binary loaded and ready to play. Load took ${loadTime.toFixed(2)} ms.`);
+            };
+
             audio.onerror = (e) => {
-                console.error("Audio playback error:", e);
+                console.error("[Performance] Frontend: Audio element playback error, falling back to Web Speech API:", e);
                 if ('speechSynthesis' in window) {
                     const utterance = new SpeechSynthesisUtterance(text);
                     utterance.lang = language === 'es' ? 'es-ES' : 'en-US';
-                    utterance.onend = () => setIsTtsPlaying(false);
+                    utterance.onend = () => {
+                        console.log("[Performance] Frontend: Web Speech API playback complete");
+                        setIsTtsPlaying(false);
+                    };
                     speechSynthesis.speak(utterance);
                 } else {
                     setIsTtsPlaying(false);
                 }
             };
-            audio.play().catch(err => {
-                console.error("Audio.play() failed:", err);
+
+            audio.play().then(() => {
+                const totalTtsDuration = performance.now() - startTtsTotal;
+                console.log(`[Performance] Frontend: TTS Audio playback started successfully. Total latency: ${totalTtsDuration.toFixed(2)} ms\n`);
+            }).catch(err => {
+                console.error("[Performance] Frontend: Audio.play() failed:", err);
                 setIsTtsPlaying(false);
             });
         } catch (err) {
-            console.error("TTS play failed:", err);
+            console.error("[Performance] Frontend: TTS setup failed:", err);
             setIsTtsPlaying(false);
         }
     };
@@ -331,6 +403,10 @@ export const NPCDialogue = ({ npcData, onClose }) => {
         stopAudio();
         setLastTtsUrl(null);
 
+        const startDialogueRequest = performance.now();
+        console.log(`\n[Performance] === Frontend: Sending Dialogue Request to Go Backend ===`);
+        console.log(`[Performance] Input: "${text}" | Expected score: ${score}`);
+
         try {
             const response = await api.post('/npc/dialogue', {
                 npc_template_id: npcData.templateId,
@@ -341,6 +417,13 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             });
 
             const data = response.data;
+            const dialogueDuration = performance.now() - startDialogueRequest;
+            console.log(`[Performance] Frontend: Go Backend response received. Took ${dialogueDuration.toFixed(2)} ms. Response: "${data.npc_response}"`);
+
+            if (data.task_completed || data.mission_newly_completed) {
+                console.log("[NPCDialogue] Task or Mission completed! Refreshing active mission...");
+                fetchActiveMission(currentSceneKey, true);
+            }
             setMessages(prev => [...prev, {
                 sender: 'npc',
                 text: data.npc_response,
@@ -379,7 +462,8 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                  setHasShop(true);
             }
         } catch (err) {
-            console.error("Dialogue error:", err);
+            const dialogueDuration = performance.now() - startDialogueRequest;
+            console.error(`[Performance] Frontend: Dialogue request failed after ${dialogueDuration.toFixed(2)} ms:`, err);
         } finally {
             setIsProcessing(false);
         }
@@ -390,6 +474,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             // Stop recording
             if (mediaRecorderRef.current) {
                 if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
+                console.log("\n[Performance] === Frontend: User Stopped Recording ===");
                 mediaRecorderRef.current.stop();
                 setIsRecording(false);
                 mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
@@ -405,10 +490,17 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 recorder.onstop = async () => {
                     const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                     setIsProcessing(true);
+                    const startAnalysis = performance.now();
+                    console.log("[Performance] Frontend: Starting audio analysis request...");
                     try {
                         const result = await analyzeDialogueAudio(audioBlob); 
+                        const analysisDuration = performance.now() - startAnalysis;
+                        console.log(`[Performance] Frontend: Audio analysis complete. Took ${analysisDuration.toFixed(2)} ms. Transcription: "${result.transcription}"`);
                         handleSend(result.transcription, result.pronunciation_score);
-                    } catch (err) { console.error("Audio analysis failed:", err); }
+                    } catch (err) { 
+                        const analysisDuration = performance.now() - startAnalysis;
+                        console.error(`[Performance] Frontend: Audio analysis failed after ${analysisDuration.toFixed(2)} ms:`, err); 
+                    }
                     finally { setIsProcessing(false); }
                 };
                 recorder.start();
@@ -417,7 +509,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 // Enforce maximum recording time of 15 seconds
                 recordingTimeoutRef.current = setTimeout(() => {
                     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-                        console.log("Maximum recording time reached (15s). Stopping automatically.");
+                        console.log("[Performance] Frontend: Maximum recording time reached (15s). Stopping automatically.");
                         mediaRecorderRef.current.stop();
                         setIsRecording(false);
                         mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
@@ -468,29 +560,29 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                         <div className="mb-8">
                             <ShieldCheck size={80} className="mx-auto text-green-700 mb-4 animate-bounce" />
                             <h2 className="text-5xl font-medieval text-[var(--color-base-dark)] uppercase tracking-widest drop-shadow-md">
-                                ¡Misión Completada!
+                                {t('npc.dialogue.mission_completed')}
                             </h2>
                             <div className="h-1 w-48 bg-gradient-to-r from-transparent via-[var(--color-gold)] to-transparent mx-auto mt-4"></div>
                         </div>
 
                         <div className="mb-10 space-y-4">
                             <p className="text-2xl font-serif italic text-gray-700">
-                                Has demostrado gran valentía y destreza al completar:
+                                {t('npc.dialogue.mission_completed_desc')}
                             </p>
                             <p className="text-3xl font-medieval text-[var(--color-orange-vibrant)] font-black uppercase">
-                                {completedMissionData?.title || "La Aventura"}
+                                {completedMissionData?.title || t('lobby.mission.mysterious_adventure')}
                             </p>
                         </div>
 
                         <div className="bg-white/50 border-2 border-[var(--color-gold-dark)]/30 p-6 rounded-lg mb-10 shadow-inner">
-                            <h4 className="text-sm font-medieval uppercase tracking-tighter text-gray-500 mb-4">Recompensas Obtenidas</h4>
+                            <h4 className="text-sm font-medieval uppercase tracking-tighter text-gray-500 mb-4">{t('npc.dialogue.rewards_obtained')}</h4>
                             <div className="flex items-center justify-center gap-12">
                                 {completedMissionData?.reward_gold > 0 && (
                                     <div className="flex flex-col items-center gap-2">
                                         <div className="w-16 h-16 bg-yellow-400 rounded-full border-4 border-yellow-600 flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform">
                                             <span className="text-2xl font-black text-yellow-900">$</span>
                                         </div>
-                                        <span className="font-medieval text-xl font-bold">+{completedMissionData.reward_gold} Oro</span>
+                                        <span className="font-medieval text-xl font-bold">+{completedMissionData.reward_gold} {t('npc.dialogue.gold')}</span>
                                     </div>
                                 )}
                                 {completedMissionData?.reward_xp > 0 && (
@@ -507,7 +599,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                             {/* We don't have the item object here directly, so we use a generic icon or the reward name if we had it */}
                                             <ShoppingBag size={32} className="text-blue-700" />
                                         </div>
-                                        <span className="font-medieval text-xl font-bold">Objeto Especial</span>
+                                        <span className="font-medieval text-xl font-bold">{t('npc.dialogue.special_item')}</span>
                                     </div>
                                 )}
                             </div>
@@ -517,7 +609,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                             onClick={handleAcceptMissionComplete}
                             className="group relative px-12 py-5 bg-[var(--color-orange-vibrant)] text-white font-medieval text-2xl uppercase tracking-[0.2em] border-4 border-[var(--color-gold)] shadow-[0_10px_0_rgb(180,60,0)] hover:shadow-[0_5px_0_rgb(180,60,0)] hover:translate-y-[5px] active:translate-y-[10px] active:shadow-none transition-all overflow-hidden"
                         >
-                            <span className="relative z-10">Reclamar y Volver al Lobby</span>
+                            <span className="relative z-10">{t('npc.dialogue.claim_and_lobby')}</span>
                             <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500"></div>
                         </button>
                     </div>
@@ -579,14 +671,14 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                             <div className="absolute inset-0 z-[100] bg-[var(--color-parchment)]/95 backdrop-blur-sm p-8 flex flex-col items-center justify-start gap-4 text-center overflow-y-auto custom-scrollbar-light">
 
                                 <h3 className="text-3xl font-medieval text-[var(--color-base-dark)] mt-12 mb-4 drop-shadow-sm uppercase tracking-wider">
-                                    {(resolvedType || npcType) === 'quest_master' ? 'Tablón de Misiones' : '¿En qué puedo ayudarte hoy?'}
+                                    {(resolvedType || npcType) === 'quest_master' ? t('npc.dialogue.mission_board') : t('npc.dialogue.how_can_i_help')}
                                 </h3>
                                 <div className="grid grid-cols-1 gap-4 w-full max-w-xl pb-10">
                                     {/* Empty State for Portals */}
                                     {(resolvedType || npcType) === 'quest_master' && availableMissions.length === 0 && (
                                         <div className="p-10 border-4 border-dashed border-gray-400 bg-gray-100/50 rounded-lg">
-                                            <p className="text-xl font-serif text-gray-600">No hay misiones disponibles en este momento.</p>
-                                            <p className="text-sm text-gray-400 mt-2 italic">Vuelve más tarde o consulta con otro Maestro de Misiones.</p>
+                                            <p className="text-xl font-serif text-gray-600">{t('npc.dialogue.no_missions')}</p>
+                                            <p className="text-sm text-gray-400 mt-2 italic">{t('npc.dialogue.no_missions_desc')}</p>
                                         </div>
                                     )}
                                     {/* Merchant Option */}
@@ -596,8 +688,8 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                             className="p-6 border-4 border-double border-yellow-700 bg-yellow-50 hover:bg-yellow-600 hover:text-white transition-all flex items-center justify-between group shadow-xl -translate-y-1"
                                         >
                                             <div className="flex flex-col items-start">
-                                                <span className="font-medieval text-2xl uppercase tracking-widest text-[#8b0000] group-hover:text-white">Ver Mercancías</span>
-                                                <span className="text-sm opacity-80 font-serif">Explora los tesoros y suministros de mi tienda.</span>
+                                                <span className="font-medieval text-2xl uppercase tracking-widest text-[#8b0000] group-hover:text-white">{t('npc.dialogue.view_goods')}</span>
+                                                <span className="text-sm opacity-80 font-serif">{t('npc.dialogue.view_goods_desc')}</span>
                                             </div>
                                             <ShoppingBag size={40} className="text-yellow-700 group-hover:text-white" />
                                         </button>
@@ -630,23 +722,23 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                                         </span>
                                                         {m.status === 'completed' && (
                                                             <span className="text-[10px] bg-green-800 text-white px-3 py-1 font-bold uppercase tracking-widest border border-green-600 rounded-sm">
-                                                                ✓ Completada
+                                                                {t('npc.dialogue.status_completed')}
                                                             </span>
                                                         )}
                                                         {m.status === 'in_progress' && (
                                                             <span className="text-[10px] bg-blue-700 text-white px-3 py-1 font-bold uppercase tracking-widest border border-blue-500 rounded-sm">
-                                                                ↻ En Progreso
+                                                                {t('npc.dialogue.status_in_progress')}
                                                             </span>
                                                         )}
                                                         {loadingMissionId === m.id && (
                                                             <span className="flex items-center gap-2 text-[10px] bg-gray-800 text-white px-3 py-1 font-bold uppercase tracking-widest border border-gray-600 rounded-sm animate-pulse">
                                                                 <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                                Cargando...
+                                                                {t('npc.dialogue.loading')}
                                                             </span>
                                                         )}
                                                         {(m.status === 'not_started' || !m.status) && (
                                                             <span className="text-[10px] bg-orange-600 text-white px-3 py-1 font-bold uppercase tracking-widest border border-orange-400 rounded-sm">
-                                                                ★ Nueva
+                                                                {t('npc.dialogue.status_new')}
                                                             </span>
                                                         )}
                                                     </div>
@@ -665,7 +757,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                                             ? 'text-[var(--color-orange-vibrant)]'
                                                             : 'text-[var(--color-gold-dark)] group-hover:text-white/90'
                                                     }`}>
-                                                        <MapPin size={12} /> Ubicación: {m.scene_key}
+                                                        <MapPin size={12} /> {t('npc.dialogue.location', { scene: m.scene_key })}
                                                     </div>
                                                 )}
                                             </button>
@@ -679,12 +771,12 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                         <div className="flex items-center justify-between mb-3 relative z-10">
                             <h4 className="text-[var(--color-accent-blue)] text-[12px] font-medieval uppercase tracking-widest opacity-90 flex items-center gap-2">
                                 {selectedMission 
-                                    ? <span className="text-[var(--color-orange-vibrant)] flex items-center gap-2 animate-pulse"><Map size={14} /> Misión: {selectedMission.title}</span>
-                                    : (lastMessage.sender === 'npc' ? `${npcName} speaks...` : 'You responded:')
+                                    ? <span className="text-[var(--color-orange-vibrant)] flex items-center gap-2 animate-pulse"><Map size={14} /> {t('lobby.challenge.title')}: {selectedMission.title}</span>
+                                    : (lastMessage.sender === 'npc' ? t('npc.dialogue.speaks', { name: npcName }) : t('npc.dialogue.you_responded'))
                                 }
                                 {isAudioOnly && lastMessage.sender === 'npc' && (
                                     <span className="bg-[var(--color-orange-vibrant)] text-white px-2 py-0.5 border border-[var(--color-gold)] text-[9px]">
-                                        SILENCE REQ.
+                                        {t('npc.dialogue.silence_req')}
                                     </span>
                                 )}
                             </h4>
@@ -692,7 +784,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                 <span className={`text-[9px] px-2 py-0.5 font-bold uppercase tracking-widest border border-current rounded-sm ${
                                     selectedMission.status === 'completed' ? 'text-green-700 border-green-700' : 'text-blue-700 border-blue-700'
                                 }`}>
-                                    {selectedMission.status === 'completed' ? 'Completada' : 'En Curso'}
+                                    {selectedMission.status === 'completed' ? t('npc.dialogue.completed') : t('npc.dialogue.in_progress')}
                                 </span>
                             )}
                         </div>
@@ -703,7 +795,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                             {selectedMission && (
                                 <div className="bg-orange-50/50 border-l-4 border-[var(--color-orange-vibrant)] p-3 mb-2 animate-in slide-in-from-top-2 duration-500">
                                     <p className="text-[11px] font-serif uppercase tracking-wider text-[var(--color-orange-vibrant)] font-black mb-1 flex items-center gap-2">
-                                        <Compass size={12} /> Tarea Actual
+                                        <Compass size={12} /> {t('npc.dialogue.current_task')}
                                     </p>
                                     <p className="text-sm font-serif text-[var(--color-base-dark)] leading-tight italic">
                                         "{selectedMission.current_task_instruction || selectedMission.player_instruction || selectedMission.description}"
@@ -714,18 +806,16 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                             <div className="flex items-start justify-between gap-6">
                                 <div className="flex-1 flex flex-col gap-3">
                                     <p className="text-2xl text-[var(--color-base-dark)] font-medieval leading-tight tracking-tight drop-shadow-sm">
-                                        {(lastMessage.sender === 'npc' && isAudioOnly) ? (
-                                            <span className="text-[var(--color-accent-blue)] italic opacity-60">Listen closely to the words...</span>
+                                        {(lastMessage.sender === 'npc' && isAudioOnly && !showAudioTranscript) ? (
+                                            <span className="text-[var(--color-accent-blue)] italic opacity-60">{t('npc.dialogue.listen_closely')}</span>
                                         ) : (
                                             lastMessage.text
                                         )}
                                     </p>
-                                    {lastMessage.sender === 'npc' && lastMessage.translation && (
-                                        <div className="border-t border-[var(--color-gold)]/40 pt-4 mt-2 bg-black/5 px-6 py-3 rounded-lg shadow-inner">
-                                            <p className="text-xl text-[#1a1a1a] italic font-serif font-medium leading-relaxed drop-shadow-sm">
-                                                {lastMessage.translation}
-                                            </p>
-                                        </div>
+                                    {lastMessage.sender === 'npc' && getTranslation(lastMessage) && (!isAudioOnly || showAudioTranscript) && (
+                                        <p className="text-xl text-gray-700 italic font-serif leading-relaxed mt-2 border-t border-[var(--color-gold)]/20 pt-2">
+                                            {getTranslation(lastMessage)}
+                                        </p>
                                     )}
                                 </div>
                             {lastMessage.sender === 'npc' && (
@@ -760,12 +850,13 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                                 setSelectedMissionId(null);
                                                 setMessages([{
                                                     sender: 'npc',
-                                                    text: `¿En qué más puedo ayudarte?`,
+                                                    text: t('npc.dialogue.anything_else', { lng: 'en' }),
+                                                    translation: t('npc.dialogue.anything_else', { lng: 'es' }),
                                                     timestamp: new Date()
                                                 }]);
                                             }}
                                             className="p-4 bg-gray-800 text-white border-4 border-gray-600 shadow-2xl hover:bg-gray-700 transition-all active:translate-y-1 flex items-center justify-center"
-                                            title="Menú de Misiones"
+                                            title={t('npc.dialogue.missions_menu')}
                                         >
                                             <MapPin size={28} />
                                         </button>
@@ -781,9 +872,44 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                             className="w-4 h-4 accent-[var(--color-orange-vibrant)] cursor-pointer"
                                         />
                                         <label htmlFor="autoplay-toggle" className="text-[10px] font-medieval font-bold uppercase tracking-tighter cursor-pointer text-[#1a1a1a]">
-                                            Auto-voz
+                                            {t('npc.dialogue.auto_voice')}
                                         </label>
                                     </div>
+
+                                    {/* Audio Only Transcription Toggle & Tooltip */}
+                                    {isAudioOnly && (
+                                        <div className="relative flex items-center gap-2 mt-2 px-2 py-1 bg-white/40 rounded border border-black/10 shadow-sm">
+                                            <input 
+                                                type="checkbox" 
+                                                id="transcript-toggle"
+                                                checked={showAudioTranscript}
+                                                onChange={(e) => setShowAudioTranscript(e.target.checked)}
+                                                className="w-4 h-4 accent-[var(--color-orange-vibrant)] cursor-pointer"
+                                            />
+                                            <label htmlFor="transcript-toggle" className="text-[10px] font-medieval font-bold uppercase tracking-tighter cursor-pointer text-[#1a1a1a]">
+                                                {t('npc.dialogue.show_text')}
+                                            </label>
+                                            <div 
+                                                className="relative cursor-pointer text-gray-600 hover:text-gray-900 pointer-events-auto flex items-center"
+                                                onMouseEnter={() => setShowTooltip(true)}
+                                                onMouseLeave={() => setShowTooltip(false)}
+                                            >
+                                                <AlertCircle size={14} className="text-gray-500 hover:text-gray-800" />
+                                                {showTooltip && (
+                                                    <div className="absolute right-0 bottom-6 z-50 w-72 bg-gray-900 text-white text-xs p-4 rounded-lg shadow-2xl border border-gray-700 pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-200">
+                                                        <p className="font-medieval text-yellow-400 mb-1.5 uppercase tracking-wider text-[10px]">{t('npc.dialogue.transcript')}</p>
+                                                        <p className="font-serif italic text-sm text-gray-100 mb-2 leading-tight">"{lastMessage.text}"</p>
+                                                        {getTranslation(lastMessage) && (
+                                                            <>
+                                                                <div className="h-[1px] bg-gray-700 my-2"></div>
+                                                                <p className="font-serif italic text-sm text-gray-300 leading-tight">"{getTranslation(lastMessage)}"</p>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -808,7 +934,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                 onChange={(e) => setInputText(e.target.value)}
                                 onKeyPress={(e) => e.key === 'Enter' && handleSend(inputText)}
                                 disabled={isProcessing || isRecording || isAudioOnly}
-                                placeholder={isAudioOnly ? "Silence required..." : "Type your words..."}
+                                placeholder={isAudioOnly ? t('npc.dialogue.silence_required_placeholder') : t('npc.dialogue.type_words_placeholder')}
                                 className={`flex-1 bg-transparent text-[var(--color-base-dark)] text-xl font-medieval placeholder-[var(--color-accent-blue)]/50 focus:outline-none ${isAudioOnly ? 'cursor-not-allowed opacity-50' : ''}`}
                             />
 

@@ -321,19 +321,19 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
 
                             <div className="flex flex-col gap-3 pt-4 border-t border-[var(--color-gold-dark)]/25">
                                 <div className="flex justify-between items-center">
-                                    <label className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-gold-dark)]"><Swords size={16} /> Controles en Pantalla</label>
+                                    <label className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-gold-dark)]"><Swords size={16} /> {t('lobby.menu.on_screen_controls')}</label>
                                 </div>
                                 <select 
                                     value={virtualControlsMode || 'auto'} 
                                     onChange={(e) => setVirtualControlsMode(e.target.value)}
                                     className="bg-black/60 border-2 border-[var(--color-gold-dark)] text-white text-xs p-2.5 outline-none focus:border-[var(--color-gold)] font-sans"
                                 >
-                                    <option value="auto">Automático (Pantallas Táctiles)</option>
-                                    <option value="always">Siempre Activados</option>
-                                    <option value="never">Desactivados (Ocultar)</option>
+                                    <option value="auto">{t('lobby.menu.controls_auto')}</option>
+                                    <option value="always">{t('lobby.menu.controls_always')}</option>
+                                    <option value="never">{t('lobby.menu.controls_never')}</option>
                                 </select>
                                 <p className="text-[10px] text-[var(--color-parchment-dark)] italic">
-                                    Permite forzar o desactivar la visualización del control táctil en pantalla en caso de que se haya activado por error.
+                                    {t('lobby.menu.controls_desc')}
                                 </p>
                             </div>
 

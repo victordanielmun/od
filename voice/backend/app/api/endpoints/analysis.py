@@ -22,6 +22,11 @@ class TTSRequest(BaseModel):
 @router.post("/generate")
 async def generate_tts(payload: TTSRequest):
     """Generate TTS audio for a given text and return the file URL."""
+    import time
+    start_time = time.time()
+    print(f"\n[Performance] === TTS Generation Start ===")
+    print(f"[Performance] Text to generate: '{payload.text}' | Voice: {payload.voice}")
+
     if not payload.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
@@ -32,22 +37,34 @@ async def generate_tts(payload: TTSRequest):
     filepath = os.path.join(settings.TTS_CACHE_DIR, f"{cache_key}.mp3")
 
     if not os.path.exists(filepath):
+        print(f"[Performance] TTS Cache Miss! Generating audio...")
         try:
             # Si se especifica una voz, usamos edge-tts (Alta calidad Neural)
             if payload.voice:
                 import edge_tts
+                start_edge = time.time()
                 communicate = edge_tts.Communicate(payload.text, payload.voice)
                 await communicate.save(filepath)
+                edge_time = (time.time() - start_edge) * 1000
+                print(f"[Performance] Edge-TTS generated and saved. Took {edge_time:.2f} ms")
             else:
                 # Fallback a gTTS
+                start_gtts = time.time()
                 tts = gTTS(text=payload.text, lang=payload.lang, slow=False)
                 tts.save(filepath)
+                gtts_time = (time.time() - start_gtts) * 1000
+                print(f"[Performance] gTTS generated and saved. Took {gtts_time:.2f} ms")
         except Exception as e:
             print(f"TTS error: {e}")
             raise HTTPException(
                 status_code=500, 
                 detail=f"Failed to generate audio: {str(e)}"
             )
+    else:
+        print(f"[Performance] TTS Cache Hit! File already exists at {filepath}")
+
+    total_time = (time.time() - start_time) * 1000
+    print(f"[Performance] Total TTS Request complete. Total: {total_time:.2f} ms\n")
 
     return {"audio_url": f"/api/tts/audio/{cache_key}", "cache_key": cache_key}
 

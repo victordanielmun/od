@@ -20,6 +20,7 @@ const TILE_COLORS = {
   collider: '#FFD700',
   store: '#556270',
   furniture: '#FF6B6B',
+  furniture2: '#FF8E8E',
   exit: '#FF4500',
   enemy: '#FF4444',
 };
@@ -73,10 +74,25 @@ const FloorGrid = ({ active, onSelect }) => (
 const SpriteJsonGrid = ({ jsonPath, imgPath, active, onSelect, scaleTarget = 32 }) => {
   const [sprites, setSprites] = useState([]);
   useEffect(() => {
-    fetch(jsonPath).then(r => r.json())
-      .then(d => setSprites(d.frames.filter(f => f.sourceSize.w > 10 && f.sourceSize.h > 10)))
-      .catch(() => { });
-  }, [jsonPath]);
+    const paths = Array.isArray(jsonPath) ? jsonPath : [jsonPath];
+    const imgs = Array.isArray(imgPath) ? imgPath : [imgPath];
+    
+    Promise.all(paths.map((p, idx) => 
+      fetch(p).then(r => r.json()).then(d => {
+        const matchingImg = imgs[idx] || imgs[0];
+        return d.frames
+          .filter(f => f.sourceSize.w > 10 && f.sourceSize.h > 10)
+          .map(f => ({
+            ...f,
+            _imagePath: matchingImg
+          }));
+      })
+    ))
+    .then(results => {
+      setSprites(results.flat());
+    })
+    .catch(() => { });
+  }, [jsonPath, imgPath]);
   return (
     <div className="grid grid-cols-4 gap-1 max-h-52 overflow-y-auto pr-1"
       style={{ scrollbarWidth: 'thin', scrollbarColor: '#4b5563 transparent' }}>
@@ -91,7 +107,7 @@ const SpriteJsonGrid = ({ jsonPath, imgPath, active, onSelect, scaleTarget = 32 
           >
             <div style={{
               width: w, height: h,
-              backgroundImage: `url(${imgPath})`,
+              backgroundImage: `url(${s._imagePath})`,
               backgroundPosition: `-${x}px -${y}px`,
               transform: `scale(${sc})`, transformOrigin: 'center',
               imageRendering: 'pixelated', flexShrink: 0,
@@ -104,6 +120,15 @@ const SpriteJsonGrid = ({ jsonPath, imgPath, active, onSelect, scaleTarget = 32 
 };
 
 /* ═══════════════════════════════════════════ */
+const mapFaceToBodyState = (state) => {
+  if (!state) return 'idle';
+  const s = state.toLowerCase();
+  if (s === 'waiting' || s === 'idle-waiting') return 'idle';
+  if (s === 'thinking' || s === 'surprised' || s === 'angry') return 'talking';
+  if (s === 'grateful' || s === 'happy-grateful') return 'happy';
+  return s; // 'idle', 'talking', 'happy', 'sad', 'walking', 'dying'
+};
+
 export const MapEditorUI = ({ gameRef }) => {
   const { t } = useTranslation();
   const isAdmin = useAuthStore(s => s.isAdmin());
@@ -117,12 +142,13 @@ export const MapEditorUI = ({ gameRef }) => {
   const [buildMeta, setBuildMeta] = useState({ portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '' });
   const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [], state: 'idle' });
   const [enemyMeta, setEnemyMeta] = useState({ npcId: '', waveNum: 1, hp: 50, speed: 120, damage: 10, attackRate: 1000 });
-  const [buildScale, setBuildScale] = useState(2);
+  const [buildScale, setBuildScale] = useState(2.5);
   const [availableMaps, setAvailableMaps] = useState([]);
   const [npcDefinitions, setNpcDefinitions] = useState([]);
   const [availableMissions, setAvailableMissions] = useState([]);
   const [availableItems, setAvailableItems] = useState([]);
   const [pickupMeta, setPickupMeta] = useState({ itemId: '', quantity: 1 });
+  const [furnitureMeta, setFurnitureMeta] = useState({ minigameType: '', minigameId: '', readText: '' });
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // 'success'|'error'|null
   const [exportedData, setExportedData] = useState(null);
@@ -164,7 +190,8 @@ export const MapEditorUI = ({ gameRef }) => {
     { id: 'void', label: t('lobby.editor.tile_void'), color: TILE_COLORS.void },
     { id: 'collider', label: t('lobby.editor.tile_collider') || 'Collider', color: TILE_COLORS.collider },
     { id: 'store', label: t('lobby.editor.tile_store') || 'Store Tiles', color: TILE_COLORS.store },
-    { id: 'furniture', label: t('lobby.editor.tile_furniture') || 'Furniture', color: TILE_COLORS.furniture },
+    { id: 'furniture', label: t('lobby.editor.tile_furniture') || 'Furniture 1', color: TILE_COLORS.furniture },
+    { id: 'furniture2', label: t('lobby.editor.tile_furniture2') || 'Furniture 2', color: TILE_COLORS.furniture2 },
     { id: 'enemy', label: t('lobby.editor.tile_enemy') || 'Enemy Spawn', color: TILE_COLORS.enemy },
   ], [t]);
 
@@ -200,12 +227,20 @@ export const MapEditorUI = ({ gameRef }) => {
         setNpcMeta({
           definitionId: metadata.definitionId || '',
           missionIds: Array.isArray(metadata.missionIds) ? metadata.missionIds : (metadata.missionId ? [metadata.missionId] : []),
-          state: metadata.state || 'idle'
+          state: mapFaceToBodyState(metadata.state || 'idle')
         });
         setPickupMeta({
           itemId: metadata.itemId || '',
           quantity: metadata.quantity || 1
         });
+      } else if (type === 'furniture' || type === 'furniture2') {
+        const fm = {
+          minigameType: metadata.minigameType || '',
+          minigameId: metadata.minigameId || '',
+          readText: metadata.readText || ''
+        };
+        setFurnitureMeta(fm);
+        dispatchEditorCommand('setFurnitureMetadata', fm);
       } else if (type === 'enemy') {
         setEnemyMeta({
           npcId: metadata.npcId || '',
@@ -222,13 +257,30 @@ export const MapEditorUI = ({ gameRef }) => {
       dispatchEditorCommand('setTool', 'brush');
     };
 
+    const onControllerReady = () => {
+      console.log('[MapEditorUI] EditorController ready, syncing state...');
+      dispatchEditorCommand('setTileType', activeTile);
+      dispatchEditorCommand('setTexture', activeTexture);
+      dispatchEditorCommand('setTool', activeTool);
+      dispatchEditorCommand('setMoveMode', moveMode);
+      dispatchEditorCommand('setBuildScale', buildScale);
+      dispatchEditorCommand('setBuildMetadata', buildMeta);
+      dispatchEditorCommand('setFurnitureMetadata', furnitureMeta);
+      dispatchEditorCommand('setNpcMetadata', npcMeta);
+      dispatchEditorCommand('setEnemyMetadata', enemyMeta);
+      dispatchEditorCommand('setPickupMetadata', pickupMeta);
+    };
+
     window.addEventListener('editor-stats', onStats);
     window.addEventListener('editor-picked-object', onPicked);
+    window.addEventListener('editor-controller-ready', onControllerReady);
+
     return () => {
       window.removeEventListener('editor-stats', onStats);
       window.removeEventListener('editor-picked-object', onPicked);
+      window.removeEventListener('editor-controller-ready', onControllerReady);
     };
-  }, []);
+  }, [activeTile, activeTexture, activeTool, moveMode, buildScale, buildMeta, furnitureMeta, npcMeta, enemyMeta, pickupMeta]);
 
   // Sync moveMode when the Phaser scene changes it (e.g. on editor open/close)
   useEffect(() => {
@@ -395,7 +447,7 @@ export const MapEditorUI = ({ gameRef }) => {
     // Para tipos con atlas propios NO reseteamos a 'sprite1' (que solo existe en el terrain atlas).
     // Dejamos que el usuario seleccione el sprite, o usamos null para que _placeTileDirect
     // use su propio frame por defecto (ej. tree1.png para forest).
-    const tilesWithOwnAtlas = ['forest', 'wall', 'build', 'store', 'furniture'];
+    const tilesWithOwnAtlas = ['forest', 'wall', 'build', 'store', 'furniture', 'furniture2'];
     if (!tilesWithOwnAtlas.includes(id)) {
       setActiveTexture('sprite1');
       dispatchEditorCommand('setTexture', 'sprite1');
@@ -410,7 +462,7 @@ export const MapEditorUI = ({ gameRef }) => {
   const updateMeta = (k, v) => { const m = { ...buildMeta, [k]: v }; setBuildMeta(m); dispatchEditorCommand('setBuildMetadata', m); };
   const updateScale = v => { const s = parseFloat(v); setBuildScale(s); dispatchEditorCommand('setBuildScale', s); };
   const updateNpcMeta = (k, v) => { 
-    setNpcMeta(prev => ({ ...prev, [k]: v })); 
+    setNpcMeta(prev => ({ ...prev, [k]: k === 'state' ? mapFaceToBodyState(v) : v })); 
   };
   useEffect(() => {
     dispatchEditorCommand('setNPCMetadata', npcMeta);
@@ -423,6 +475,10 @@ export const MapEditorUI = ({ gameRef }) => {
   useEffect(() => {
     dispatchEditorCommand('setEnemyMetadata', enemyMeta);
   }, [enemyMeta]);
+
+  useEffect(() => {
+    dispatchEditorCommand('setFurnitureMetadata', furnitureMeta);
+  }, [furnitureMeta]);
   const selectMoveMode = (mode) => { setMoveMode(mode); dispatchEditorCommand('setMoveMode', mode); };
   const updatePlayerSpeed = (val) => {
     const s = parseInt(val);
@@ -538,7 +594,7 @@ export const MapEditorUI = ({ gameRef }) => {
     e.target.value = ''; // Reset for next time
   };
 
-  const total = (stats.walls || 0) + (stats.floors || 0) + (stats.forest || 0) + (stats.builds || 0) + (stats.spawns || 0) + (stats.npcZones || 0) + (stats.pickups || 0) + (stats.storeTiles || 0) + (stats.furniture || 0) + (stats.exits || 0);
+  const total = (stats.walls || 0) + (stats.floors || 0) + (stats.forest || 0) + (stats.builds || 0) + (stats.spawns || 0) + (stats.npcZones || 0) + (stats.pickups || 0) + (stats.storeTiles || 0) + (stats.furniture || 0) + (stats.furniture2 || 0) + (stats.exits || 0);
 
   const TILE_TYPE_TO_STAT = {
     wall: 'stat_walls',
@@ -551,6 +607,7 @@ export const MapEditorUI = ({ gameRef }) => {
     collider: 'stat_colliders',
     store: 'stat_store',
     furniture: 'stat_furniture',
+    furniture2: 'stat_furniture2',
     exit: 'stat_exits',
     enemy: 'stat_enemies',
   };
@@ -911,7 +968,14 @@ export const MapEditorUI = ({ gameRef }) => {
                   active={activeTexture} onSelect={selectTexture} scaleTarget={32}
                 />
               )}
-              {!['floor', 'forest', 'build', 'wall', 'store', 'furniture', 'exit'].includes(activeTile) && (
+              {activeTile === 'furniture2' && (
+                <SpriteJsonGrid
+                  jsonPath="/store/furniture2.json"
+                  imgPath="/store/furniture2.png"
+                  active={activeTexture} onSelect={selectTexture} scaleTarget={32}
+                />
+              )}
+              {!['floor', 'forest', 'build', 'wall', 'store', 'furniture', 'furniture2', 'exit'].includes(activeTile) && (
                 <p className="text-[10px] text-gray-600 italic">{t('lobby.editor.no_texture_options')}</p>
               )}
             </Section>
@@ -925,11 +989,11 @@ export const MapEditorUI = ({ gameRef }) => {
                     <span className="text-[9px] text-gray-500">{t('lobby.editor.scale')}</span>
                     <span className="text-[9px] text-yellow-400 font-mono">{buildScale.toFixed(2)}×</span>
                   </div>
-                  <input type="range" min="1" max="2.5" step="0.05" value={buildScale}
+                  <input type="range" min="1" max="4.0" step="0.05" value={buildScale}
                     onChange={e => updateScale(e.target.value)}
                     className="w-full accent-yellow-400" />
                   <div className="flex justify-between text-[8px] text-gray-700 mt-0.5">
-                    <span>1×</span><span>2.5×</span>
+                    <span>1×</span><span>4.0×</span>
                   </div>
                 </div>
 
@@ -1021,15 +1085,12 @@ export const MapEditorUI = ({ gameRef }) => {
                   <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.initial_state') || 'Initial State'}</label>
                   <select value={npcMeta.state || 'idle'} onChange={e => updateNpcMeta('state', e.target.value)}
                     className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none">
-                    <option value="idle">Idle</option>
-                    <option value="talking">Talking</option>
-                    <option value="happy">Happy</option>
-                    <option value="angry">Angry</option>
-                    <option value="sad">Sad</option>
-                    <option value="surprised">Surprised</option>
-                    <option value="thinking">Thinking</option>
-                    <option value="grateful">Grateful</option>
-                    <option value="waiting">Waiting</option>
+                    <option value="idle">Idle / Waiting (Row 1)</option>
+                    <option value="talking">Talking (Row 2)</option>
+                    <option value="happy">Happy / Grateful (Row 3)</option>
+                    <option value="sad">Sad (Row 4)</option>
+                    <option value="walking">Walking (Row 5)</option>
+                    <option value="dying">Dying (Row 6)</option>
                   </select>
                 </div>
 
@@ -1116,13 +1177,70 @@ export const MapEditorUI = ({ gameRef }) => {
               </Section>
             )}
 
+            {/* Furniture Settings */}
+            {(activeTile === 'furniture' || activeTile === 'furniture2') && (
+              <Section title="Configuración de Interactivos" defaultOpen={true}>
+                <div className="mb-2">
+                  <label className="block text-[9px] text-gray-500 mb-0.5">Tipo de Interactividad</label>
+                  <select
+                    value={furnitureMeta.minigameType || ''}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setFurnitureMeta(prev => {
+                        const generatedId = val && val !== 'read' ? `minigame_${val}_${Date.now()}` : '';
+                        return { 
+                          ...prev,
+                          minigameType: val, 
+                          minigameId: val === 'read' ? '' : (prev.minigameId || generatedId)
+                        };
+                      });
+                    }}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none"
+                  >
+                    <option value="">Ninguno / Decorativo</option>
+                    <option value="chess">Ajedrez (Tablero por Voz/Teclado)</option>
+                    <option value="park">Zona Social (Parque/Voz)</option>
+                    <option value="read">Letrero / Texto de Lectura</option>
+                  </select>
+                </div>
+
+                {furnitureMeta.minigameType === 'read' ? (
+                  <div className="mb-2">
+                    <label className="block text-[9px] text-gray-500 mb-0.5">Texto a Mostrar (Pop-up)</label>
+                    <textarea
+                      value={furnitureMeta.readText || ''}
+                      onChange={e => setFurnitureMeta(prev => ({ ...prev, readText: e.target.value }))}
+                      placeholder="Escribe el mensaje aquí..."
+                      rows={4}
+                      className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none resize-none font-sans"
+                    />
+                  </div>
+                ) : (
+                  <div className="mb-2">
+                    <label className="block text-[9px] text-gray-500 mb-0.5">ID de la Sala</label>
+                    <input
+                      type="text"
+                      value={furnitureMeta.minigameId || ''}
+                      onChange={e => setFurnitureMeta(prev => ({ ...prev, minigameId: e.target.value }))}
+                      placeholder="Generado automáticamente..."
+                      className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none"
+                    />
+                  </div>
+                )}
+
+                <p className="text-[8px] text-gray-400 italic mt-2">
+                  Haz clic en el mapa para colocar el mueble configurado. Los jugadores podrán interactuar con él presionando E.
+                </p>
+              </Section>
+            )}
+
 
             {/* Stats */}
             <Section title={`${t('lobby.editor.stats')} · ${total} tiles`} defaultOpen={false}>
               <div className="grid grid-cols-2 gap-1">
                 {TILE_TYPES.map(t_obj => {
                   const key = TILE_TYPE_TO_STAT[t_obj.id] || `${t_obj.id}s`;
-                  const cnt = stats[t_obj.id === 'npc' ? 'npcZones' : (t_obj.id === 'item' ? 'pickups' : (t_obj.id === 'enemy' ? 'enemySpawns' : `${t_obj.id}s`))] || 0;
+                  const cnt = stats[t_obj.id === 'npc' ? 'npcZones' : (t_obj.id === 'item' ? 'pickups' : (t_obj.id === 'enemy' ? 'enemySpawns' : (t_obj.id === 'furniture' ? 'furniture' : (t_obj.id === 'furniture2' ? 'furniture2' : `${t_obj.id}s`))))] || 0;
                   return (
                     <div key={t_obj.id} className="flex items-center gap-1.5 text-[9px] text-gray-400">
                       <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: t_obj.color }} />

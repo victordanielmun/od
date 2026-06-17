@@ -57,8 +57,10 @@ func (h *MapPickupHandler) Pickup(c *fiber.Ctx) error {
 		if err == gorm.ErrRecordNotFound {
 			// Create default stats for legacy users
 			stats = models.PlayerStats{
-				UserID: userID,
-				Gold:   100,
+				UserID:    userID,
+				Gold:      100,
+				HPCurrent: 100,
+				MPCurrent: 50,
 			}
 			if err := database.DB.Create(&stats).Error; err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to initialize player stats"})

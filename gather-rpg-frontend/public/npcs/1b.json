@@ -1,27 +1,6 @@
 {
   "frames": [
     {
-      "filename": "idle-waiting_2",
-      "frame": {
-        "x": 169,
-        "y": 11,
-        "w": 68,
-        "h": 73
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 68,
-        "h": 73
-      },
-      "sourceSize": {
-        "w": 68,
-        "h": 73
-      }
-    },
-    {
       "filename": "idle-waiting_0",
       "frame": {
         "x": 3,
@@ -61,6 +40,27 @@
       "sourceSize": {
         "w": 69,
         "h": 72
+      }
+    },
+    {
+      "filename": "idle-waiting_2",
+      "frame": {
+        "x": 169,
+        "y": 11,
+        "w": 68,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 68,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 68,
+        "h": 73
       }
     },
     {
@@ -127,27 +127,6 @@
       }
     },
     {
-      "filename": "talking_2",
-      "frame": {
-        "x": 169,
-        "y": 95,
-        "w": 71,
-        "h": 73
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 71,
-        "h": 73
-      },
-      "sourceSize": {
-        "w": 71,
-        "h": 73
-      }
-    },
-    {
       "filename": "talking_0",
       "frame": {
         "x": 3,
@@ -187,6 +166,27 @@
       "sourceSize": {
         "w": 72,
         "h": 72
+      }
+    },
+    {
+      "filename": "talking_2",
+      "frame": {
+        "x": 169,
+        "y": 95,
+        "w": 71,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 71,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 71,
+        "h": 73
       }
     },
     {
@@ -253,12 +253,12 @@
       }
     },
     {
-      "filename": "happy-grateful_2",
+      "filename": "happy-grateful_0",
       "frame": {
-        "x": 169,
-        "y": 171,
+        "x": 3,
+        "y": 178,
         "w": 78,
-        "h": 79
+        "h": 72
       },
       "rotated": false,
       "trimmed": false,
@@ -266,11 +266,11 @@
         "x": 0,
         "y": 0,
         "w": 78,
-        "h": 79
+        "h": 72
       },
       "sourceSize": {
         "w": 78,
-        "h": 79
+        "h": 72
       }
     },
     {
@@ -295,12 +295,12 @@
       }
     },
     {
-      "filename": "happy-grateful_0",
+      "filename": "happy-grateful_2",
       "frame": {
-        "x": 3,
-        "y": 178,
+        "x": 169,
+        "y": 171,
         "w": 78,
-        "h": 72
+        "h": 79
       },
       "rotated": false,
       "trimmed": false,
@@ -308,32 +308,11 @@
         "x": 0,
         "y": 0,
         "w": 78,
-        "h": 72
+        "h": 79
       },
       "sourceSize": {
         "w": 78,
-        "h": 72
-      }
-    },
-    {
-      "filename": "happy-grateful_5",
-      "frame": {
-        "x": 425,
-        "y": 178,
-        "w": 61,
-        "h": 72
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 61,
-        "h": 72
-      },
-      "sourceSize": {
-        "w": 61,
-        "h": 72
+        "h": 79
       }
     },
     {
@@ -379,45 +358,24 @@
       }
     },
     {
-      "filename": "sad_3",
+      "filename": "happy-grateful_5",
       "frame": {
-        "x": 266,
-        "y": 261,
-        "w": 59,
-        "h": 73
+        "x": 425,
+        "y": 178,
+        "w": 61,
+        "h": 72
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 59,
-        "h": 73
+        "w": 61,
+        "h": 72
       },
       "sourceSize": {
-        "w": 59,
-        "h": 73
-      }
-    },
-    {
-      "filename": "sad_5",
-      "frame": {
-        "x": 418,
-        "y": 261,
-        "w": 69,
-        "h": 73
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 69,
-        "h": 73
-      },
-      "sourceSize": {
-        "w": 69,
-        "h": 73
+        "w": 61,
+        "h": 72
       }
     },
     {
@@ -484,6 +442,27 @@
       }
     },
     {
+      "filename": "sad_3",
+      "frame": {
+        "x": 266,
+        "y": 261,
+        "w": 59,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 59,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 59,
+        "h": 73
+      }
+    },
+    {
       "filename": "sad_4",
       "frame": {
         "x": 348,
@@ -502,6 +481,27 @@
       "sourceSize": {
         "w": 53,
         "h": 72
+      }
+    },
+    {
+      "filename": "sad_5",
+      "frame": {
+        "x": 418,
+        "y": 261,
+        "w": 69,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 69,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 69,
+        "h": 73
       }
     },
     {
@@ -631,87 +631,24 @@
       }
     },
     {
-      "filename": "dying_5",
+      "filename": "dying_0",
       "frame": {
-        "x": 6,
-        "y": 420,
-        "w": 63,
-        "h": 80
+        "x": 421,
+        "y": 446,
+        "w": 79,
+        "h": 54
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 63,
-        "h": 80
+        "w": 79,
+        "h": 54
       },
       "sourceSize": {
-        "w": 63,
-        "h": 80
-      }
-    },
-    {
-      "filename": "dying_4",
-      "frame": {
-        "x": 91,
-        "y": 421,
-        "w": 67,
-        "h": 79
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 67,
-        "h": 79
-      },
-      "sourceSize": {
-        "w": 67,
-        "h": 79
-      }
-    },
-    {
-      "filename": "dying_3",
-      "frame": {
-        "x": 174,
-        "y": 423,
-        "w": 63,
-        "h": 77
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 63,
-        "h": 77
-      },
-      "sourceSize": {
-        "w": 63,
-        "h": 77
-      }
-    },
-    {
-      "filename": "dying_2",
-      "frame": {
-        "x": 254,
-        "y": 424,
-        "w": 77,
-        "h": 76
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 77,
-        "h": 76
-      },
-      "sourceSize": {
-        "w": 77,
-        "h": 76
+        "w": 79,
+        "h": 54
       }
     },
     {
@@ -736,24 +673,87 @@
       }
     },
     {
-      "filename": "dying_0",
+      "filename": "dying_2",
       "frame": {
-        "x": 421,
-        "y": 446,
-        "w": 79,
-        "h": 54
+        "x": 254,
+        "y": 424,
+        "w": 77,
+        "h": 76
       },
       "rotated": false,
       "trimmed": false,
       "spriteSourceSize": {
         "x": 0,
         "y": 0,
-        "w": 79,
-        "h": 54
+        "w": 77,
+        "h": 76
       },
       "sourceSize": {
-        "w": 79,
-        "h": 54
+        "w": 77,
+        "h": 76
+      }
+    },
+    {
+      "filename": "dying_3",
+      "frame": {
+        "x": 174,
+        "y": 423,
+        "w": 63,
+        "h": 77
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 63,
+        "h": 77
+      },
+      "sourceSize": {
+        "w": 63,
+        "h": 77
+      }
+    },
+    {
+      "filename": "dying_4",
+      "frame": {
+        "x": 91,
+        "y": 421,
+        "w": 67,
+        "h": 79
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 67,
+        "h": 79
+      },
+      "sourceSize": {
+        "w": 67,
+        "h": 79
+      }
+    },
+    {
+      "filename": "dying_5",
+      "frame": {
+        "x": 6,
+        "y": 420,
+        "w": 63,
+        "h": 80
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 63,
+        "h": 80
+      },
+      "sourceSize": {
+        "w": 63,
+        "h": 80
       }
     }
   ],

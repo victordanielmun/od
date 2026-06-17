@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/repository"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type DialogueService struct {
@@ -57,9 +59,15 @@ type DialogueResponse struct {
 	GiftQuantity         int                    `json:"gift_quantity"`
 	MissionNewlyCompleted bool                  `json:"mission_newly_completed"`
 	MissionDetails       *models.Mission        `json:"mission_details,omitempty"`
+	BuyItemID            *string                `json:"buy_item_id,omitempty"`
+	BuyQuantity          int                    `json:"buy_quantity,omitempty"`
 }
 
 func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, error) {
+	startTotal := time.Now()
+	fmt.Printf("\n[Performance] === Go Backend: ProcessInput Start ===\n")
+	fmt.Printf("[Performance] Go Backend: PlayerInput='%s'\n", req.PlayerInput)
+
 	// 1. Resolve UserID to PlayerID (PlayerStats.ID)
 	var stats models.PlayerStats
 	if err := database.DB.First(&stats, "user_id = ?", req.PlayerID).Error; err != nil {
@@ -75,6 +83,12 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 
 	npcDef := instance.NPCTemplate.NPCDefinition
 	isMerchant := npcDef.Type == models.NPCTypeShop
+
+	if isMerchant && npcDef.ShopID != nil {
+		if err := database.DB.Preload("Shop.Items").First(&npcDef, "id = ?", npcDef.ID).Error; err != nil {
+			fmt.Printf("[DialogueService] Warning: Failed to preload shop items: %v\n", err)
+		}
+	}
 
 	// 2. Mission Context
 	var missionRole *models.NPCMissionRole
@@ -121,7 +135,35 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 	}
 
 	// 3. Short-circuit: If purpose already fulfilled, skip AI
-	if instance.TaskCompleted && instance.NPCTemplate.SuccessMessage != "" {
+	isTaskCompletedForPlayer := false
+	if req.MissionID != nil {
+		progress, _ := s.MissionSvc.GetProgress(req.PlayerID, *req.MissionID)
+		if progress != nil {
+			if progress.Status == models.StatusCompleted {
+				isTaskCompletedForPlayer = true
+			} else {
+				tasks, _ := s.MissionSvc.GetTasks(*req.MissionID)
+				var completedTasks map[string]bool
+				json.Unmarshal(progress.TasksCompleted, &completedTasks)
+				
+				hasNPCActiveTasks := false
+				allNPCActiveTasksCompleted := true
+				for _, t := range tasks {
+					if t.TargetNPCTemplateID != nil && *t.TargetNPCTemplateID == req.NPCTemplateID {
+						hasNPCActiveTasks = true
+						if completedTasks == nil || !completedTasks[fmt.Sprint(t.ID)] {
+							allNPCActiveTasksCompleted = false
+						}
+					}
+				}
+				if hasNPCActiveTasks && allNPCActiveTasksCompleted {
+					isTaskCompletedForPlayer = true
+				}
+			}
+		}
+	}
+
+	if (instance.TaskCompleted || isTaskCompletedForPlayer) && instance.NPCTemplate.SuccessMessage != "" {
 		return &DialogueResponse{
 			NPCResponse:   instance.NPCTemplate.SuccessMessage,
 			NPCState:      models.NPCStateHappy,
@@ -162,10 +204,13 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 		userPrompt := fmt.Sprintf("History:\n%s\nCurrent Input: %s\nPronunciation Score: %.0f", 
 			historyPrompt, req.PlayerInput, req.PronunciationScore)
 
+		startLLM := time.Now()
 		aiRespRaw, err = s.AIClient.SendPrompt(systemPrompt, userPrompt)
 		if err != nil {
 			return nil, fmt.Errorf("AI Error: %w", err)
 		}
+		llmTime := time.Since(startLLM).Milliseconds()
+		fmt.Printf("[Performance] Go Backend: LLM request complete. Took %d ms\n", llmTime)
 		fmt.Printf("[DialogueService] Raw AI Response: %s\n", aiRespRaw)
 	}
 
@@ -183,6 +228,67 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 	// Set Shop Trigger - Only if the NPC is explicitly a Merchant
 	if isMerchant && npcDef.ShopID != nil {
 		aiResp.IsShop = true
+	}
+
+	// Process conversational shop purchase
+	if isMerchant && aiResp.BuyItemID != nil && *aiResp.BuyItemID != "" {
+		itemID, err := uuid.Parse(*aiResp.BuyItemID)
+		if err == nil {
+			// Get quantity, default to 1 if <= 0
+			qty := aiResp.BuyQuantity
+			if qty <= 0 {
+				qty = 1
+			}
+
+			// 1. Get Item details
+			var item models.Item
+			if err := database.DB.First(&item, "id = ?", itemID).Error; err == nil {
+				totalCost := item.Price * qty
+
+				// 2. Check Gold
+				if stats.Gold >= totalCost {
+					// 3. Update Gold and Add to Inventory in Transaction
+					dbErr := database.DB.Transaction(func(tx *gorm.DB) error {
+						stats.Gold -= totalCost
+						if err := tx.Save(&stats).Error; err != nil {
+							return err
+						}
+
+						inv := &models.Inventory{
+							PlayerID: stats.ID,
+							ItemID:   item.ID,
+							Quantity: qty,
+						}
+						var existing models.Inventory
+						err := tx.Where("player_id = ? AND item_id = ?", inv.PlayerID, inv.ItemID).First(&existing).Error
+						if err == nil {
+							existing.Quantity += inv.Quantity
+							return tx.Save(&existing).Error
+						}
+						return tx.Create(inv).Error
+					})
+
+					if dbErr == nil {
+						// Purchase successful! Set ItemGift so the UI notifies the player
+						aiResp.ItemGift = &item
+						aiResp.GiftQuantity = qty
+						fmt.Printf("[DialogueService] Conversational Purchase success: %dx %s for %d gold. Remaining gold: %d\n", qty, item.Name, totalCost, stats.Gold)
+					} else {
+						fmt.Printf("[DialogueService] Conversational Purchase DB error: %v\n", dbErr)
+					}
+				} else {
+					// Overwrite NPC response conversational message to state not enough gold
+					aiResp.NPCResponse = fmt.Sprintf("Sorry, you need %d gold to buy %d %s, but you only have %d gold.", totalCost, qty, item.Name, stats.Gold)
+					aiResp.NPCResponseES = fmt.Sprintf("Lo siento, necesitas %d monedas de oro para comprar %d %s, pero solo tienes %d.", totalCost, qty, item.Name, stats.Gold)
+					aiResp.ItemGift = nil
+					aiResp.GiftQuantity = 0
+				}
+			} else {
+				fmt.Printf("[DialogueService] Conversational Purchase error: Item ID %s not found\n", *aiResp.BuyItemID)
+			}
+		} else {
+			fmt.Printf("[DialogueService] Conversational Purchase error parsing UUID %s: %v\n", *aiResp.BuyItemID, err)
+		}
 	}
 
 	// Save to Cache if it was a Cache Miss and the score was good
@@ -272,6 +378,9 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 		TaskCompleted:      aiResp.TaskCompleted,
 	})
 
+	totalTime := time.Since(startTotal).Milliseconds()
+	fmt.Printf("[Performance] Go Backend: ProcessInput complete. Total time: %d ms\n\n", totalTime)
+
 	return &aiResp, nil
 }
 
@@ -320,7 +429,18 @@ func (s *DialogueService) buildSystemPrompt(
 		extraInfo += "- You are a Quest Giver. If the player hasn't selected a mission, invite them to check your available tasks.\n"
 	}
 	if npc.ShopID != nil {
-		extraInfo += "- You own a Shop. You can mention your wares if the conversation allows it.\n"
+		extraInfo += "- You own a Shop. Here is the catalog of items you sell:\n"
+		for _, item := range npc.Shop.Items {
+			extraInfo += fmt.Sprintf("  * Item ID: \"%s\", Name: \"%s\", Price: %d Gold, Description: \"%s\"\n", item.ID.String(), item.Name, item.Price, item.Description)
+		}
+		extraInfo += `- RULES FOR SELLING ITEMS:
+1. You MUST operate as a voice/chat-based shopkeeper. The user CANNOT buy items with a mouse click.
+2. If the user asks to buy or expresses interest in an item (e.g. "I want a health potion"), check if you sell it. Respond in character, correct any English or pronunciation errors, state the price, and ask the user to confirm the purchase (e.g. "A health potion costs 50 gold. Would you like to buy it?").
+3. DO NOT set "buy_item_id" or "buy_quantity" yet in this stage. Keep them null or empty.
+4. If the user confirms (e.g. "Yes", "I confirm", "Yes please"), respond amigablemente and set "buy_item_id" to the corresponding item's ID string and "buy_quantity" to the quantity (default to 1) in your JSON output.
+5. If the user asks for something you do not sell, politely decline.
+6. The user has to speak/write in English. If they speak Spanish, politely remind them they need to ask in English.
+`
 	}
 
 	// Extract detailed errors if any
@@ -375,7 +495,9 @@ JSON FORMAT:
   "pronunciation_message": "string",
   "feedback_suggestion": "string",
   "task_completed": boolean,
-  "task_progress": "string"
+  "task_progress": "string",
+  "buy_item_id": "string (UUID) or null",
+  "buy_quantity": number
 }`, npc.Name, extraInfo, missionCtx, npcTask, taskCtx, knowledge, conditionMet, conditionMsg, errorList, tmpl.SuccessMessage)
 
 	return prompt

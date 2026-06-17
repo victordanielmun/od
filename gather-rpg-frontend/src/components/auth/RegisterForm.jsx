@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
@@ -139,6 +140,7 @@ const COUNTRY_CODES = [
 ];
 
 export const RegisterForm = () => {
+  const { t } = useTranslation();
   // Wizard steps
   const [step, setStep] = useState(1);
   
@@ -308,11 +310,11 @@ export const RegisterForm = () => {
     e.preventDefault();
     setStep1Error('');
     if (!username || !email || !password || !confirmPassword) {
-      setStep1Error('Por favor, completa todos los campos.');
+      setStep1Error(t('register.step1.error_all_fields'));
       return;
     }
     if (password !== confirmPassword) {
-      setStep1Error('Las contraseñas no coinciden.');
+      setStep1Error(t('register.step1.error_mismatch'));
       return;
     }
     setSubmitting(true);
@@ -321,14 +323,14 @@ export const RegisterForm = () => {
     if (success) {
       setStep(2);
     } else {
-      setStep1Error(authError || 'Error al registrar la cuenta. Inténtalo de nuevo.');
+      setStep1Error(authError || t('register.step1.error_generic'));
     }
   };
 
   // Handle Step 2 Submit
   const handleStep2Submit = async () => {
     if (!selectedGuideId) {
-      setStep2Error('Por favor, selecciona un guía.');
+      setStep2Error(t('register.step2.error_select'));
       return;
     }
     setSubmitting(true);
@@ -340,7 +342,7 @@ export const RegisterForm = () => {
       setStep(3);
     } catch (err) {
       console.error("Failed to save companion guide selection:", err);
-      setStep2Error('No pudimos guardar tu selección de guía. Reintenta por favor.');
+      setStep2Error(t('register.step2.error_save'));
     } finally {
       setSubmitting(false);
     }
@@ -357,7 +359,7 @@ export const RegisterForm = () => {
         navigate('/dashboard');
       } catch (err) {
         console.error("Failed to save terms:", err);
-        setStep3Error('No se pudo guardar la aceptación de términos. Inténtalo de nuevo.');
+        setStep3Error(t('register.step3.error_terms'));
       } finally {
         setSubmitting(false);
       }
@@ -365,7 +367,7 @@ export const RegisterForm = () => {
     }
 
     if (!mobileNumber) {
-      setStep3Error('Por favor, ingresa tu número de WhatsApp.');
+      setStep3Error(t('register.step3.error_phone'));
       return;
     }
 
@@ -412,7 +414,7 @@ export const RegisterForm = () => {
       }
     } catch (err) {
       console.error("Failed to save WhatsApp settings:", err);
-      const errMsg = err.response?.data?.error || 'No se pudo guardar la configuración de WhatsApp. Inténtalo de nuevo.';
+      const errMsg = err.response?.data?.error || t('register.step3.error_save');
       setStep3Error(errMsg);
     } finally {
       setSubmitting(false);
@@ -485,7 +487,7 @@ export const RegisterForm = () => {
           }`}>
             {step > 1 ? <Check className="w-4 h-4 stroke-[3px]" /> : 'I'}
           </div>
-          <span className={`text-[10px] uppercase font-bold tracking-wider mt-2 transition-colors duration-300 ${step === 1 ? 'text-yellow-400' : 'text-gray-500'}`}>Cuenta</span>
+          <span className={`text-[10px] uppercase font-bold tracking-wider mt-2 transition-colors duration-300 ${step === 1 ? 'text-yellow-400' : 'text-gray-500'}`}>{t('register.timeline.account')}</span>
         </div>
 
         {/* Step 2 Circle */}
@@ -499,7 +501,7 @@ export const RegisterForm = () => {
           }`}>
             {step > 2 ? <Check className="w-4 h-4 stroke-[3px]" /> : 'II'}
           </div>
-          <span className={`text-[10px] uppercase font-bold tracking-wider mt-2 transition-colors duration-300 ${step === 2 ? 'text-yellow-400' : 'text-gray-500'}`}>Elegir Guía</span>
+          <span className={`text-[10px] uppercase font-bold tracking-wider mt-2 transition-colors duration-300 ${step === 2 ? 'text-yellow-400' : 'text-gray-500'}`}>{t('register.timeline.guide')}</span>
         </div>
 
         {/* Step 3 Circle */}
@@ -511,7 +513,7 @@ export const RegisterForm = () => {
           }`}>
             {'III'}
           </div>
-          <span className={`text-[10px] uppercase font-bold tracking-wider mt-2 transition-colors duration-300 ${step === 3 ? 'text-yellow-400' : 'text-gray-500'}`}>WhatsApp</span>
+          <span className={`text-[10px] uppercase font-bold tracking-wider mt-2 transition-colors duration-300 ${step === 3 ? 'text-yellow-400' : 'text-gray-500'}`}>{t('register.timeline.whatsapp')}</span>
         </div>
       </div>
 
@@ -532,24 +534,24 @@ export const RegisterForm = () => {
                   <Sparkles className="w-6 h-6 animate-pulse" />
                 </div>
                 <h2 className="text-2xl md:text-3xl font-extrabold text-yellow-400 font-medieval uppercase tracking-widest drop-shadow-md">
-                  Comienza tu Odisea
+                  {t('register.step1.title')}
                 </h2>
                 <p className="text-gray-400 text-xs mt-1.5 font-sans tracking-wide">
-                  Crea tu avatar lingüístico para entrar en el reino de Gather RPG.
+                  {t('register.step1.subtitle')}
                 </p>
               </div>
 
-              {step1Error && (
+              {(step1Error || authError) && (
                 <div className="text-red-400 mb-6 text-xs font-mono uppercase bg-red-500/10 border border-red-500/20 p-3 rounded-xl text-center flex items-center justify-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{step1Error}</span>
+                  <span>{step1Error || authError}</span>
                 </div>
               )}
 
               <form onSubmit={handleStep1Submit} className="space-y-5">
                 <div>
                   <label htmlFor="username" className="text-gray-400 text-[10px] font-extrabold uppercase tracking-widest block mb-2">
-                    Nombre de Héroe (Username)
+                    {t('register.step1.username')}
                   </label>
                   <div className="relative">
                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500">
@@ -561,7 +563,7 @@ export const RegisterForm = () => {
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       className="w-full bg-gray-950/60 text-white border border-white/10 rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all font-sans placeholder-gray-600 text-sm"
-                      placeholder="Ej. EldarGamer"
+                      placeholder={t('register.step1.username_placeholder')}
                       required
                     />
                   </div>
@@ -569,7 +571,7 @@ export const RegisterForm = () => {
 
                 <div>
                   <label htmlFor="email" className="text-gray-400 text-[10px] font-extrabold uppercase tracking-widest block mb-2">
-                    Correo Electrónico
+                    {t('register.step1.email')}
                   </label>
                   <div className="relative">
                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500">
@@ -581,7 +583,7 @@ export const RegisterForm = () => {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full bg-gray-950/60 text-white border border-white/10 rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all font-sans placeholder-gray-600 text-sm"
-                      placeholder="tu@odisea.com"
+                      placeholder={t('register.step1.email_placeholder')}
                       required
                     />
                   </div>
@@ -589,7 +591,7 @@ export const RegisterForm = () => {
 
                 <div>
                   <label htmlFor="password" className="text-gray-400 text-[10px] font-extrabold uppercase tracking-widest block mb-2">
-                    Contraseña Secreta
+                    {t('register.step1.password')}
                   </label>
                   <div className="relative">
                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500">
@@ -616,7 +618,7 @@ export const RegisterForm = () => {
 
                 <div>
                   <label htmlFor="confirmPassword" className="text-gray-400 text-[10px] font-extrabold uppercase tracking-widest block mb-2">
-                    Confirmar Contraseña
+                    {t('register.step1.confirm_password')}
                   </label>
                   <div className="relative">
                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500">
@@ -649,11 +651,11 @@ export const RegisterForm = () => {
                   {submitting ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>Invocando Cuenta...</span>
+                      <span>{t('register.step1.submitting')}</span>
                     </>
                   ) : (
                     <>
-                      <span>Crear Cuenta</span>
+                      <span>{t('register.step1.submit')}</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -661,9 +663,9 @@ export const RegisterForm = () => {
               </form>
 
               <div className="mt-8 text-center text-xs tracking-wide border-t border-white/5 pt-5">
-                <span className="text-gray-500">¿Ya tienes un personaje creado? </span>
+                <span className="text-gray-500">{t('register.step1.has_account')} </span>
                 <a href="/login" className="text-yellow-400 hover:text-yellow-300 font-bold transition-colors">
-                  Iniciar Sesión
+                  {t('register.step1.login_link')}
                 </a>
               </div>
             </div>
@@ -677,10 +679,10 @@ export const RegisterForm = () => {
                   <Compass className="w-6 h-6 animate-spin-slow" />
                 </div>
                 <h2 className="text-2xl md:text-3xl font-extrabold text-yellow-400 font-medieval uppercase tracking-widest drop-shadow-md">
-                  Elige a tu Guía de Combate
+                  {t('register.step2.title')}
                 </h2>
                 <p className="text-gray-400 text-xs mt-1.5 font-sans tracking-wide max-w-lg mx-auto">
-                  Si tuvieras que salvar a uno del abismo... ¿a quién elegirías? Éste será el NPC con el que te comunicarás a diario.
+                  {t('register.step2.subtitle')}
                 </p>
               </div>
 
@@ -694,7 +696,7 @@ export const RegisterForm = () => {
               {loadingGuides ? (
                 <div className="py-20 flex flex-col items-center justify-center gap-3">
                   <Loader2 className="w-10 h-10 animate-spin text-yellow-400" />
-                  <span className="text-gray-400 text-sm font-medieval tracking-widest uppercase">Invocando opciones de guías...</span>
+                  <span className="text-gray-400 text-sm font-medieval tracking-widest uppercase">{t('register.step2.loading')}</span>
                 </div>
               ) : (
                 <div className="flex items-center justify-between max-w-2xl mx-auto gap-4 mb-8">
@@ -703,7 +705,7 @@ export const RegisterForm = () => {
                     type="button"
                     onClick={handlePrevGuide}
                     className="p-3 rounded-full bg-gray-950/60 border border-white/10 hover:border-yellow-500 hover:text-yellow-400 text-gray-400 active:scale-95 transition-all shadow-xl cursor-pointer"
-                    title="Anterior"
+                    title={t('register.step2.prev')}
                   >
                     <ChevronLeft size={24} />
                   </button>
@@ -734,11 +736,11 @@ export const RegisterForm = () => {
                             
                             <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/5 text-xs text-gray-400 mb-4 font-sans tracking-wide">
                               <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
-                              <span>{currentGuide.type === 'guide' ? 'Guía Acompañante' : 'Mentor'}</span>
+                              <span>{currentGuide.type === 'guide' ? t('register.step2.companion') : t('register.step2.mentor')}</span>
                             </div>
 
                             <p className="text-gray-300 text-sm italic font-serif leading-relaxed px-4 min-h-[80px]">
-                              "{currentGuide.greeting || '¡Listo para acompañarte en tu viaje!'}"
+                              "{currentGuide.greeting || t('register.step2.ready')}"
                             </p>
                           </div>
                         </div>
@@ -751,7 +753,7 @@ export const RegisterForm = () => {
                     type="button"
                     onClick={handleNextGuide}
                     className="p-3 rounded-full bg-gray-950/60 border border-white/10 hover:border-yellow-500 hover:text-yellow-400 text-gray-400 active:scale-95 transition-all shadow-xl cursor-pointer"
-                    title="Siguiente"
+                    title={t('register.step2.next')}
                   >
                     <ChevronRight size={24} />
                   </button>
@@ -767,11 +769,11 @@ export const RegisterForm = () => {
                   {submitting ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>Fijando Alianza...</span>
+                      <span>{t('register.step2.submitting')}</span>
                     </>
                   ) : (
                     <>
-                      <span>Elegir a mi Guía</span>
+                      <span>{t('register.step2.submit')}</span>
                       <ChevronRight className="w-5 h-5" />
                     </>
                   )}
@@ -790,10 +792,10 @@ export const RegisterForm = () => {
                       <Phone className="w-6 h-6 animate-pulse" />
                     </div>
                     <h2 className="text-2xl md:text-3xl font-extrabold text-yellow-400 font-medieval uppercase tracking-widest drop-shadow-md">
-                      Vincular tu WhatsApp
+                      {t('register.step3.title')}
                     </h2>
                     <p className="text-gray-400 text-xs mt-1.5 font-sans tracking-wide">
-                      La repetición diaria es la llave para consolidar tu inglés en el cerebro. ¿Te gustaría recibir notificaciones de práctica y recordatorios?
+                      {t('register.step3.subtitle')}
                     </p>
                   </div>
 
@@ -816,7 +818,7 @@ export const RegisterForm = () => {
                       }`}
                     >
                       <Sparkles className="w-4 h-4 mx-auto mb-1.5 opacity-80" />
-                      <span>Sí, deseo recordatorios</span>
+                      <span>{t('register.step3.yes_reminders')}</span>
                     </button>
                     
                     <button
@@ -829,7 +831,7 @@ export const RegisterForm = () => {
                       }`}
                     >
                       <ShieldAlert className="w-4 h-4 mx-auto mb-1.5 opacity-80" />
-                      <span>No, prefiero avanzar solo</span>
+                      <span>{t('register.step3.no_reminders')}</span>
                     </button>
                   </div>
 
@@ -839,7 +841,7 @@ export const RegisterForm = () => {
                         
                         <div>
                           <label htmlFor="mobileNumber" className="text-gray-400 text-[10px] font-extrabold uppercase tracking-widest block mb-2">
-                            Número de Teléfono WhatsApp (con Código de País)
+                            {t('register.step3.phone_label')}
                           </label>
                           <div className="flex gap-2.5">
                             {/* Country Code Select */}
@@ -874,7 +876,7 @@ export const RegisterForm = () => {
                             </div>
                           </div>
                           <span className="text-[10px] text-gray-500 font-sans mt-1.5 block leading-normal">
-                            Selecciona tu país de origen en la lista y luego escribe tu número de celular.
+                            {t('register.step3.phone_help')}
                           </span>
                         </div>
 
@@ -882,7 +884,7 @@ export const RegisterForm = () => {
                           <div>
                             <label htmlFor="timezone" className="text-gray-400 text-[10px] font-extrabold uppercase tracking-widest block mb-2 flex items-center gap-1.5">
                               <Globe className="w-3.5 h-3.5" />
-                              <span>Zona Horaria</span>
+                              <span>{t('register.step3.timezone_label')}</span>
                             </label>
                             <select
                               id="timezone"
@@ -905,7 +907,7 @@ export const RegisterForm = () => {
                           <div>
                             <label htmlFor="hours" className="text-gray-400 text-[10px] font-extrabold uppercase tracking-widest block mb-2 flex items-center gap-1.5">
                               <Clock className="w-3.5 h-3.5" />
-                              <span>Horas Preferidas</span>
+                              <span>{t('register.step3.hours_label')}</span>
                             </label>
                             <div className="flex items-center gap-2">
                               <div className="relative flex-1">
@@ -917,9 +919,9 @@ export const RegisterForm = () => {
                                   onChange={(e) => setPreferredHourStart(e.target.value)}
                                   className="w-full bg-gray-950/80 text-white border border-white/10 rounded-xl px-3 py-3 text-center focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all font-sans text-sm"
                                 />
-                                <span className="absolute bottom-1 right-2 text-[8px] text-gray-500 font-mono">INICIO</span>
+                                <span className="absolute bottom-1 right-2 text-[8px] text-gray-500 font-mono">{t('register.step3.hours_start')}</span>
                               </div>
-                              <span className="text-gray-600 font-bold font-sans">a</span>
+                              <span className="text-gray-600 font-bold font-sans">{t('register.step3.hours_to')}</span>
                               <div className="relative flex-1">
                                 <input
                                   type="number"
@@ -929,7 +931,7 @@ export const RegisterForm = () => {
                                   onChange={(e) => setPreferredHourEnd(e.target.value)}
                                   className="w-full bg-gray-950/80 text-white border border-white/10 rounded-xl px-3 py-3 text-center focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all font-sans text-sm"
                                 />
-                                <span className="absolute bottom-1 right-2 text-[8px] text-gray-500 font-mono">FIN</span>
+                                <span className="absolute bottom-1 right-2 text-[8px] text-gray-500 font-mono">{t('register.step3.hours_end')}</span>
                               </div>
                             </div>
                           </div>
@@ -938,8 +940,8 @@ export const RegisterForm = () => {
                         <div className="bg-yellow-500/5 border border-yellow-500/10 rounded-xl p-3.5 flex gap-3 text-left">
                           <BookOpen className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" />
                           <div className="text-[10px] text-gray-400 font-sans leading-normal">
-                            <strong className="text-yellow-400 font-bold uppercase tracking-wide block mb-0.5">Entrenamiento de Aventurero</strong>
-                            Tu guía elegido te enviará pequeños desafíos orales y motivaciones personalizadas dentro de estas horas preferidas para que no interrumpa tus horas de sueño.
+                            <strong className="text-yellow-400 font-bold uppercase tracking-wide block mb-0.5">{t('register.step3.training_title')}</strong>
+                            {t('register.step3.training_desc')}
                           </div>
                         </div>
                       </div>
@@ -947,7 +949,7 @@ export const RegisterForm = () => {
                       <div className="bg-gray-950/30 border border-dashed border-white/10 rounded-2xl p-6 text-center text-gray-400 transition-all duration-500">
                         <Award className="w-10 h-10 mx-auto mb-2 text-gray-600 animate-bounce" />
                         <p className="text-xs font-sans max-w-sm mx-auto leading-relaxed">
-                          ¡Entendido! Continuarás sin alertas automáticas de WhatsApp. Tu guía te esperará dentro del lobby del juego para tus prácticas.
+                          {t('register.step3.opt_out_text')}
                         </p>
                       </div>
                     )}
@@ -955,7 +957,7 @@ export const RegisterForm = () => {
                     {/* Immersive Scrollable Terms of Service (Disclaimer) */}
                     <div className="bg-gray-950/80 border border-white/10 rounded-xl p-4 space-y-3">
                       <label className="text-yellow-400 text-[10px] font-extrabold uppercase tracking-widest block">
-                        Aviso Legal, Términos y Privacidad (Odisea)
+                        {t('register.step3.legal_title')}
                       </label>
                       <div className="max-h-32 overflow-y-auto pr-2 text-[9px] text-gray-400 font-sans leading-relaxed scrollbar-thin scrollbar-thumb-white/10 space-y-2 border-b border-white/5 pb-2.5">
                         <p className="font-bold text-white text-center">ODISEA</p>
@@ -1063,7 +1065,7 @@ export const RegisterForm = () => {
                           className="w-4 h-4 rounded border-white/10 bg-gray-950 text-yellow-500 focus:ring-yellow-500 accent-yellow-500 mt-0.5 cursor-pointer"
                         />
                         <label htmlFor="acceptedTerms" className="text-[10px] text-gray-400 font-sans leading-normal cursor-pointer select-none">
-                          Declaro bajo la gravedad de juramento que <strong className="text-yellow-400 font-bold">tengo 18 años de edad o más</strong> y que <strong className="text-yellow-400 font-bold">acepto en su totalidad</strong> el Aviso Legal, Términos de Uso y Política de Privacidad de Odisea.
+                          {t('register.step3.legal_checkbox')}
                         </label>
                       </div>
                     </div>
@@ -1077,11 +1079,11 @@ export const RegisterForm = () => {
                         {submitting ? (
                           <>
                             <Loader2 className="w-5 h-5 animate-spin" />
-                            <span>Sincronizando Alquimia...</span>
+                            <span>{t('register.step3.submitting')}</span>
                           </>
                         ) : (
                           <>
-                            <span>Completar Registro</span>
+                            <span>{t('register.step3.submit')}</span>
                             <Check className="w-5 h-5 stroke-[2.5px]" />
                           </>
                         )}
@@ -1095,10 +1097,10 @@ export const RegisterForm = () => {
                     <QrCode className="w-8 h-8" />
                   </div>
                   <h2 className="text-2xl font-extrabold text-yellow-400 font-medieval uppercase tracking-widest">
-                    Activar Notificaciones
+                    {t('register.step4.title')}
                   </h2>
                   <p className="text-gray-300 text-xs leading-relaxed max-w-sm mx-auto font-sans">
-                    Para activar las alertas de tu guía y verificar tu número, escanea el código QR con la cámara de tu celular o presiona el botón inferior para abrir WhatsApp y enviar el mensaje predefinido.
+                    {t('register.step4.subtitle')}
                   </p>
 
                   {/* QR Image Container */}
@@ -1111,7 +1113,7 @@ export const RegisterForm = () => {
                       />
                     </div>
                     <span className="text-[9px] text-gray-500 font-sans mt-3 block leading-normal">
-                      Envía este mensaje desde tu celular:<br />
+                      {t('register.step4.send_message')}<br />
                       <code className="text-yellow-500/80 font-mono text-[8px] bg-white/5 px-1.5 py-0.5 rounded italic block mt-1 leading-normal max-w-[200px] mx-auto whitespace-pre-line">
                         "{activationMessage}"
                       </code>
@@ -1121,7 +1123,7 @@ export const RegisterForm = () => {
                   {/* Pulse Active Indicator */}
                   <div className="flex items-center justify-center gap-2 text-[10px] font-semibold text-yellow-400 animate-pulse bg-yellow-500/5 py-2.5 px-4 rounded-xl border border-yellow-500/10 max-w-xs mx-auto">
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-yellow-400" />
-                    <span>Esperando mensaje de activación...</span>
+                    <span>{t('register.step4.waiting_activation')}</span>
                   </div>
 
                   <div className="space-y-3 pt-2 max-w-xs mx-auto">
@@ -1132,7 +1134,7 @@ export const RegisterForm = () => {
                       className="w-full bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black font-extrabold py-3.5 rounded-xl transition-all font-medieval uppercase tracking-widest shadow-[0_0_20px_rgba(245,158,11,0.15)] border border-yellow-300 flex items-center justify-center gap-2 cursor-pointer text-center text-xs"
                     >
                       <Phone className="w-4 h-4" />
-                      <span>Abrir WhatsApp</span>
+                      <span>{t('register.step4.open_whatsapp')}</span>
                     </a>
                     
                     <button
@@ -1149,7 +1151,7 @@ export const RegisterForm = () => {
                       }}
                       className="w-full bg-transparent hover:bg-white/5 border border-white/10 text-gray-400 font-bold py-2.5 rounded-xl transition-all text-[10px] uppercase tracking-wider font-medieval cursor-pointer"
                     >
-                      Omitir paso por ahora
+                      {t('register.step4.skip_step')}
                     </button>
                   </div>
                 </div>

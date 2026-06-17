@@ -398,6 +398,20 @@ func (h *Hub) HandleMessage(client *Client, message []byte) {
 		}
 		parsePayload(wsMsg.Payload, &payload)
 		h.handleSendRoomInvite(client, payload.TargetUserID)
+
+	case MsgStartDialogue:
+		var payload struct {
+			NPCTemplateID uint `json:"npc_template_id"`
+		}
+		parsePayload(wsMsg.Payload, &payload)
+		h.handleStartDialogue(client, payload.NPCTemplateID)
+
+	case MsgEndDialogue:
+		var payload struct {
+			NPCTemplateID uint `json:"npc_template_id"`
+		}
+		parsePayload(wsMsg.Payload, &payload)
+		h.handleEndDialogue(client, payload.NPCTemplateID)
 	}
 }
 
@@ -421,6 +435,11 @@ func (h *Hub) handleJoinChallenge(client *Client, payload models.JoinChallengePa
 	}
 
 	if session[client] {
+		return
+	}
+
+	if len(session) >= 5 {
+		client.SendError("La sala de voz / juego está llena (máximo 5 personas)")
 		return
 	}
 
@@ -478,6 +497,16 @@ func (h *Hub) handleJoinChallenge(client *Client, payload models.JoinChallengePa
 				ChallengeID: payload.ChallengeID,
 				UserID:      client.ID,
 				Username:    client.Username,
+			},
+		})
+	}
+
+	if room, ok := h.Rooms[client.RoomID]; ok {
+		h.broadcastToRoomSimple(room, &models.WSMessage{
+			Type: "challenge_capacity_update",
+			Payload: map[string]interface{}{
+				"challenge_id": payload.ChallengeID,
+				"count":        len(session),
 			},
 		})
 	}
@@ -543,6 +572,16 @@ func (h *Hub) leaveChallengeLocked(client *Client, challengeID string, reason st
 			ChallengeID: challengeID,
 		},
 	})
+
+	if room, ok := h.Rooms[client.RoomID]; ok {
+		h.broadcastToRoomSimple(room, &models.WSMessage{
+			Type: "challenge_capacity_update",
+			Payload: map[string]interface{}{
+				"challenge_id": challengeID,
+				"count":        len(session),
+			},
+		})
+	}
 
 	if len(session) == 0 {
 		delete(h.Challenges, challengeID)
@@ -1470,6 +1509,7 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 		room.MaxUsers = dbRoom.MaxUsers
 		room.SceneKey = dbRoom.SceneKey
 		room.Type = dbRoom.Type
+		room.LoadNPCsFromDB()
 
 		h.Rooms[roomID] = room
 	}
@@ -2532,6 +2572,7 @@ func (h *Hub) handleRequestMapJoin(client *Client, sceneKey, roomType, inviteCod
 		newHubRoom.MaxUsers = newRoom.MaxUsers
 		newHubRoom.SceneKey = newRoom.SceneKey
 		newHubRoom.Type = newRoom.Type
+		newHubRoom.LoadNPCsFromDB()
 
 		h.mu.Lock()
 		h.Rooms[newHubRoom.ID] = newHubRoom
@@ -2679,5 +2720,85 @@ func (h *Hub) handleSendRoomInvite(client *Client, targetUserID string) {
 			"invite_code":  room.InviteCode,
 		},
 	})
+}
+
+func (h *Hub) handleStartDialogue(client *Client, npcTemplateID uint) {
+	roomID := client.RoomID
+	if roomID == "" {
+		return
+	}
+
+	h.mu.RLock()
+	room, ok := h.Rooms[roomID]
+	h.mu.RUnlock()
+	if !ok {
+		return
+	}
+
+	room.npcMu.Lock()
+	defer room.npcMu.Unlock()
+
+	npc, exists := room.ActiveNPCs[npcTemplateID]
+	if !exists {
+		return
+	}
+
+	// Lock the NPC for talking
+	npc.IsTalking = true
+	npc.TalkingWith = client.ID.String()
+	npc.TalkingExpire = time.Now().UnixMilli() + 30000 // 30 seconds timeout
+	npc.State = "talking"
+
+	// Broadcast NPC update to the room immediately
+	updates := []models.ActiveNPC{*npc}
+	msg := &models.WSMessage{
+		Type: MsgNPCUpdate,
+		Payload: models.NPCUpdateBroadcast{
+			RoomID: room.ID,
+			NPCs:   updates,
+		},
+	}
+	room.broadcastToAll(msg)
+}
+
+func (h *Hub) handleEndDialogue(client *Client, npcTemplateID uint) {
+	roomID := client.RoomID
+	if roomID == "" {
+		return
+	}
+
+	h.mu.RLock()
+	room, ok := h.Rooms[roomID]
+	h.mu.RUnlock()
+	if !ok {
+		return
+	}
+
+	room.npcMu.Lock()
+	defer room.npcMu.Unlock()
+
+	npc, exists := room.ActiveNPCs[npcTemplateID]
+	if !exists {
+		return
+	}
+
+	// Only release if talking to this client
+	if npc.TalkingWith == client.ID.String() {
+		npc.IsTalking = false
+		npc.TalkingWith = ""
+		npc.TalkingExpire = 0
+		npc.State = "idle"
+
+		// Broadcast NPC update to the room immediately
+		updates := []models.ActiveNPC{*npc}
+		msg := &models.WSMessage{
+			Type: MsgNPCUpdate,
+			Payload: models.NPCUpdateBroadcast{
+				RoomID: room.ID,
+				NPCs:   updates,
+			},
+		}
+		room.broadcastToAll(msg)
+	}
 }
 

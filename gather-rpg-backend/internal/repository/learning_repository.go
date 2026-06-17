@@ -155,3 +155,15 @@ func (r *LearningRepository) GetProfileByUserID(userID uuid.UUID) (*models.UserL
 
 	return &profile, nil
 }
+
+// UpdateEnglishLevel updates the user's English difficulty level
+func (r *LearningRepository) UpdateEnglishLevel(userID uuid.UUID, level string) error {
+	var profile models.UserLearningProfile
+	if err := database.DB.Where("user_id = ?", userID).First(&profile).Error; err != nil {
+		return err
+	}
+	
+	profile.EnglishLevel = models.DifficultyLevel(level)
+	return database.DB.Save(&profile).Error
+}
+

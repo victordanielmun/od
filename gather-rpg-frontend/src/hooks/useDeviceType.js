@@ -11,7 +11,7 @@ export const useDeviceType = () => {
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
-      const hasTouch = window.matchMedia('(pointer: coarse)').matches || ('ontouchstart' in window);
+      const hasTouch = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
       
       const isMobile = width <= 768;
       const isTablet = width > 768 && width <= 1024;

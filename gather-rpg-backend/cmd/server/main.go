@@ -123,6 +123,10 @@ func main() {
 	
 	dialogueService := services.NewDialogueService(npcRepo, missionRepo, missionService, llmClient)
 
+	// TTS Service & Handler
+	ttsService := services.NewTTSService(cfg.PiperExePath, cfg.PiperModelsDir, cfg.PiperCacheDir)
+	ttsHandler := handlers.NewTTSHandler(ttsService)
+
 	// WebSocket Hub
 	hub := gameWS.NewHub(presenceService, roomService, movementService, peerService, combatService, missionService, learningService)
 	go hub.Run()
@@ -173,6 +177,7 @@ func main() {
 	auth.Post("/guest", authHandler.GuestLogin)
 	auth.Post("/companion", middleware.Protected(cfg), authHandler.SetCompanion)
 	auth.Post("/terms", middleware.Protected(cfg), authHandler.AcceptTerms)
+	auth.Put("/sprite", middleware.Protected(cfg), authHandler.SetSprite)
 
 	// Room Routes
 	rooms := app.Group("/rooms", middleware.Protected(cfg))
@@ -212,6 +217,7 @@ func main() {
 	admin.Put("/npc-definitions/:id", npcHandler.UpdateNPCDefinition)
 	admin.Delete("/npc-definitions/:id", npcHandler.DeleteNPCDefinition)
 	admin.Post("/ai-test", npcHandler.TestAI)
+	admin.Get("/voices", ttsHandler.ListVoices)
 	
 	// Challenge Admin Routes
 	admin.Get("/challenges", adminHandler.ListChallenges)
@@ -267,10 +273,15 @@ func main() {
 	// Protected Learning Routes within the same group if possible, or just register individually
 	learning.Post("/attempts", middleware.Protected(cfg), learningHandler.RecordAttempt)
 	learning.Get("/profile", middleware.Protected(cfg), learningHandler.GetMyProfile)
+	learning.Put("/profile/level", middleware.Protected(cfg), learningHandler.SetEnglishLevel)
 
 	// NPC Dialogue Routes
 	npc := app.Group("/npc", middleware.Protected(cfg))
 	npc.Post("/dialogue", dialogueHandler.ProcessInput)
+
+	// TTS Routes
+	app.Post("/tts/generate", middleware.Protected(cfg), ttsHandler.Generate)
+	app.Get("/tts/audio/:cache_key", ttsHandler.GetAudio)
 
 	// Mission Routes
 	missions := app.Group("/missions", middleware.Protected(cfg))

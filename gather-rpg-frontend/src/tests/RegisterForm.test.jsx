@@ -57,13 +57,15 @@ describe('RegisterForm', () => {
     fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'testuser' } });
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'test@example.com' } });
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByLabelText(/confirm/i), { target: { value: 'password123' } });
     
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => {
       expect(mockRegister).toHaveBeenCalledWith('testuser', 'test@example.com', 'password123');
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
     });
+
+    expect(await screen.findByText('Choose your Combat Guide')).toBeInTheDocument();
   });
 
   test('displays error message on failure', () => {

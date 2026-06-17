@@ -18,13 +18,13 @@ export const NinjaCardHUD = () => {
       setIsCorrect(data.correct);
       setIsSubmitting(false);
 
-      // Clear HUD after showing result for 2 seconds
+      // Clear HUD after showing result for 1 second
       setTimeout(() => {
         setResultEffect(null);
         setIsCorrect(null);
         setIsSubmitting(false);
         clearNinjaCardData();
-      }, 2000);
+      }, 1000);
     };
 
     window.addEventListener('ninja-card-result', handleResult);

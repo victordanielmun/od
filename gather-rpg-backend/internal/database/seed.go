@@ -192,57 +192,16 @@ func SeedMotivations() {
 	log.Println("[Seed] ✅ Seeded initial WhatsApp motivation catalog")
 }
 
-// SeedGuides seeds three medieval guides (Aria, Eldrin, Thorin) of type models.NPCTypeGuide if they do not exist.
+// SeedGuides clean up the legacy guides (Aria, Eldrin, Thorin) if they exist.
 func SeedGuides() {
-	guides := []models.NPCDefinition{
-		{
-			ID:              1001, // Use fixed IDs so they don't change and are easily recognizable
-			Name:            "Aria",
-			Sprite:          "aria_sprite",
-			Greeting:        "Hello there, traveler! I am Aria, a skilled archer, and your guide to mastering the art of English pronunciation. Shall we practice speaking?",
-			Type:            models.NPCTypeGuide,
-			DefaultState:    models.NPCStateIdle,
-			InteractionMode: "hybrid",
-			VoiceType:       "female",
-		},
-		{
-			ID:              1002,
-			Name:            "Eldrin",
-			Sprite:          "eldrin_sprite",
-			Greeting:        "Greetings, seeker of wisdom. I am Eldrin, master of arcane grammar. Let me aid you in weaving the complex threads of English structure into pure magic.",
-			Type:            models.NPCTypeGuide,
-			DefaultState:    models.NPCStateIdle,
-			InteractionMode: "hybrid",
-			VoiceType:       "male",
-		},
-		{
-			ID:              1003,
-			Name:            "Thorin",
-			Sprite:          "thorin_sprite",
-			Greeting:        "Hail, warrior! Thorin here! If you want to keep your stamina high and build an unbreakable streak, I am your dwarf. Let's conquer these language challenges together!",
-			Type:            models.NPCTypeGuide,
-			DefaultState:    models.NPCStateIdle,
-			InteractionMode: "hybrid",
-			VoiceType:       "male",
-		},
-	}
-
-	seededCount := 0
-	for _, guide := range guides {
-		var count int64
-		DB.Model(&models.NPCDefinition{}).Where("id = ? OR name = ?", guide.ID, guide.Name).Count(&count)
-		if count == 0 {
-			if err := DB.Create(&guide).Error; err != nil {
-				log.Printf("[Seed] Failed to seed guide '%s': %v", guide.Name, err)
-			} else {
-				seededCount++
-			}
+	var count int64
+	DB.Model(&models.NPCDefinition{}).Where("id IN (?) OR name IN (?)", []uint{1001, 1002, 1003}, []string{"Aria", "Eldrin", "Thorin"}).Count(&count)
+	if count > 0 {
+		if err := DB.Where("id IN (?) OR name IN (?)", []uint{1001, 1002, 1003}, []string{"Aria", "Eldrin", "Thorin"}).Delete(&models.NPCDefinition{}).Error; err != nil {
+			log.Printf("[Seed] Failed to delete legacy guides: %v", err)
+		} else {
+			log.Println("[Seed] ✅ Legacy guides (Aria, Eldrin, Thorin) removed from database")
 		}
-	}
-	if seededCount > 0 {
-		log.Printf("[Seed] ✅ Seeded %d guide NPCs", seededCount)
-	} else {
-		log.Println("[Seed] Guide NPCs already exist, skipping")
 	}
 }
 

@@ -1,6 +1,27 @@
 {
   "frames": [
     {
+      "filename": "idle-waiting_0",
+      "frame": {
+        "x": 16,
+        "y": 11,
+        "w": 65,
+        "h": 79
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 65,
+        "h": 79
+      },
+      "sourceSize": {
+        "w": 65,
+        "h": 79
+      }
+    },
+    {
       "filename": "idle-waiting_1",
       "frame": {
         "x": 98,
@@ -61,27 +82,6 @@
       "sourceSize": {
         "w": 59,
         "h": 80
-      }
-    },
-    {
-      "filename": "idle-waiting_0",
-      "frame": {
-        "x": 16,
-        "y": 11,
-        "w": 65,
-        "h": 79
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 65,
-        "h": 79
-      },
-      "sourceSize": {
-        "w": 65,
-        "h": 79
       }
     },
     {
@@ -316,27 +316,6 @@
       }
     },
     {
-      "filename": "happy-grateful_5",
-      "frame": {
-        "x": 423,
-        "y": 176,
-        "w": 65,
-        "h": 79
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 65,
-        "h": 79
-      },
-      "sourceSize": {
-        "w": 65,
-        "h": 79
-      }
-    },
-    {
       "filename": "happy-grateful_3",
       "frame": {
         "x": 262,
@@ -379,6 +358,27 @@
       }
     },
     {
+      "filename": "happy-grateful_5",
+      "frame": {
+        "x": 423,
+        "y": 176,
+        "w": 65,
+        "h": 79
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 65,
+        "h": 79
+      },
+      "sourceSize": {
+        "w": 65,
+        "h": 79
+      }
+    },
+    {
       "filename": "sad_0",
       "frame": {
         "x": 24,
@@ -396,27 +396,6 @@
       },
       "sourceSize": {
         "w": 42,
-        "h": 74
-      }
-    },
-    {
-      "filename": "sad_5",
-      "frame": {
-        "x": 432,
-        "y": 258,
-        "w": 41,
-        "h": 74
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 41,
-        "h": 74
-      },
-      "sourceSize": {
-        "w": 41,
         "h": 74
       }
     },
@@ -502,6 +481,27 @@
       "sourceSize": {
         "w": 41,
         "h": 72
+      }
+    },
+    {
+      "filename": "sad_5",
+      "frame": {
+        "x": 432,
+        "y": 258,
+        "w": 41,
+        "h": 74
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 41,
+        "h": 74
+      },
+      "sourceSize": {
+        "w": 41,
+        "h": 74
       }
     },
     {
@@ -631,75 +631,12 @@
       }
     },
     {
-      "filename": "dying_5",
+      "filename": "dying_0",
       "frame": {
-        "x": 14,
-        "y": 418,
-        "w": 67,
-        "h": 80
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 67,
-        "h": 80
-      },
-      "sourceSize": {
-        "w": 67,
-        "h": 80
-      }
-    },
-    {
-      "filename": "dying_4",
-      "frame": {
-        "x": 102,
-        "y": 421,
-        "w": 61,
-        "h": 77
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 61,
-        "h": 77
-      },
-      "sourceSize": {
-        "w": 61,
-        "h": 77
-      }
-    },
-    {
-      "filename": "dying_3",
-      "frame": {
-        "x": 185,
-        "y": 425,
-        "w": 61,
-        "h": 73
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 61,
-        "h": 73
-      },
-      "sourceSize": {
-        "w": 61,
-        "h": 73
-      }
-    },
-    {
-      "filename": "dying_2",
-      "frame": {
-        "x": 254,
-        "y": 429,
+        "x": 414,
+        "y": 457,
         "w": 77,
-        "h": 70
+        "h": 42
       },
       "rotated": false,
       "trimmed": false,
@@ -707,11 +644,11 @@
         "x": 0,
         "y": 0,
         "w": 77,
-        "h": 70
+        "h": 42
       },
       "sourceSize": {
         "w": 77,
-        "h": 70
+        "h": 42
       }
     },
     {
@@ -736,12 +673,12 @@
       }
     },
     {
-      "filename": "dying_0",
+      "filename": "dying_2",
       "frame": {
-        "x": 414,
-        "y": 457,
+        "x": 254,
+        "y": 429,
         "w": 77,
-        "h": 42
+        "h": 70
       },
       "rotated": false,
       "trimmed": false,
@@ -749,11 +686,74 @@
         "x": 0,
         "y": 0,
         "w": 77,
-        "h": 42
+        "h": 70
       },
       "sourceSize": {
         "w": 77,
-        "h": 42
+        "h": 70
+      }
+    },
+    {
+      "filename": "dying_3",
+      "frame": {
+        "x": 185,
+        "y": 425,
+        "w": 61,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 61,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 61,
+        "h": 73
+      }
+    },
+    {
+      "filename": "dying_4",
+      "frame": {
+        "x": 102,
+        "y": 421,
+        "w": 61,
+        "h": 77
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 61,
+        "h": 77
+      },
+      "sourceSize": {
+        "w": 61,
+        "h": 77
+      }
+    },
+    {
+      "filename": "dying_5",
+      "frame": {
+        "x": 14,
+        "y": 418,
+        "w": 67,
+        "h": 80
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 67,
+        "h": 80
+      },
+      "sourceSize": {
+        "w": 67,
+        "h": 80
       }
     }
   ],

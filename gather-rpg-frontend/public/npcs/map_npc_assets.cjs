@@ -2,7 +2,8 @@
  * map_npc_assets.cjs
  * 
  * Script unificado para procesar y mapear assets de NPCs (Portrait y World).
- * Implementa ordenamiento espacial (Y, X) para corregir errores de exportación.
+ * Implementa ordenamiento espacial (Y, X) para corregir errores de exportación,
+ * validando que World sea 6x6 y Portrait sea 3x3, con auto-relleno y notificaciones.
  * 
  * Uso: node map_npc_assets.cjs
  */
@@ -19,37 +20,49 @@ const PORTRAIT_EMOTIONS = [
     'portrait-thinking', 'portrait-grateful', 'portrait-waiting'
 ];
 
-// Definición de animaciones para Mundo (b.json) - 6 Filas en orden específico
+// Definición de animaciones para Mundo (b.json) - 6 Filas (6x6)
 const WORLD_ANIMATIONS_ORDER = [
-    { name: 'idle-waiting',   frameRate: 8,  repeat: -1 }, // Row 0: B-Idle
-    { name: 'talking',        frameRate: 8,  repeat: -1 }, // Row 1: B-Talk
-    { name: 'happy-grateful', frameRate: 8,  repeat: -1 }, // Row 2: B-Happy
-    { name: 'sad',            frameRate: 8,  repeat: -1 }, // Row 3: B-Sad
-    { name: 'walking',        frameRate: 10, repeat: -1 }, // Row 4: B-Walk
-    { name: 'dying',          frameRate: 8,  repeat: 0  }  // Row 5: B-Die
+    { name: 'idle-waiting',   frameRate: 8,  repeat: -1 }, // Row 0
+    { name: 'talking',        frameRate: 8,  repeat: -1 }, // Row 1
+    { name: 'happy-grateful', frameRate: 8,  repeat: -1 }, // Row 2
+    { name: 'sad',            frameRate: 8,  repeat: -1 }, // Row 3
+    { name: 'walking',        frameRate: 10, repeat: -1 }, // Row 4
+    { name: 'dying',          frameRate: 8,  repeat: 0  }  // Row 5
 ];
 
+/**
+ * Clona el último frame de una fila para rellenar vacíos y evitar crashes
+ */
+function ensureFrames(rowFrames, expectedCount) {
+    if (!rowFrames || rowFrames.length === 0) return [];
+    if (rowFrames.length === expectedCount) return rowFrames;
+    if (rowFrames.length > expectedCount) return rowFrames.slice(0, expectedCount);
+    
+    const res = [...rowFrames];
+    const lastFrame = rowFrames[rowFrames.length - 1];
+    
+    while(res.length < expectedCount) {
+        // Clon profundo para no sobreescribir referencias en el JSON modificado
+        res.push(JSON.parse(JSON.stringify(lastFrame)));
+    }
+    return res;
+}
+
 function processAtlas(filePath, type) {
-    console.log(`\nProcessing ${type.toUpperCase()}: ${path.basename(filePath)}`);
     const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     
-    // 1. Filtrar frames basura (1x1 o muy pequeños)
-    // Los retratos suelen ser > 100px, los del mundo > 30px
-    const yTolerance = 60;
-    
-    // 0. Resetear nombres para evitar duplicados de ejecuciones previas
+    // Resetear nombres temporalmente para evitar solapamientos
     data.frames.forEach(f => f.filename = `unmapped_${Math.random().toString(36).substr(2, 5)}`);
 
     const minSize = type === 'a' ? 50 : 20;
     const realFrames = data.frames.filter(f => f.frame.w > minSize && f.frame.h > minSize);
     
-    // 2. Ordenar por Y primero (para agrupar por filas)
+    // Ordenar por Y
     realFrames.sort((a, b) => a.frame.y - b.frame.y);
 
-    console.log(`  Found ${realFrames.length} real frames.`);
-
-    // 3. Agrupar por filas usando la tolerancia yTolerance
+    // Agrupar filas
     const rows = [];
+    const yTolerance = 60;
     if (realFrames.length > 0) {
         let currentRow = [realFrames[0]];
         for (let i = 1; i < realFrames.length; i++) {
@@ -65,81 +78,88 @@ function processAtlas(filePath, type) {
         rows.push(currentRow);
     }
 
-    // 4. Ordenar cada fila individualmente por X
-    rows.forEach((row, rowIndex) => {
-        const config = type === 'b' ? WORLD_ANIMATIONS_ORDER[rowIndex] : null;
-        // El usuario pide que la última fila de mundo (Die) sea de Derecha a Izquierda
-        const isDyingRow = config && config.name === 'dying';
-        
-        if (isDyingRow) {
-            // Derecha a Izquierda (X descendente)
-            row.sort((a, b) => b.frame.x - a.frame.x);
-        } else {
-            // Izquierda a Derecha (X ascendente)
-            row.sort((a, b) => a.frame.x - b.frame.x);
-        }
-    });
+    const expectedRows = type === 'a' ? 3 : 6;
+    const expectedCols = type === 'a' ? 3 : 6;
+    const label = type === 'a' ? 'Portrait' : 'World';
+
+    if (rows.length !== expectedRows && rows.length > 0) {
+        console.warn(`  ⚠️  [${label}] Se detectaron ${rows.length} filas en el eje Y (Esperadas: ${expectedRows}).`);
+    }
 
     const animationMap = {};
+    const finalFrames = [];
 
+    // ── Lógica PORTRAIT (3x3) ──
     if (type === 'a') {
-        // Lógica de Retrato: Mapeo a 9 emociones
-        if (rows.length === 3 && realFrames.length === 9) {
-            // Caso especial: Grilla 3x3 de emociones individuales
-            realFrames.forEach((f, i) => {
-                const name = PORTRAIT_EMOTIONS[i];
+        let emotionIndex = 0;
+        
+        for (let r = 0; r < expectedRows; r++) {
+            const row = rows[r] || [];
+            
+            if (row.length !== expectedCols) {
+                 console.warn(`  ⚠️  [${label}] Fila ${r + 1} detectada con ${row.length} sprites (Esperados: ${expectedCols}).`);
+            }
+            
+            row.sort((a, b) => a.frame.x - b.frame.x);
+            const paddedRow = ensureFrames(row, expectedCols);
+            
+            paddedRow.forEach(f => {
+                const name = PORTRAIT_EMOTIONS[emotionIndex] || `portrait_unknown_${emotionIndex}`;
                 f.filename = name;
+                finalFrames.push(f);
                 animationMap[name] = { type: 'portrait', frames: [name], frameRate: 1, repeat: -1 };
-            });
-        } else {
-            // Caso: Cada fila es una emoción (puede tener múltiples frames de animación)
-            rows.forEach((row, rowIndex) => {
-                const emotion = PORTRAIT_EMOTIONS[rowIndex] || `emotion_${rowIndex}`;
-                const frames = [];
-                row.forEach((f, colIndex) => {
-                    const frameName = `${emotion}_${colIndex}`;
-                    f.filename = frameName;
-                    frames.push(frameName);
-                });
-                animationMap[emotion] = { type: 'portrait', frames, frameRate: 4, repeat: -1 };
+                emotionIndex++;
             });
         }
-    } else {
-        // Lógica de Mundo: Mapeo según WORLD_ANIMATIONS_ORDER
-        const usedFilenames = new Set();
-        rows.forEach((row, rowIndex) => {
-            const config = WORLD_ANIMATIONS_ORDER[rowIndex];
-            if (!config) return;
+    } 
+    // ── Lógica WORLD (6x6) ──
+    else {
+        for (let r = 0; r < expectedRows; r++) {
+            const row = rows[r] || [];
+            
+            if (row.length !== expectedCols) {
+                 console.warn(`  ⚠️  [${label}] Fila ${r + 1} detectada con ${row.length} sprites (Esperados: ${expectedCols}).`);
+            }
+            
+            const config = WORLD_ANIMATIONS_ORDER[r];
+            if (!config) continue;
 
-            const frames = [];
-            row.forEach((f, colIndex) => {
-                let frameName = `${config.name}_${colIndex}`;
-                // Garantizar unicidad (por si acaso hay solapamiento de filas)
-                if (usedFilenames.has(frameName)) {
-                    frameName = `${config.name}_v2_${colIndex}`;
-                }
+            // Dying invertido de derecha a izquierda, el resto normal
+            const isDyingRow = config.name === 'dying';
+            if (isDyingRow) {
+                row.sort((a, b) => b.frame.x - a.frame.x);
+            } else {
+                row.sort((a, b) => a.frame.x - b.frame.x);
+            }
+
+            const paddedRow = ensureFrames(row, expectedCols);
+            const framesArr = [];
+            
+            paddedRow.forEach((f, colIndex) => {
+                const frameName = `${config.name}_${colIndex}`;
                 f.filename = frameName;
-                usedFilenames.add(frameName);
-                frames.push(frameName);
+                finalFrames.push(f);
+                framesArr.push(frameName);
             });
             
             animationMap[config.name] = { 
                 type: 'body', 
-                frames, 
+                frames: framesArr, 
                 frameRate: config.frameRate, 
                 repeat: config.repeat 
             };
-        });
+        }
     }
 
-    // Guardar JSON limpio
-    data.frames = realFrames;
+    // Guardar JSON actualizado con padding
+    data.frames = finalFrames;
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
     
     return animationMap;
 }
 
 function main() {
+    console.log('🚀 Iniciando mapeo de NPCs (Validando 6x6 y 3x3)...');
     const files = fs.readdirSync(NPCS_DIR);
     const npcIds = [...new Set(
         files
@@ -172,14 +192,14 @@ function main() {
         }
     });
 
-    // Generar archivo JS para el frontend
     const output = [
         '// ⚙️  AUTO-GENERADO por map_npc_assets.cjs',
         '// Para regenerar: node map_npc_assets.cjs',
         'export const animationsByNPC = ' + JSON.stringify(globalMapping, null, 2) + ';'
     ].join('\n');
 
-    fs.writeFileSync(path.join(NPCS_DIR, '_animationsByNPC_generated.js'), output, 'utf8');
+    const outPath = path.join(NPCS_DIR, '_animationsByNPC_generated.js');
+    fs.writeFileSync(outPath, output, 'utf8');
     console.log(`\n✅ Mapeo global actualizado en _animationsByNPC_generated.js`);
 }
 

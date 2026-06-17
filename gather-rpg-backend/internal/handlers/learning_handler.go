@@ -93,3 +93,33 @@ func (h *LearningHandler) GetMyProfile(c *fiber.Ctx) error {
 
 	return c.JSON(profile)
 }
+
+func (h *LearningHandler) SetEnglishLevel(c *fiber.Ctx) error {
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid or missing user ID in token"})
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID format"})
+	}
+
+	var req struct {
+		EnglishLevel string `json:"english_level"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.EnglishLevel != "beginner" && req.EnglishLevel != "intermediate" && req.EnglishLevel != "advanced" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid English level"})
+	}
+
+	if err := h.Service.UpdateEnglishLevel(userID, req.EnglishLevel); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update English level", "details": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "English level updated successfully"})
+}
+

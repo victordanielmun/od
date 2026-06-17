@@ -15,6 +15,7 @@ type User struct {
 	Role        string         `gorm:"not null;default:'user'" json:"role"` // "admin", "user"
 	IsGuest        bool           `gorm:"not null;default:false" json:"is_guest"`
 	CharacterID    string         `gorm:"not null;default:'1'" json:"character_id"`
+	HasChosenSprite bool          `gorm:"not null;default:false" json:"has_chosen_sprite"`
 	CompanionNPCID *uint          `gorm:"type:integer" json:"companion_npc_id,omitempty"`
 	TermsAccepted  bool           `gorm:"not null;default:false" json:"terms_accepted"`
 	CreatedAt      time.Time      `json:"created_at"`

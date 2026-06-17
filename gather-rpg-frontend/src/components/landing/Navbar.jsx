@@ -1,14 +1,16 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Menu, X } from 'lucide-react';
 import { IMAGES } from './constants';
 
 const Navbar = () => {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
   const navLinks = [
-    { name: 'Desafíos', href: '#challenges' },
-    { name: 'Agenda', href: '#agenda' },
-    { name: 'Mentores', href: '#speakers' },
+    { name: t('landing.navbar.challenges'), href: '#challenges' },
+    { name: t('landing.navbar.agenda'), href: '#agenda' },
+    { name: t('landing.navbar.speakers'), href: '#speakers' },
   ];
 
   return (
@@ -37,7 +39,7 @@ const Navbar = () => {
                 href="#register"
                 className="font-pixel text-xs bg-neon-purple hover:bg-fuchsia-600 text-white px-4 py-3 rounded-sm shadow-[4px_4px_0px_0px_rgba(255,255,255,0.2)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
               >
-                UNIRSE
+                {t('landing.navbar.join')}
               </a>
             </div>
           </div>
@@ -72,7 +74,7 @@ const Navbar = () => {
                 className="text-white bg-neon-purple block px-3 py-2 rounded-md text-xs font-bold font-pixel mt-4 text-center"
                 onClick={() => setIsOpen(false)}
               >
-                UNIRSE AHORA
+                {t('landing.navbar.join_now')}
               </a>
           </div>
         </div>

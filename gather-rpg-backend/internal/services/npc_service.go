@@ -2,11 +2,13 @@ package services
 
 import (
 	"encoding/json"
+	"fmt"
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/repository"
 	"log"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -115,6 +117,27 @@ func (s *NPCService) UpdateNPCTemplate(tmpl *models.NPCTemplate) error {
 }
 
 func (s *NPCService) DeleteNPCTemplate(id uint) error {
+	// Check if this template is referenced by any mission tasks
+	var taskCount int64
+	if err := database.DB.Model(&models.MissionTask{}).Where("target_npc_template_id = ?", id).Count(&taskCount).Error; err == nil && taskCount > 0 {
+		var task models.MissionTask
+		if err := database.DB.Where("target_npc_template_id = ?", id).First(&task).Error; err == nil {
+			var mission models.Mission
+			if err := database.DB.First(&mission, task.MissionID).Error; err == nil {
+				return fmt.Errorf("no se puede eliminar el NPC de la escena porque está asignado a la tarea '%s' de la misión '%s'", task.DescriptionEn, mission.Title)
+			}
+		}
+		return fmt.Errorf("no se puede eliminar el NPC de la escena porque está asignado a una tarea de misión")
+	}
+
+	// Clean up related instances and roles before deleting the template to bypass constraint violations
+	if err := database.DB.Where("npc_template_id = ?", id).Delete(&models.NPCRoomInstance{}).Error; err != nil {
+		return err
+	}
+	if err := database.DB.Where("npc_template_id = ?", id).Delete(&models.NPCMissionRole{}).Error; err != nil {
+		return err
+	}
+
 	return s.Repo.DeleteTemplate(id)
 }
 
@@ -168,6 +191,35 @@ func (s *NPCService) UpdateNPCDefinition(def *models.NPCDefinition) error {
 }
 
 func (s *NPCService) DeleteNPCDefinition(id uint) error {
+	// 1. Check if there are templates associated with this definition
+	var templates []models.NPCTemplate
+	if err := database.DB.Where("npc_definition_id = ?", id).Find(&templates).Error; err == nil && len(templates) > 0 {
+		scenes := make(map[string]bool)
+		var activeSceneList []string
+		for _, t := range templates {
+			var mapCount int64
+			// Check if map config exists for this scene
+			if err := database.DB.Model(&models.MapConfig{}).Where("scene_key = ?", t.SceneKey).Count(&mapCount).Error; err == nil && mapCount > 0 {
+				if !scenes[t.SceneKey] {
+					scenes[t.SceneKey] = true
+					activeSceneList = append(activeSceneList, t.SceneKey)
+				}
+			} else {
+				// Clean up orphaned templates (map is deleted)
+				database.DB.Delete(&t)
+			}
+		}
+		if len(activeSceneList) > 0 {
+			return fmt.Errorf("no se puede eliminar la definición de NPC porque está colocada en los mapas: %s. Elimínala de los mapas primero", strings.Join(activeSceneList, ", "))
+		}
+	}
+
+	// 2. Check if there are player gifts associated with this definition
+	var giftCount int64
+	if err := database.DB.Model(&models.PlayerNPCGift{}).Where("npc_definition_id = ?", id).Count(&giftCount).Error; err == nil && giftCount > 0 {
+		return fmt.Errorf("no se puede eliminar la definición de NPC porque tiene historial de regalos asociados con jugadores")
+	}
+
 	return s.Repo.DeleteDefinition(id)
 }
 

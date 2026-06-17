@@ -1,9 +1,9 @@
 /**
  * map_character_frames.cjs
  * 
- * Lee los JSON de atlas de cada personaje, filtra los frames reales (w>1, h>1),
- * los agrupa en bloques de 6 por acción y genera el bloque animationsByCharacter
- * listo para pegar en CharacterConfig.js
+ * Lee los JSON de atlas de cada personaje, filtra los frames reales (w>10, h>10),
+ * los agrupa espacialmente por fila (eje Y) y genera el bloque animationsByCharacter.
+ * Notifica si hay más o menos de 6 sprites por fila.
  * 
  * Uso:  node map_character_frames.cjs
  */
@@ -13,41 +13,6 @@ const path = require('path');
 
 // ── Configuración ──────────────────────────────────────────────────────────
 const CHARACTERS_DIR = __dirname;
-
-// Configuración de Normalización
-const GLOBAL_BASELINE = 91; 
-
-/**
- * Normaliza verticalmente los frames de un atlas JSON para evitar jitter
- * y asegurar que todos los personajes tengan el mismo "suelo".
- */
-function normalizeAtlas(filePath) {
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    let modified = false;
-
-    data.frames.forEach(f => {
-        if (f.frame.w > 1 && f.frame.h > 1) {
-            const rowNumber = Math.round(f.frame.y / 82);
-            const rowStart = rowNumber * 82;
-            const currentBottomInRow = (f.frame.y + f.frame.h) - rowStart;
-            
-            const targetBottomInRow = 81; 
-            const diff = targetBottomInRow - currentBottomInRow;
-
-            if (diff !== 0) {
-                f.spriteSourceSize.y = (f.spriteSourceSize.y || 0) + diff;
-                f.sourceSize.h = Math.max(f.sourceSize.h, f.frame.h + f.spriteSourceSize.y);
-                modified = true;
-            }
-        }
-    });
-
-    if (modified) {
-        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
-        return true;
-    }
-    return false;
-}
 
 // Animaciones en ORDEN de aparición en cada sheet (de arriba a abajo)
 const BASE_ANIM_NAMES = ['idle', 'walk', 'hurt', 'die', 'block', 'potion'];
@@ -73,13 +38,13 @@ const ANIM_SETTINGS = {
     projectile: { frameRate: 12, repeat: 0 },
     block: { frameRate: 10, repeat: 0 },
     // Combo Sheet (1d)
-    combo1:           { frameRate: 14, repeat: 0 },  // Jab rápido
-    combo2:           { frameRate: 13, repeat: 0 },  // Cross
-    combo3_finisher:  { frameRate: 11, repeat: 0 },  // Uppercut/remate (más lento = más peso)
-    kick:             { frameRate: 12, repeat: 0 },  // Patada
-    strong:           { frameRate: 10, repeat: 0 },  // Golpe cargado
-    block_combo:      { frameRate: 10, repeat: 0 },  // Bloqueo
-    // Avatars (static frames)
+    combo1:           { frameRate: 14, repeat: 0 },
+    combo2:           { frameRate: 13, repeat: 0 },
+    combo3_finisher:  { frameRate: 11, repeat: 0 },
+    kick:             { frameRate: 12, repeat: 0 },
+    strong:           { frameRate: 10, repeat: 0 },
+    block_combo:      { frameRate: 10, repeat: 0 },
+    // Avatars
     portrait: { frameRate: 1, repeat: -1 }
 };
 
@@ -91,89 +56,122 @@ function loadAtlas(filePath) {
     return JSON.parse(raw);
 }
 
-/** Filtra frames reales (descarta placeholders y ruido) y devuelve sus nombres en orden */
-function realFrames(atlas) {
+/** 
+ * Lee los frames del JSON en ORDEN SECUENCIAL (ya ordenados por leshy_to_json.cjs)
+ * y los agrupa de FRAMES_PER_ACTION en FRAMES_PER_ACTION.
+ * 
+ * NOTA: El JSON ya viene ordenado correctamente (fila por fila, izquierda a derecha),
+ * por lo que NO necesitamos reagrupar por posición Y — simplemente chunkeamos.
+ */
+function groupFramesByRow(atlas, expectedCount, sheetLabel) {
+    if (!atlas) return [];
+    
+    // 1. Filtrar ruido manteniendo el orden original del JSON
+    const realFrames = atlas.frames.filter(f => f.frame.w > 10 && f.frame.h > 10);
+    
+    if (realFrames.length === 0) return [];
+
+    // 2. Agrupar secuencialmente de expectedCount en expectedCount
+    //    El JSON ya está ordenado por fila Y, luego X — respetamos ese orden.
+    const rows = [];
+    for (let i = 0; i < realFrames.length; i += expectedCount) {
+        const chunk = realFrames.slice(i, i + expectedCount);
+        if (chunk.length !== expectedCount) {
+            console.warn(`  ⚠️  [${sheetLabel}] Último grupo con ${chunk.length} frames (Esperados: ${expectedCount}). Se completará con el último frame.`);
+        }
+        rows.push(chunk.map(f => f.filename));
+    }
+
+    console.log(`  📋 [${sheetLabel}] ${realFrames.length} frames → ${rows.length} grupos de ${expectedCount}`);
+
+    return rows;
+}
+
+/**
+ * Para los avatares (c.json), solo necesitamos extraer los frames planos válidos
+ */
+function getFlatFrames(atlas) {
+    if (!atlas) return [];
     return atlas.frames
         .filter(f => f.frame.w > 10 && f.frame.h > 10)
         .map(f => f.filename);
 }
 
-/** Divide un array en chunks de tamaño n */
-function chunk(arr, n) {
-    const result = [];
-    for (let i = 0; i < arr.length; i += n) {
-        result.push(arr.slice(i, i + n));
-    }
-    return result;
-}
-
-/** Rellena o recorta un array a exactamente n elementos */
-function normalizeChunk(frames, n, animName) {
+/** 
+ * Rellena o recorta un array a exactamente n elementos para evitar crashes 
+ * en el frontend si un sprite faltó.
+ */
+function ensureFrames(frames, n, animName) {
+    if (!frames || frames.length === 0) return [];
     if (frames.length === n) return frames;
 
     if (frames.length > n) {
-        console.warn(`  ⚠  ${animName}: tiene ${frames.length} frames, usando primeros ${n}`);
         return frames.slice(0, n);
     }
-
-    // Menos frames: repetir el último hasta completar
     const result = [...frames];
     while (result.length < n) result.push(frames[frames.length - 1]);
-    console.warn(`  ⚠  ${animName}: tiene ${frames.length} frames, rellenando hasta ${n} repitiendo el último`);
     return result;
 }
 
 /** Genera el bloque de animaciones para UN personaje */
 function buildAnimBlock(charId, baseAtlas, combatAtlas, avatarAtlas, comboAtlas) {
-    const baseFrames = realFrames(baseAtlas);
-    const combatFrames = realFrames(combatAtlas);
-
-    console.log(`\n── Personaje ${charId} ────────────────────────────`);
-    console.log(`  base   frames reales : ${baseFrames.length}`);
-    console.log(`  combat frames reales : ${combatFrames.length}`);
-    if (avatarAtlas) {
-        console.log(`  avatar frames reales : ${realFrames(avatarAtlas).length}`);
-    }
-    if (comboAtlas) {
-        console.log(`  combo  frames reales : ${realFrames(comboAtlas).length}`);
-    }
-
-    const baseChunks = chunk(baseFrames, FRAMES_PER_ACTION);
-    const combatChunks = chunk(combatFrames, FRAMES_PER_ACTION);
-
     const anims = {};
 
+    // ── Base Sheet (b.json) ──
+    const baseRows = groupFramesByRow(baseAtlas, FRAMES_PER_ACTION, 'Base Sheet');
     BASE_ANIM_NAMES.forEach((name, i) => {
-        const raw = baseChunks[i] ?? [];
-        const frames = normalizeChunk(raw, FRAMES_PER_ACTION, name);
-        const { frameRate, repeat } = ANIM_SETTINGS[name];
-        anims[name] = { sheetType: 'base', frames, frameRate, repeat };
+        const rawRow = baseRows[i] ?? [];
+        if (rawRow.length === 0 && baseRows.length > 0) {
+            console.warn(`  ⚠️  [Base] No se encontró la fila ${i} para la animación '${name}'`);
+        }
+        const frames = ensureFrames(rawRow, FRAMES_PER_ACTION, name);
+        const { frameRate, repeat } = ANIM_SETTINGS[name] ?? { frameRate: 10, repeat: 0 };
+        if (frames.length > 0) {
+            anims[name] = { sheetType: 'base', frames, frameRate, repeat };
+        }
     });
 
+    // ── Combat Sheet (a.json) ──
+    const combatRows = groupFramesByRow(combatAtlas, FRAMES_PER_ACTION, 'Combat Sheet');
     COMBAT_ANIM_NAMES.forEach((name, i) => {
-        const raw = combatChunks[i] ?? [];
-        const frames = normalizeChunk(raw, FRAMES_PER_ACTION, name);
-        const { frameRate, repeat } = ANIM_SETTINGS[name];
-        anims[name] = { sheetType: 'combat', frames, frameRate, repeat };
+        const rawRow = combatRows[i] ?? [];
+        if (rawRow.length === 0 && combatRows.length > 0) {
+            console.warn(`  ⚠️  [Combat] No se encontró la fila ${i} para la animación '${name}'`);
+        }
+        const frames = ensureFrames(rawRow, FRAMES_PER_ACTION, name);
+        const { frameRate, repeat } = ANIM_SETTINGS[name] ?? { frameRate: 10, repeat: 0 };
+        if (frames.length > 0) {
+            anims[name] = { sheetType: 'combat', frames, frameRate, repeat };
+        }
     });
 
+    // ── Avatar Sheet (c.json) ──
     if (avatarAtlas) {
-        const avatarFrames = realFrames(avatarAtlas);
+        const avatarFrames = getFlatFrames(avatarAtlas);
+        if (avatarFrames.length !== AVATAR_ANIM_NAMES.length) {
+            console.warn(`  ⚠️  [Avatar] Se detectaron ${avatarFrames.length} frames (Esperados: ${AVATAR_ANIM_NAMES.length})`);
+        }
         AVATAR_ANIM_NAMES.forEach((name, i) => {
             const frame = avatarFrames[i] ? [avatarFrames[i]] : [avatarFrames[avatarFrames.length - 1]];
-            anims[name] = { sheetType: 'avatar', frames: frame, frameRate: 1, repeat: -1 };
+            if (frame[0]) {
+                anims[name] = { sheetType: 'avatar', frames: frame, frameRate: 1, repeat: -1 };
+            }
         });
     }
 
-    // Combo sheet (Xd.json) — nuevo en esta versión
+    // ── Combo Sheet (d.json) ──
     if (comboAtlas) {
-        const comboFrames = realFrames(comboAtlas);
-        const comboChunks = chunk(comboFrames, FRAMES_PER_ACTION);
+        const comboRows = groupFramesByRow(comboAtlas, FRAMES_PER_ACTION, 'Combo Sheet');
         COMBO_ANIM_NAMES.forEach((name, i) => {
-            const raw = comboChunks[i] ?? [];
-            const frames = normalizeChunk(raw, FRAMES_PER_ACTION, name);
+            const rawRow = comboRows[i] ?? [];
+            if (rawRow.length === 0 && comboRows.length > 0) {
+                console.warn(`  ⚠️  [Combo] No se encontró la fila ${i} para la animación '${name}'`);
+            }
+            const frames = ensureFrames(rawRow, FRAMES_PER_ACTION, name);
             const { frameRate, repeat } = ANIM_SETTINGS[name] ?? { frameRate: 12, repeat: 0 };
-            anims[name] = { sheetType: 'combo', frames, frameRate, repeat };
+            if (frames.length > 0) {
+                anims[name] = { sheetType: 'combo', frames, frameRate, repeat };
+            }
         });
     }
 
@@ -191,12 +189,13 @@ function animsToString(charId, anims, indent = '    ') {
             if (cfg.sheetType === 'base') label = 'Base Sheet';
             else if (cfg.sheetType === 'combat') label = 'Combat Sheet';
             else if (cfg.sheetType === 'avatar') label = 'Avatar Sheet';
+            else if (cfg.sheetType === 'combo') label = 'Combo Sheet';
             
             lines.push(`${indent}  // --- ${label} ---`);
             lastSheetType = cfg.sheetType;
         }
         const framesStr = cfg.frames.map(f => `'${f}'`).join(', ');
-        const pad = ' '.repeat(Math.max(0, 12 - name.length));
+        const pad = ' '.repeat(Math.max(0, 15 - name.length));
         lines.push(`${indent}  '${name}':${pad}{ sheetType: '${cfg.sheetType}', frames: [${framesStr}], frameRate: ${cfg.frameRate}, repeat: ${cfg.repeat} },`);
     }
 
@@ -206,7 +205,7 @@ function animsToString(charId, anims, indent = '    ') {
 
 // ── Main ───────────────────────────────────────────────────────────────────
 function main() {
-    console.log('🚀 Iniciando mapeo de personajes...');
+    console.log('🚀 Iniciando mapeo de personajes con lógica espacial...');
     
     // Detectar automáticamente todos los personajes (archivos Xa.json y Xb.json)
     const files = fs.readdirSync(CHARACTERS_DIR);
@@ -230,6 +229,7 @@ function main() {
             const basePath = path.join(CHARACTERS_DIR, `${id}b.json`);
             const combatPath = path.join(CHARACTERS_DIR, `${id}a.json`);
             const avatarPath = path.join(CHARACTERS_DIR, `${id}c.json`);
+            const comboPath = path.join(CHARACTERS_DIR, `${id}d.json`);
 
             if (!fs.existsSync(basePath) || !fs.existsSync(combatPath)) {
                 console.warn(`  🛑 Personaje ${id}: falta ${basePath} o ${combatPath}, saltando.`);
@@ -238,20 +238,12 @@ function main() {
 
             console.log(`\n📦 Procesando Personaje ${id}...`);
             
-            // Paso 1: Normalización de Alineación
-            // Omitido para evitar corromper el posicionamiento original en hojas grandes sin trim
-            const comboPath = path.join(CHARACTERS_DIR, `${id}d.json`);
-            const comboExists = fs.existsSync(comboPath);
-            const normBase = false;
-            const normCombat = false;
-            const normCombo = false;
-
-            // Paso 2: Mapeo de Animaciones
             const baseAtlas = loadAtlas(basePath);
             const combatAtlas = loadAtlas(combatPath);
             const avatarAtlas = fs.existsSync(avatarPath) ? loadAtlas(avatarPath) : null;
-            const comboAtlas = comboExists ? loadAtlas(comboPath) : null;
-            if (comboAtlas) console.log(`  🗻  Combo sheet (${id}d.json) detectado.`);
+            const comboAtlas = fs.existsSync(comboPath) ? loadAtlas(comboPath) : null;
+            
+            if (comboAtlas) console.log(`  🗻 Combo sheet (${id}d.json) detectado.`);
 
             const anims = buildAnimBlock(id, baseAtlas, combatAtlas, avatarAtlas, comboAtlas);
             blocks.push(animsToString(id, anims));

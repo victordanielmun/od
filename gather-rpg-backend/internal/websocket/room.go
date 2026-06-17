@@ -3,10 +3,12 @@ package websocket
 import (
 	"log"
 	"math"
+	"math/rand"
 	"sort"
 	"sync"
 	"time"
 
+	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/spatial"
 
@@ -30,6 +32,10 @@ type Room struct {
 	aiTicker      *time.Ticker
 	stopAI        chan bool
 
+	// NPCs
+	ActiveNPCs    map[uint]*models.ActiveNPC
+	npcMu         sync.RWMutex
+
 	mu sync.RWMutex
 }
 
@@ -41,6 +47,7 @@ func NewRoom(id string, mapData *models.MapData) *Room {
 		MapData:       mapData,
 		MaxUsers:      50, // Default
 		ActiveEnemies: make(map[uuid.UUID]*models.ActiveEnemy),
+		ActiveNPCs:    make(map[uint]*models.ActiveNPC),
 		stopAI:        make(chan bool),
 	}
 
@@ -99,7 +106,7 @@ func (r *Room) tickAI() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if len(r.ActiveEnemies) == 0 || len(r.Clients) == 0 {
+	if len(r.Clients) == 0 {
 		return
 	}
 
@@ -227,6 +234,8 @@ func (r *Room) tickAI() {
 		}
 		r.broadcastToAll(msg)
 	}
+
+	r.tickNPCs()
 }
 
 func (r *Room) broadcastToAll(msg *models.WSMessage) {
@@ -256,6 +265,118 @@ func (r *Room) RemoveClient(client *Client) {
 	delete(r.Clients, client)
 	// Also remove from Grid
 	r.Grid.RemoveUser(client.ID.String())
+
+	// Auto-release any NPCs this player was talking to
+	r.npcMu.Lock()
+	for _, npc := range r.ActiveNPCs {
+		if npc.TalkingWith == client.ID.String() {
+			npc.IsTalking = false
+			npc.TalkingWith = ""
+			npc.TalkingExpire = 0
+		}
+	}
+	r.npcMu.Unlock()
+}
+
+func (r *Room) LoadNPCsFromDB() {
+	r.npcMu.Lock()
+	defer r.npcMu.Unlock()
+
+	var templates []models.NPCTemplate
+	if err := database.DB.Preload("NPCDefinition").Where("scene_key = ?", r.SceneKey).Find(&templates).Error; err != nil {
+		log.Printf("[Room %s] Error loading NPC templates: %v", r.ID, err)
+		return
+	}
+
+	r.ActiveNPCs = make(map[uint]*models.ActiveNPC)
+	for _, t := range templates {
+		speed := float64(t.MovementSpeed)
+		if speed <= 0 {
+			speed = 50.0
+		}
+		r.ActiveNPCs[t.ID] = &models.ActiveNPC{
+			TemplateID:   t.ID,
+			X:            float64(t.PositionX),
+			Y:            float64(t.PositionY),
+			State:        string(t.DefaultState),
+			SpawnX:       float64(t.PositionX),
+			SpawnY:       float64(t.PositionY),
+			TargetX:      float64(t.PositionX),
+			TargetY:      float64(t.PositionY),
+			Speed:        speed,
+			Range:        float64(t.MovementRange),
+			MovementType: t.MovementType,
+			IsTalking:    false,
+		}
+	}
+	log.Printf("[Room %s] Loaded %d NPCs from DB for SceneKey: %s", r.ID, len(r.ActiveNPCs), r.SceneKey)
+}
+
+func (r *Room) tickNPCs() {
+	r.npcMu.Lock()
+	defer r.npcMu.Unlock()
+
+	if len(r.ActiveNPCs) == 0 {
+		return
+	}
+
+	now := time.Now().UnixMilli()
+	updates := make([]models.ActiveNPC, 0)
+
+	for _, npc := range r.ActiveNPCs {
+		// Auto-release stuck dialogues after 30 seconds
+		if npc.IsTalking && npc.TalkingExpire > 0 && now > npc.TalkingExpire {
+			npc.IsTalking = false
+			npc.TalkingWith = ""
+			npc.TalkingExpire = 0
+		}
+
+		if npc.IsTalking {
+			npc.State = "talking"
+			updates = append(updates, *npc)
+			continue
+		}
+
+		if npc.MovementType != "wander" {
+			npc.State = "idle"
+			updates = append(updates, *npc)
+			continue
+		}
+
+		dx := npc.TargetX - npc.X
+		dy := npc.TargetY - npc.Y
+		dist := math.Sqrt(dx*dx + dy*dy)
+
+		if dist < 5.0 {
+			npc.State = "idle"
+			if now > npc.MoveTimer {
+				angle := rand.Float64() * 2 * math.Pi
+				rG := rand.Float64() * npc.Range
+				npc.TargetX = npc.SpawnX + math.Cos(angle) * rG
+				npc.TargetY = npc.SpawnY + math.Sin(angle) * rG
+				npc.MoveTimer = now + int64(2000 + rand.Intn(3000))
+			}
+		} else {
+			npc.State = "walking"
+			angle := math.Atan2(dy, dx)
+			speedPerTick := npc.Speed * 0.1
+			npc.X += math.Cos(angle) * speedPerTick
+			npc.Y += math.Sin(angle) * speedPerTick
+		}
+
+		updates = append(updates, *npc)
+	}
+
+	if len(updates) > 0 {
+		msg := &models.WSMessage{
+			Type: MsgNPCUpdate,
+			Payload: models.NPCUpdateBroadcast{
+				RoomID: r.ID,
+				NPCs:   updates,
+			},
+		}
+		r.broadcastToAll(msg)
+	}
 }
 
 func (r *Room) GetClientsCount() int {

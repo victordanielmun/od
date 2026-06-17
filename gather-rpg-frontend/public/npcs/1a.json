@@ -87,27 +87,6 @@
     {
       "filename": "portrait-sad",
       "frame": {
-        "x": 333,
-        "y": 175,
-        "w": 148,
-        "h": 148
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 148,
-        "h": 148
-      },
-      "sourceSize": {
-        "w": 148,
-        "h": 148
-      }
-    },
-    {
-      "filename": "portrait-surprised",
-      "frame": {
         "x": 175,
         "y": 177,
         "w": 145,
@@ -124,6 +103,27 @@
       "sourceSize": {
         "w": 145,
         "h": 146
+      }
+    },
+    {
+      "filename": "portrait-surprised",
+      "frame": {
+        "x": 333,
+        "y": 175,
+        "w": 148,
+        "h": 148
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 148,
+        "h": 148
+      },
+      "sourceSize": {
+        "w": 148,
+        "h": 148
       }
     },
     {

@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gofiber/fiber/v2"
 	"strconv"
+	"strings"
 )
 
 type NPCHandler struct {
@@ -57,6 +58,9 @@ func (h *NPCHandler) DeleteNPCTemplate(c *fiber.Ctx) error {
 	}
 
 	if err := h.Service.DeleteNPCTemplate(uint(id)); err != nil {
+		if strings.HasPrefix(err.Error(), "no se puede") || strings.HasPrefix(err.Error(), "cannot delete") {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
@@ -145,6 +149,9 @@ func (h *NPCHandler) DeleteNPCDefinition(c *fiber.Ctx) error {
 	}
 
 	if err := h.Service.DeleteNPCDefinition(uint(id)); err != nil {
+		if strings.HasPrefix(err.Error(), "no se puede") || strings.HasPrefix(err.Error(), "cannot delete") {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 

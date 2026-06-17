@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRoomStore } from '../../store/roomStore';
 import { useNavigate } from 'react-router-dom';
 
 export const RoomList = () => {
+  const { t } = useTranslation();
   const { rooms, fetchRooms, isLoading, error } = useRoomStore();
   const navigate = useNavigate();
 
@@ -15,7 +17,7 @@ export const RoomList = () => {
   };
 
   if (isLoading && rooms.length === 0) {
-    return <div className="text-center text-white mt-8">Loading rooms...</div>;
+    return <div className="text-center text-white mt-8">{t('lobby.room_list.loading')}</div>;
   }
 
   if (error) {
@@ -26,7 +28,7 @@ export const RoomList = () => {
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
       {rooms.length === 0 ? (
         <div className="col-span-full text-center text-gray-400 py-8">
-          No rooms available. Create one to get started!
+          {t('lobby.room_list.empty')}
         </div>
       ) : (
         rooms.map((room) => (
@@ -38,11 +40,11 @@ export const RoomList = () => {
             <div className="flex justify-between items-start mb-2">
               <h3 className="text-xl font-bold text-white truncate">{room.name}</h3>
               <span className="bg-blue-900 text-blue-200 text-xs px-2 py-1 rounded-full">
-                {room.max_users} Max
+                {t('lobby.room_list.max_users', { count: room.max_users })}
               </span>
             </div>
             <div className="text-gray-400 text-sm mb-4">
-              <p>Public Room</p>
+              <p>{t('lobby.room_list.public_room')}</p>
             </div>
             <button 
               onClick={(e) => {
@@ -51,7 +53,7 @@ export const RoomList = () => {
               }}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded transition"
             >
-              Join Room
+              {t('lobby.room_list.join_room')}
             </button>
           </div>
         ))

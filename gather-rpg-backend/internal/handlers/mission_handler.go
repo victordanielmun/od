@@ -285,14 +285,74 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		})
 	}
 
-	var shopPtr *models.Shop
-	if tmpl.NPCDefinition.ShopID != nil {
-		shopPtr = &tmpl.NPCDefinition.Shop
+	// Get room_id query parameter and check for room instance task completion
+	roomIDStr := c.Query("room_id")
+	var instance models.NPCRoomInstance
+	hasRoomInstance := false
+	if roomIDStr != "" {
+		if roomUUID, err := uuid.Parse(roomIDStr); err == nil {
+			if err := database.DB.Where("room_id = ? AND npc_template_id = ?", roomUUID, tmplID).First(&instance).Error; err == nil {
+				hasRoomInstance = true
+			}
+		}
+	}
+
+	hasNPCMissions := false
+	isMissionCompletedForPlayer := false
+	hasNPCActiveTasks := false
+	allNPCActiveTasksCompleted := true
+
+	for _, m := range missions {
+		if m.Status != "active" {
+			continue
+		}
+		hasNPCMissions = true
+
+		progress, _ := h.Service.GetProgress(userID, m.ID)
+		if progress != nil && progress.Status == models.StatusCompleted {
+			isMissionCompletedForPlayer = true
+			continue
+		}
+
+		tasks, _ := h.Service.GetTasks(m.ID)
+		var completedMap map[string]bool
+		if progress != nil && progress.TasksCompleted != nil {
+			json.Unmarshal(progress.TasksCompleted, &completedMap)
+		}
+
+		for _, t := range tasks {
+			if t.TargetNPCTemplateID != nil && *t.TargetNPCTemplateID == tmpl.ID {
+				hasNPCActiveTasks = true
+				if completedMap == nil || !completedMap[fmt.Sprint(t.ID)] {
+					allNPCActiveTasksCompleted = false
+				}
+			}
+		}
+	}
+
+	isTaskCompletedForPlayer := false
+	if hasNPCMissions {
+		if isMissionCompletedForPlayer {
+			isTaskCompletedForPlayer = true
+		} else if hasNPCActiveTasks && allNPCActiveTasksCompleted {
+			isTaskCompletedForPlayer = true
+		}
 	}
 
 	greeting := tmpl.NPCDefinition.Greeting
 	if tmpl.Greeting != "" {
 		greeting = tmpl.Greeting
+	}
+
+	if (hasRoomInstance && instance.TaskCompleted) || isTaskCompletedForPlayer {
+		if tmpl.SuccessMessage != "" {
+			greeting = tmpl.SuccessMessage
+		}
+	}
+
+	var shopPtr *models.Shop
+	if tmpl.NPCDefinition.ShopID != nil {
+		shopPtr = &tmpl.NPCDefinition.Shop
 	}
 
 	return c.JSON(NPCMissionHub{

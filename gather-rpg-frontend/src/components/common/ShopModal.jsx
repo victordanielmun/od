@@ -86,7 +86,7 @@ export default function ShopModal({ npcId, onClose, shopName, initialData }) {
             }
         } catch (err) {
             console.error("Failed to fetch shop items:", err);
-            setShopInfo(prev => ({ ...prev, description: t('lobby.shop.error') || "Error" }));
+            setShopInfo(prev => ({ ...prev, description: t('common.error') }));
         } finally {
             setLoading(false);
         }
@@ -144,6 +144,14 @@ export default function ShopModal({ npcId, onClose, shopName, initialData }) {
 
                 {/* Items List */}
                 <div className="p-4 max-h-80 overflow-y-auto bg-[#f5ead5] space-y-3 relative z-10 custom-scrollbar shadow-[inset_0_0_20px_rgba(0,0,0,0.1)]">
+                    {/* Voice/Chat Only Shop Warning Banner */}
+                    <div className="p-3 bg-yellow-100 border-l-4 border-yellow-600 text-yellow-900 rounded-sm mb-3 flex items-center gap-2.5 shadow-sm">
+                        <AlertCircle size={18} className="text-yellow-700 flex-shrink-0" />
+                        <p className="text-xs font-serif leading-snug">
+                            {t('lobby.shop.voice_instruction') || "Para comprar, pídele los ítems al comerciante usando la voz o escribiendo en el chat de diálogo."}
+                        </p>
+                    </div>
+
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-70">
                             <Loader2 className="text-[#1e3a5f] animate-spin" size={40} />
@@ -159,7 +167,7 @@ export default function ShopModal({ npcId, onClose, shopName, initialData }) {
 
                             // Build stats list
                             const itemStats = [];
-                            if (item.effect_value) itemStats.push(`+${item.effect_value} ${item.effect_type === "heal_hp" ? "HP" : "EF"}`);
+                            if (item.effect_value) itemStats.push(`+${item.effect_value} ${item.effect_type === "heal_hp" ? "HP" : t('lobby.shop.effect_abbr')}`);
                             if (item.attack_bonus) itemStats.push(`+${item.attack_bonus} ATK`);
                             if (item.defense_bonus) itemStats.push(`+${item.defense_bonus} DEF`);
 
@@ -205,10 +213,10 @@ export default function ShopModal({ npcId, onClose, shopName, initialData }) {
                                                     </span>
                                                 ))}
                                                 <span className="text-[10px] bg-blue-100 text-blue-800 border border-blue-200 px-1 py-0.5 rounded-sm font-bold">
-                                                    Nv. {item.required_level}
+                                                    {t('lobby.shop.level_abbr', { level: item.required_level })}
                                                 </span>
                                                 <span className="text-[10px] bg-gray-100 text-gray-600 border border-gray-200 px-1 py-0.5 rounded-sm">
-                                                    x{item.max_stack} máx
+                                                    {t('lobby.shop.max_stack', { stack: item.max_stack })}
                                                 </span>
                                             </div>
                                         </div>
@@ -220,28 +228,11 @@ export default function ShopModal({ npcId, onClose, shopName, initialData }) {
                                             <span className="font-medieval text-[#7d5a1e] text-base font-bold">{item.price}</span>
                                         </div>
                                         <button 
-                                            onClick={() => handleBuy(item)}
-                                            disabled={loading || isPurchasing || !canAfford}
-                                            className={`w-full py-1.5 px-3 border-2 font-medieval uppercase text-[10px] tracking-widest transition-all duration-200 transform active:translate-y-1 ${
-                                                isSuccess ? 'bg-green-700 text-white border-green-900' :
-                                                isError ? 'bg-red-700 text-white border-red-900' :
-                                                !canAfford ? 'bg-gray-400 text-white border-gray-600 cursor-not-allowed' :
-                                                'bg-[#c0392b] text-white border-[#e74c3c] hover:bg-[#a93226] shadow-md hover:shadow-sm'
-                                            }`}
+                                            disabled={true}
+                                            className="w-full py-1.5 px-3 border-2 font-medieval uppercase text-[9px] tracking-widest bg-gray-500 text-gray-200 border-gray-600 cursor-not-allowed"
                                         >
-                                            {isPurchasing ? (
-                                                <Loader2 size={12} className="animate-spin" />
-                                            ) : isSuccess ? (
-                                                <CheckCircle2 size={14} />
-                                            ) : isError ? (
-                                                <AlertCircle size={14} />
-                                            ) : (
-                                                t('lobby.shop.buy')
-                                            )}
+                                            {t('lobby.shop.voice_only') || 'Voz/Chat'}
                                         </button>
-                                        {!canAfford && !isPurchasing && (
-                                            <span className="text-[9px] font-medieval text-[#c0392b] font-bold uppercase tracking-tighter">{t('lobby.shop.insufficient_gold')}</span>
-                                        )}
                                     </div>
                                 </div>
                             );

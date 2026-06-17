@@ -52,16 +52,16 @@ export default class BeatEmUpHUD {
     // Panel fondo semitransparente estilo medieval-dark / glassmorphism
     this._hpPanel = this.scene.add.graphics().setDepth(600).setScrollFactor(0);
     this._hpPanel.fillStyle(0x001C14, 0.75); // Verde Botella Casi Negro
-    this._hpPanel.fillRoundedRect(x - 6, y - 4, 260, 44, 6);
+    this._hpPanel.fillRoundedRect(x - 6, y - 4, 212, 34, 6);
 
     // Borde doble elegante (oro cálido y bronce)
     this._hpPanel.lineStyle(1.5, 0xF7C42D, 0.85); // Oro
-    this._hpPanel.strokeRoundedRect(x - 6, y - 4, 260, 44, 6);
+    this._hpPanel.strokeRoundedRect(x - 6, y - 4, 212, 34, 6);
     this._hpPanel.lineStyle(0.75, 0x8b6d1b, 0.5); // Bronce
-    this._hpPanel.strokeRoundedRect(x - 8, y - 6, 264, 48, 8);
+    this._hpPanel.strokeRoundedRect(x - 8, y - 6, 216, 38, 8);
 
     // HP Label
-    this._hpLabel = this.scene.add.text(x, y + 2, 'HP', {
+    this._hpLabel = this.scene.add.text(x, y + 1, 'HP', {
       fontSize:   '10px',
       fontFamily: '"Press Start 2P", monospace',
       color:      '#10b981', // Verde esmeralda vibrante
@@ -72,15 +72,15 @@ export default class BeatEmUpHUD {
     // Fondo HP bar (charcoal oscuro con borde fino)
     this._hpBarBg = this.scene.add.graphics().setDepth(601).setScrollFactor(0);
     this._hpBarBg.fillStyle(0x151515, 0.9);
-    this._hpBarBg.fillRoundedRect(x + 28, y + 2, 188, 12, 3);
+    this._hpBarBg.fillRoundedRect(x + 28, y + 2, 140, 8, 2);
     this._hpBarBg.lineStyle(1, 0x8b6d1b, 0.4);
-    this._hpBarBg.strokeRoundedRect(x + 28, y + 2, 188, 12, 3);
+    this._hpBarBg.strokeRoundedRect(x + 28, y + 2, 140, 8, 2);
 
     // HP Barra activa
     this._hpBar = this.scene.add.graphics().setDepth(602).setScrollFactor(0);
 
     // HP Números
-    this._hpNumbers = this.scene.add.text(x + 222, y + 2, '100', {
+    this._hpNumbers = this.scene.add.text(x + 174, y - 1, '100', {
       fontSize:   '10px',
       fontFamily: '"Montserrat", sans-serif',
       fontWeight: 'bold',
@@ -90,7 +90,7 @@ export default class BeatEmUpHUD {
     }).setDepth(603).setScrollFactor(0);
 
     // MP Label
-    this._mpLabel = this.scene.add.text(x, y + 16, 'MP', {
+    this._mpLabel = this.scene.add.text(x, y + 15, 'MP', {
       fontSize:   '10px',
       fontFamily: '"Press Start 2P", monospace',
       color:      '#00a8ff', // Azul maná
@@ -101,15 +101,15 @@ export default class BeatEmUpHUD {
     // Fondo MP bar (charcoal oscuro con borde fino)
     this._mpBarBg = this.scene.add.graphics().setDepth(601).setScrollFactor(0);
     this._mpBarBg.fillStyle(0x151515, 0.9);
-    this._mpBarBg.fillRoundedRect(x + 28, y + 16, 188, 10, 2);
+    this._mpBarBg.fillRoundedRect(x + 28, y + 16, 140, 8, 2);
     this._mpBarBg.lineStyle(1, 0x003049, 0.4);
-    this._mpBarBg.strokeRoundedRect(x + 28, y + 16, 188, 10, 2);
+    this._mpBarBg.strokeRoundedRect(x + 28, y + 16, 140, 8, 2);
 
     // MP Barra activa
     this._mpBar = this.scene.add.graphics().setDepth(602).setScrollFactor(0);
 
     // MP Números
-    this._mpNumbers = this.scene.add.text(x + 222, y + 16, '50', {
+    this._mpNumbers = this.scene.add.text(x + 174, y + 13, '50', {
       fontSize:   '10px',
       fontFamily: '"Montserrat", sans-serif',
       fontWeight: 'bold',
@@ -285,7 +285,7 @@ export default class BeatEmUpHUD {
   _drawHPBar(hp, maxHp) {
     this._hpBar.clear();
     const x = 16, y = 16;
-    const W = 188, H = 12;
+    const W = 140, H = 8;
     const pct   = Math.max(0, Math.min(1, hp / maxHp));
     const fillW = pct * W;
 
@@ -293,17 +293,17 @@ export default class BeatEmUpHUD {
 
     if (fillW > 2) {
       this._hpBar.fillStyle(color, 1);
-      this._hpBar.fillRoundedRect(x + 28, y + 2, fillW, H, 3);
+      this._hpBar.fillRoundedRect(x + 28, y + 2, fillW, H, 2);
       // Shiny overlay
       this._hpBar.fillStyle(0xffffff, 0.15);
-      this._hpBar.fillRoundedRect(x + 28, y + 2, fillW, H / 2, 3);
+      this._hpBar.fillRoundedRect(x + 28, y + 2, fillW, H / 2, 2);
     }
   }
 
   _drawMPBar(mp, maxMp) {
     this._mpBar.clear();
     const x = 16, y = 16;
-    const W = 188, H = 10;
+    const W = 140, H = 8;
     const pct   = Math.max(0, Math.min(1, mp / maxMp));
     const fillW = pct * W;
 

@@ -178,6 +178,11 @@ El backend utiliza Docker Compose para configurar PostgreSQL en el puerto `5433`
    # JWT
    JWT_SECRET=escribe_un_secret_muy_largo_y_seguro
    JWT_EXPIRATION=24h
+
+   # Piper local TTS (Text-to-Speech)
+   PIPER_EXE_PATH=/home/ec2-user/od/gather-rpg-backend/bin/piper/piper
+   PIPER_MODELS_DIR=/home/ec2-user/od/gather-rpg-backend/models
+   PIPER_CACHE_DIR=/home/ec2-user/od/gather-rpg-backend/tts_cache
    ```
 4. Levanta los contenedores en segundo plano usando Docker Compose:
    ```bash
@@ -186,6 +191,50 @@ El backend utiliza Docker Compose para configurar PostgreSQL en el puerto `5433`
 5. Verifica que estén corriendo correctamente:
    ```bash
    docker-compose ps
+   ```
+
+---
+
+### Paso 3.2.1: Instalar y Configurar Piper TTS (Local Text-to-Speech)
+
+El backend de Go utiliza **Piper** para generar los audios de los diálogos de los NPCs localmente. En tu servidor EC2, debes descargar el ejecutable de Piper para Linux AMD64 y los modelos de voz correspondientes.
+
+1. **Crear las carpetas necesarias** en el backend de Go:
+   ```bash
+   cd /home/ec2-user/od/gather-rpg-backend
+   mkdir -p bin models tts_cache
+   ```
+
+2. **Descargar e instalar el binario de Piper para Linux x86_64**:
+   ```bash
+   cd /home/ec2-user/od/gather-rpg-backend/bin
+   wget https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz
+   tar -xf piper_linux_x86_64.tar.gz
+   # Eliminar el archivo comprimido descargado para ahorrar espacio
+   rm piper_linux_x86_64.tar.gz
+   ```
+   *(Esto extraerá la carpeta `piper` y dejará el binario listo en `/home/ec2-user/od/gather-rpg-backend/bin/piper/piper`).*
+
+3. **Descargar las voces (modelos `.onnx` y sus JSON de configuración)**:
+   Ejecuta el siguiente comando en la carpeta `models` para descargar de forma automática las voces soportadas desde HuggingFace:
+   ```bash
+   cd /home/ec2-user/od/gather-rpg-backend/models
+   
+   # Descargar voces de calidad medium
+   for file in en_US-joe-medium.onnx en_US-joe-medium.onnx.json \
+               en_US-ryan-medium.onnx en_US-ryan-medium.onnx.json \
+               en_US-amy-medium.onnx en_US-amy-medium.onnx.json \
+               en_US-lessac-medium.onnx en_US-lessac-medium.onnx.json \
+               en_US-kristin-medium.onnx en_US-kristin-medium.onnx.json \
+               en_US-norman-medium.onnx en_US-norman-medium.onnx.json \
+               en_US-sam-medium.onnx en_US-sam-medium.onnx.json \
+               en_US-libritts_r-medium.onnx en_US-libritts_r-medium.onnx.json; do
+     wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/$(echo $file | cut -d'-' -f2)/medium/$file?download=true" -O $file
+   done
+
+   # Descargar voz danny (calidad low)
+   wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/danny/low/en_US-danny-low.onnx?download=true" -O en_US-danny-low.onnx
+   wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/danny/low/en_US-danny-low.onnx.json?download=true" -O en_US-danny-low.onnx.json
    ```
 
 ---

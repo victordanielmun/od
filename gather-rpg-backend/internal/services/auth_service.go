@@ -60,8 +60,10 @@ func (s *AuthService) LoginGuest(characterIDs []string) (*models.AuthResponse, e
 		}
 
 		stats := &models.PlayerStats{
-			UserID: user.ID,
-			Gold:   100, // Starting gold
+			UserID:    user.ID,
+			Gold:      100, // Starting gold
+			HPCurrent: 100,
+			MPCurrent: 50,
 		}
 		return tx.Create(stats).Error
 	})
@@ -106,8 +108,10 @@ func (s *AuthService) Register(req models.RegisterRequest) (*models.AuthResponse
 		}
 
 		stats := &models.PlayerStats{
-			UserID: user.ID,
-			Gold:   100, // Starting gold
+			UserID:    user.ID,
+			Gold:      100, // Starting gold
+			HPCurrent: 100,
+			MPCurrent: 50,
 		}
 		return tx.Create(stats).Error
 	})
@@ -158,8 +162,10 @@ func (s *AuthService) GetPlayerStats(userIDStr string) (*models.PlayerStats, err
 	if err := database.DB.First(&stats, "user_id = ?", userID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			stats = models.PlayerStats{
-				UserID: userID,
-				Gold:   100,
+				UserID:    userID,
+				Gold:      100,
+				HPCurrent: 100,
+				MPCurrent: 50,
 			}
 			if err := database.DB.Create(&stats).Error; err != nil {
 				return nil, err
@@ -190,4 +196,23 @@ func (s *AuthService) AcceptTerms(userIDStr string) error {
 
 	return database.DB.Model(&models.User{}).Where("id = ?", userID).Update("terms_accepted", true).Error
 }
+
+// UpdateSprite saves the selected sprite
+func (s *AuthService) UpdateSprite(userIDStr string, characterID string) error {
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return errors.New("invalid user ID format")
+	}
+
+	var user models.User
+	if err := database.DB.First(&user, "id = ?", userID).Error; err != nil {
+		return err
+	}
+
+	user.CharacterID = characterID
+	user.HasChosenSprite = true
+
+	return database.DB.Save(&user).Error
+}
+
 

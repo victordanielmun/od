@@ -60,6 +60,7 @@ export class InteractionSystem {
     let found = null;
     let foundChallenge = null;
     let foundPlayer = null;
+    let foundPickup = null;
 
     // Check NPCs
     if (this.scene.npcs) {
@@ -69,7 +70,7 @@ export class InteractionSystem {
           npc.x, npc.y
         );
 
-        if (dist < 80) { // Interaction radius
+        if (dist < 150) { // Interaction radius increased from 80 to 150 to allow talking across desks
           found = npc;
         }
       });
@@ -103,6 +104,16 @@ export class InteractionSystem {
       }
     }
 
+    // Check Pickups
+    if (this.scene.activePickups) {
+      this.scene.activePickups.forEach(p => {
+        const dist = Phaser.Math.Distance.Between(this.scene.player.x, this.scene.player.y, p.x, p.y);
+        if (dist < 60 && !foundPickup) {
+          foundPickup = p;
+        }
+      });
+    }
+
     // Update Chat Bubbles positions
     if (this.scene.player && this.scene.player.chatBubble) {
       this.scene.player.chatBubble.setPosition(this.scene.player.x, this.scene.player.y - 60);
@@ -131,22 +142,27 @@ export class InteractionSystem {
       });
     }
 
-    // Check Pickups
-    let foundPickup = null;
-    if (this.scene.activePickups) {
-      this.scene.activePickups.forEach(p => {
-        const dist = Phaser.Math.Distance.Between(this.scene.player.x, this.scene.player.y, p.x, p.y);
-        if (dist < 60 && !foundPickup) {
-          foundPickup = p;
+    let foundMinigame = null;
+    if (this.scene.storeFurniture) {
+      this.scene.storeFurniture.getChildren().forEach(f => {
+        const minigameType = f.data?.get('minigameType');
+        const minigameId = f.data?.get('minigameId');
+        if (minigameType && (minigameId || minigameType === 'read')) {
+          const dist = Phaser.Math.Distance.Between(
+            this.scene.player.x, this.scene.player.y, f.x, f.y
+          );
+          if (dist < 200 && !foundMinigame) {
+            foundMinigame = f;
+          }
         }
       });
     }
 
     // Save state for synchronous interaction processing
-    this._readyInteractions = { found, foundChallenge, foundPlayer, foundBuild, foundPickup };
+    this._readyInteractions = { found, foundChallenge, foundPlayer, foundBuild, foundPickup, foundMinigame };
 
     // Update Interaction Prompt
-    if (found || foundChallenge || foundPlayer || foundBuild || foundPickup) {
+    if (found || foundChallenge || foundPlayer || foundBuild || foundPickup || foundMinigame) {
       const t = (key, opts) => i18n.t(`lobby.interactions.${key}`, opts);
       let msg = t('press_e');
 
@@ -179,6 +195,20 @@ export class InteractionSystem {
         } else {
           msg = t('no_destination');
         }
+      } else if (foundMinigame) {
+        const type = foundMinigame.data?.get('minigameType');
+        const activeChallengeId = useGameStore.getState().activeChallengeId;
+        const isJoined = activeChallengeId === foundMinigame.data?.get('minigameId');
+
+        if (type === 'chess') {
+          msg = isJoined ? "Presiona E para salir del Ajedrez" : "Presiona E para jugar al Ajedrez";
+        } else if (type === 'park') {
+          msg = isJoined ? "Presiona E para salir del Parque" : "Presiona E para unirte al Parque";
+        } else if (type === 'read') {
+          msg = i18n.t('lobby.interactions.press_e_read') || "Presiona E para leer";
+        } else {
+          msg = isJoined ? "Presiona E para salir del juego" : "Presiona E para jugar";
+        }
       }
 
       const cam = this.scene.cameras?.main;
@@ -200,7 +230,7 @@ export class InteractionSystem {
 
   processSyncInteractions() {
     if (!this._readyInteractions) return;
-    const { found, foundChallenge, foundPlayer, foundBuild, foundPickup } = this._readyInteractions;
+    const { found, foundChallenge, foundPlayer, foundBuild, foundPickup, foundMinigame } = this._readyInteractions;
 
     if (found) {
       this.triggerInteraction(found.npcData);
@@ -256,6 +286,23 @@ export class InteractionSystem {
       }
     } else if (foundPickup) {
       this.handlePickupItem(foundPickup);
+    } else if (foundMinigame) {
+      const minigameId = foundMinigame.data?.get('minigameId');
+      const minigameType = foundMinigame.data?.get('minigameType');
+      const readText = foundMinigame.data?.get('readText');
+      const activeChallengeId = useGameStore.getState().activeChallengeId;
+
+      if (minigameType === 'read') {
+        window.dispatchEvent(new CustomEvent('lobby-open-read-popup', { detail: { text: readText } }));
+      } else {
+        if (activeChallengeId === minigameId) {
+          useGameStore.getState().leaveChallenge();
+        } else {
+          useGameStore.getState().joinChallenge(minigameId);
+          // Open minigame UI
+          window.dispatchEvent(new CustomEvent('lobby-open-minigame', { detail: { minigameId, minigameType } }));
+        }
+      }
     }
   }
 

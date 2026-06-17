@@ -1,6 +1,6 @@
 import { animationsByNPC as generatedAnims } from '../../../public/npcs/_animationsByNPC_generated.js';
 
-export const AVAILABLE_NPCS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13']; // IDs de templateId en DB
+export const AVAILABLE_NPCS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15']; // IDs de templateId en DB
 
 export const NPC_CONFIG = {
   npcs: AVAILABLE_NPCS.map(id => ({
@@ -23,20 +23,22 @@ export const NPC_CONFIG = {
 
   // Mapeo de voces de alta calidad (edge-tts) para cada NPC
   voices: {
-    '1': 'en-US-GuyNeural',
-    '2': 'en-US-AriaNeural',
-    '3': 'en-US-GuyNeural',
-    '4': 'en-GB-SoniaNeural',
-    '5': 'en-US-GuyNeural',
-    '6': 'en-US-AriaNeural',
-    '7': 'en-US-GuyNeural',
-    '8': 'en-GB-SoniaNeural',
-    '9': 'en-US-GuyNeural',
-    '10': 'en-US-AriaNeural',
-    '11': 'en-US-GuyNeural',
-    '12': 'en-GB-SoniaNeural',
-    '13': 'en-US-GuyNeural',
-    'default': 'en-US-GuyNeural'
+    '1': 'en-US-BrianNeural',                  // Americano
+    '2': 'en-US-AnaNeural',                    // Americana
+    '3': 'en-IE-ConnorNeural',                 // Irlandés (ideal granjero/tabernero)
+    '4': 'en-GB-SoniaNeural',                  // Británica (elegante)
+    '5': 'en-AU-WilliamMultilingualNeural',    // Australiano (aventurero)
+    '6': 'en-US-AriaNeural',                   // Americana
+    '7': 'en-GB-RyanNeural',                   // Británico (noble/caballero)
+    '8': 'en-IE-EmilyNeural',                  // Irlandesa
+    '9': 'en-US-RogerNeural',                  // Americano
+    '10': 'en-AU-NatashaNeural',               // Australiana
+    '11': 'en-US-JennyNeural',                 // Americana
+    '12': 'en-GB-MaisieNeural',                // Británica
+    '13': 'en-ZA-LukeNeural',                  // Sudafricano (exótico/viajero)
+    '14': 'en-US-ChristopherNeural',           // Americano (profunda/autoridad)
+    '15': 'en-GB-ThomasNeural',                // Británico
+    'default': 'en-US-BrianNeural'
   }
 };
 
@@ -52,7 +54,9 @@ export const STATE_TO_ANIM = {
   angry:     { portrait: 'portrait-angry',     body: 'talking' },
   happy:     { portrait: 'portrait-happy',     body: 'happy-grateful' },
   grateful:  { portrait: 'portrait-grateful',  body: 'happy-grateful' },
-  sad:       { portrait: 'portrait-sad',       body: 'sad' }
+  sad:       { portrait: 'portrait-sad',       body: 'sad' },
+  walking:   { portrait: 'portrait-idle',      body: 'walking' },
+  dying:     { portrait: 'portrait-idle',      body: 'dying' }
 };
 
 export const loadNPCSprites = (scene) => {
@@ -99,7 +103,8 @@ export const createNPCAnimations = (scene) => {
             key: animKey,
             frames: validFrames,
             frameRate: config.frameRate,
-            repeat: config.repeat
+            repeat: config.repeat,
+            holdAtEnd: config.repeat === 0
           });
         } else {
           console.warn(`[NPCConfig] Animation ${animKey} has no valid frames in texture ${textureKey}`);

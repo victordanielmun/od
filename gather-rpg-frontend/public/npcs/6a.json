@@ -1,28 +1,7 @@
 {
   "frames": [
     {
-      "filename": "portrait-idle_1",
-      "frame": {
-        "x": 168,
-        "y": 8,
-        "w": 164,
-        "h": 157
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 164,
-        "h": 157
-      },
-      "sourceSize": {
-        "w": 164,
-        "h": 157
-      }
-    },
-    {
-      "filename": "portrait-idle_0",
+      "filename": "portrait-idle",
       "frame": {
         "x": 6,
         "y": 9,
@@ -43,7 +22,28 @@
       }
     },
     {
-      "filename": "portrait-idle_2",
+      "filename": "portrait-talking",
+      "frame": {
+        "x": 168,
+        "y": 8,
+        "w": 164,
+        "h": 157
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 164,
+        "h": 157
+      },
+      "sourceSize": {
+        "w": 164,
+        "h": 157
+      }
+    },
+    {
+      "filename": "portrait-happy",
       "frame": {
         "x": 332,
         "y": 9,
@@ -64,7 +64,7 @@
       }
     },
     {
-      "filename": "portrait-talking_0",
+      "filename": "portrait-angry",
       "frame": {
         "x": 4,
         "y": 169,
@@ -85,7 +85,7 @@
       }
     },
     {
-      "filename": "portrait-talking_1",
+      "filename": "portrait-sad",
       "frame": {
         "x": 168,
         "y": 169,
@@ -106,7 +106,7 @@
       }
     },
     {
-      "filename": "portrait-talking_2",
+      "filename": "portrait-surprised",
       "frame": {
         "x": 330,
         "y": 169,
@@ -127,7 +127,7 @@
       }
     },
     {
-      "filename": "portrait-happy_0",
+      "filename": "portrait-thinking",
       "frame": {
         "x": 1,
         "y": 330,
@@ -148,7 +148,28 @@
       }
     },
     {
-      "filename": "portrait-happy_1",
+      "filename": "portrait-grateful",
+      "frame": {
+        "x": 166,
+        "y": 330,
+        "w": 325,
+        "h": 162
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 325,
+        "h": 162
+      },
+      "sourceSize": {
+        "w": 325,
+        "h": 162
+      }
+    },
+    {
+      "filename": "portrait-waiting",
       "frame": {
         "x": 166,
         "y": 330,

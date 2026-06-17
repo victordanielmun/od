@@ -62,7 +62,7 @@ func EnsureEnumValues() {
 	}
 
 	ensureEnum("npc_type", []string{"quest_giver", "merchant", "guide", "other", "quest_master"})
-	ensureEnum("npc_state", []string{"idle", "talking", "happy", "angry", "sad", "surprised", "thinking", "grateful", "waiting"})
+	ensureEnum("npc_state", []string{"idle", "talking", "happy", "angry", "sad", "surprised", "thinking", "grateful", "waiting", "walking", "dying"})
 	ensureEnum("npc_role", []string{"task_npc", "informational_npc"})
 	ensureEnum("progress_status", []string{"not_started", "in_progress", "completed"})
 	ensureEnum("pronunciation_eval", []string{"excellent", "good", "needs_work", "bad", "none"})

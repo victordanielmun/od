@@ -147,13 +147,14 @@ export const AdminNPCDefinitions = () => {
     const [error, setError] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingDef, setEditingDef] = useState(null);
+    const [availableVoices, setAvailableVoices] = useState([]);
     const [formData, setFormData] = useState({ 
         name: '', 
         sprite: '1', 
         greeting: '',
         type: 'other',
         interaction_mode: 'hybrid',
-        voice_type: 'male',
+        voice_type: 'joe',
         gift_item_id: '',
         gift_quantity: 0,
         shop_id: ''
@@ -168,16 +169,18 @@ export const AdminNPCDefinitions = () => {
     const fetchData = async () => {
         try {
             setLoading(true);
-            const [npcsRes, itemsRes, shopsRes, missionsRes] = await Promise.all([
+            const [npcsRes, itemsRes, shopsRes, missionsRes, voicesRes] = await Promise.all([
                 api.get('/admin/npc-definitions'),
                 api.get('/admin/items'),
                 api.get('/admin/shops'),
-                api.get('/admin/missions')
+                api.get('/admin/missions'),
+                api.get('/admin/voices').catch(() => ({ data: ['joe', 'ryan', 'amy', 'lessac', 'kristin', 'norman', 'sam', 'libritts_r', 'danny'] }))
             ]);
             setDefinitions(npcsRes.data);
             setAllItems(itemsRes.data);
             setAllShops(shopsRes.data);
             setAllMissions(missionsRes.data);
+            setAvailableVoices(voicesRes.data);
             setError(null);
         } catch (err) {
             setError(t('admin.npc_definitions.errors.loading'));
@@ -211,7 +214,7 @@ export const AdminNPCDefinitions = () => {
                 sprite: '1', 
                 type: 'other',
                 interaction_mode: 'hybrid',
-                voice_type: 'male',
+                voice_type: availableVoices[0] || 'joe',
                 gift_item_id: '',
                 gift_quantity: 0,
                 shop_id: ''
@@ -228,7 +231,8 @@ export const AdminNPCDefinitions = () => {
             await api.delete(`/admin/npc-definitions/${id}`);
             fetchData();
         } catch (err) {
-            setError(t('admin.npc_definitions.errors.delete'));
+            const errMsg = err.response?.data?.error || err.response?.data?.message || t('admin.npc_definitions.errors.delete') || 'Error al eliminar la definición';
+            setError(errMsg);
         }
     };
 
@@ -240,7 +244,7 @@ export const AdminNPCDefinitions = () => {
             greeting: '',
             type: 'other',
             interaction_mode: 'hybrid',
-            voice_type: 'male',
+            voice_type: availableVoices[0] || 'joe',
             shop_id: ''
         });
         setInstances([]);
@@ -510,8 +514,9 @@ export const AdminNPCDefinitions = () => {
                                                 onChange={e => setFormData({...formData, voice_type: e.target.value})}
                                                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-yellow-500/50"
                                             >
-                                                <option value="male">{t('admin.npc_definitions.voices.male') || 'Masculina'}</option>
-                                                <option value="female">{t('admin.npc_definitions.voices.female') || 'Femenina'}</option>
+                                                {availableVoices.map(v => (
+                                                    <option key={v} value={v}>{v.toUpperCase()}</option>
+                                                ))}
                                             </select>
                                         </div>
                                     </div>

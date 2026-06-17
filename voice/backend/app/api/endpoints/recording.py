@@ -251,6 +251,11 @@ async def analyze_dialogue_audio(
     If expected_text is provided, analyzes pronunciation.
     Otherwise, just returns the transcription with a score of 100.
     """
+    import time
+    start_total = time.time()
+    print(f"\n[Performance] === Audio Analysis Start ===")
+    print(f"[Performance] Expected text: {expected_text}")
+
     content = await audio.read()
     if len(content) > 2 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Audio file too large. Maximum size is 2MB (approx 15 seconds).")
@@ -264,22 +269,31 @@ async def analyze_dialogue_audio(
         f.write(content)
 
     transcription = ""
+    start_whisper = time.time()
     try:
         transcription = stt_service.transcribe(filepath)
     except Exception as e:
         print(f"Whisper transcription error: {e}")
         pass
+    whisper_time = (time.time() - start_whisper) * 1000
+    print(f"[Performance] Whisper Transcription complete. Took {whisper_time:.2f} ms")
 
     clean_transcription = transcription.lower().strip()
     import re
     clean_transcription = re.sub(r'[^\w\s]', '', clean_transcription)
+    print(f"[Performance] Transcribed text: '{clean_transcription}'")
 
+    start_scoring = time.time()
     if expected_text and expected_text.strip():
         result = analyzer.analyze(
             expected=expected_text,
             transcription=clean_transcription,
             confidence=1.0,
         )
+        scoring_time = (time.time() - start_scoring) * 1000
+        total_time = (time.time() - start_total) * 1000
+        print(f"[Performance] Pronunciation scoring complete. Took {scoring_time:.2f} ms")
+        print(f"[Performance] Total Audio Analysis complete. Total: {total_time:.2f} ms\n")
         return AnalysisResult(
             transcription=clean_transcription,
             expected_text=expected_text,
@@ -289,6 +303,8 @@ async def analyze_dialogue_audio(
             new_achievements=[],
         )
     else:
+        total_time = (time.time() - start_total) * 1000
+        print(f"[Performance] No expected text. Skipping scoring. Total: {total_time:.2f} ms\n")
         return AnalysisResult(
             transcription=clean_transcription,
             expected_text="",

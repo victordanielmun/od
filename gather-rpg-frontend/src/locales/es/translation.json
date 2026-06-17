@@ -174,6 +174,11 @@
       "voices": {
         "male": "Masculina",
         "female": "Femenina"
+      },
+      "errors": {
+        "loading": "Error al cargar las definiciones de NPC.",
+        "save": "Error al guardar la definición de NPC.",
+        "delete": "Error al eliminar la definición de NPC."
       }
     },
     "items": {
@@ -398,7 +403,12 @@
       "close": "Cerrar",
       "music": "Música",
       "sfx": "Efectos",
-      "voice": "Voz"
+      "voice": "Voz",
+      "on_screen_controls": "Controles en Pantalla",
+      "controls_auto": "Automático (Pantallas Táctiles)",
+      "controls_always": "Siempre Activados",
+      "controls_never": "Desactivados (Ocultar)",
+      "controls_desc": "Permite forzar o desactivar la visualización del control táctil en pantalla en caso de que se haya activado por error."
     },
     "character_selector": {
       "title": "Elige a tu Héroe",
@@ -432,13 +442,18 @@
       "buy": "Comprar",
       "insufficient_gold": "Oro insuficiente",
       "close": "Cerrar Tienda",
+      "voice_instruction": "Para comprar, pídele los ítems al comerciante usando la voz o escribiendo en el chat de diálogo.",
+      "voice_only": "Voz/Chat",
       "categories": {
         "health": "Salud",
         "mana": "Maná",
         "attack": "Ataque",
         "defense": "Defensa",
         "item": "Ítem"
-      }
+      },
+      "level_abbr": "Nv. {{level}}",
+      "max_stack": "x{{stack}} máx",
+      "effect_abbr": "EF"
     },
     "interactions": {
       "press_e": "Presiona [E]",
@@ -450,6 +465,7 @@
       "enter": "Presiona [E] para Entrar",
       "exit": "Teletransporte...",
       "press_e_custom": "Presiona [E]: {{text}}",
+      "press_e_read": "Presiona [E] para leer",
       "no_destination": "⚠ Edif. sin destino configurado"
     },
     "editor": {
@@ -488,7 +504,8 @@
       "tile_void": "Vacío",
       "tile_collider": "Colisionador",
       "tile_store": "Tiles de Tienda",
-      "tile_furniture": "Muebles",
+      "tile_furniture": "Muebles 1",
+      "tile_furniture2": "Muebles 2",
       "tile_enemy": "Enemigo",
       "texture": "Textura",
       "no_texture_options": "Sin opciones de textura",
@@ -527,7 +544,8 @@
       "stat_pickups": "Objetos",
       "stat_colliders": "Colisionadores",
       "stat_store": "Tiles de Tienda",
-      "stat_furniture": "Muebles",
+      "stat_furniture": "Muebles 1",
+      "stat_furniture2": "Muebles 2",
       "stat_enemies": "Enemigos",
       "history": "Historial",
       "redo": "Rehacer",
@@ -546,6 +564,30 @@
       "upload": "Subir JSON",
       "import_confirm": "¿Importar mapa? Esto borrará el contenido actual.",
       "import_error": "Error al importar el archivo JSON."
+    },
+    "room_list": {
+      "loading": "Cargando salas...",
+      "empty": "No hay salas disponibles. ¡Crea una para comenzar!",
+      "max_users": "Máx. {{count}}",
+      "public_room": "Sala Pública",
+      "join_room": "Unirse a la Sala"
+    },
+    "death": {
+      "has_fallen": "Has Caído",
+      "desc": "Tu aventura ha terminado por ahora. ¿Qué deseas hacer?",
+      "spectate": "Observar",
+      "return": "Regresar"
+    },
+    "read_popup": {
+      "title": "Aviso del Letrero",
+      "close": "Entendido"
+    },
+    "mission": {
+      "started_banner": "Aventura Iniciada",
+      "mysterious_adventure": "Aventura Misteriosa",
+      "task_completed_badge": "✅ Completado",
+      "task_objective_badge": "⚔️ Objetivo",
+      "enemies_defeated": "Enemigos eliminados: {{done}}/{{req}}"
     }
   },
   "items": {
@@ -566,5 +608,186 @@
     "save": "Guardar",
     "delete": "Eliminar",
     "edit": "Editar"
+  },
+  "chess": {
+    "title": "♟️ Ajedrez Multijugador",
+    "white": "Blancas ⚪",
+    "black": "Negras ⚫",
+    "instructions": "Juega dictando coordenadas (ej: \"e2 a e4\") o usando el teclado.",
+    "mute_mic": "Silenciar micrófono de sala",
+    "unmute_mic": "Activar micrófono de sala",
+    "mute_sounds": "Silenciar sonidos",
+    "unmute_sounds": "Activar sonidos",
+    "confirm_reset": "¿Quieres reiniciar la partida?",
+    "reset": "Reiniciar partida",
+    "exit": "Salir del minijuego",
+    "room_status": "Estado de la Sala",
+    "player_1_white": "⚪ Jugador 1 (Blancas):",
+    "player_2_black": "⚫ Jugador 2 (Negras):",
+    "you": "Tú",
+    "waiting": "Esperando...",
+    "current_turn": "Turno actual",
+    "your_turn": "👉 ¡Es tu turno!",
+    "waiting_opponent": "⏳ Esperando al rival...",
+    "voice_control": "Control por Voz",
+    "listening": "Escuchando...",
+    "press_to_speak": "Presiona para Hablar",
+    "voice_text": "Voz: \"{{text}}\"",
+    "keyboard_control": "Control por Teclado",
+    "keyboard_placeholder": "Ej: e2e4, a1 c3",
+    "error_voice_parse": "No se entendió el movimiento: \"{{text}}\". Di algo como: \"e2 a e4\"",
+    "error_voice_service": "Error de voz: {{error}}",
+    "voice_not_supported": "Reconocimiento de voz no soportado en este navegador.",
+    "not_your_turn": "No es tu turno de mover.",
+    "invalid_move": "Movimiento inválido: {{from}} a {{to}}",
+    "incorrect_format": "Formato incorrecto. Escribe algo como \"e2e4\"",
+    "opponent_disconnected": "El oponente se ha desconectado de la partida."
+  },
+  "npc": {
+    "dialogue": {
+      "default_greeting": "¡Hola {{username}}! ¿Cómo te puedo ayudar hoy?",
+      "teleport_msg": "¡Excelente elección! Te enviaré de inmediato a {{scene}}. ¡Buena suerte en tu aventura!",
+      "mission_completed": "¡Misión Completada!",
+      "mission_completed_desc": "Has demostrado gran valentía y destreza al completar:",
+      "rewards_obtained": "Recompensas Obtenidas",
+      "gold": "Oro",
+      "special_item": "Objeto Especial",
+      "claim_and_lobby": "Reclamar y Volver al Lobby",
+      "mission_board": "Tablón de Misiones",
+      "how_can_i_help": "¿En qué puedo ayudarte hoy?",
+      "no_missions": "No hay misiones disponibles en este momento.",
+      "no_missions_desc": "Vuelve más tarde o consulta con otro Maestro de Misiones.",
+      "view_goods": "Ver Mercancías",
+      "view_goods_desc": "Explora los tesoros y suministros de mi tienda.",
+      "status_completed": "✓ Completada",
+      "status_in_progress": "↻ En Progreso",
+      "loading": "Cargando...",
+      "status_new": "★ Nueva",
+      "location": "Ubicación: {{scene}}",
+      "speaks": "{{name}} habla...",
+      "you_responded": "Respondiste:",
+      "silence_req": "SILENCIO REQ.",
+      "completed": "Completada",
+      "in_progress": "En Curso",
+      "current_task": "Tarea Actual",
+      "listen_closely": "Escucha atentamente las palabras...",
+      "anything_else": "¿En qué más puedo ayudarte?",
+      "missions_menu": "Menú de Misiones",
+      "auto_voice": "Auto-voz",
+      "silence_required_placeholder": "Silencio requerido...",
+      "type_words_placeholder": "Escribe tus palabras...",
+      "show_text": "Mostrar texto",
+      "transcript": "Transcripción",
+      "custom": {
+        "hello": "¡Hola!",
+        "hello_": "¡Hola!",
+        "hi": "¡Hola!",
+        "hi_": "¡Hola!",
+        "hey": "¡Oye! / ¡Hola!",
+        "hey_": "¡Oye! / ¡Hola!",
+        "yo": "¡Epa!",
+        "yo_": "¡Epa!",
+        "good_morning": "¡Buenos días!",
+        "good_morning_": "¡Buenos días!",
+        "good_afternoon": "¡Buenas tardes!",
+        "good_afternoon_": "¡Buenas tardes!",
+        "good_evening": "¡Buenas noches!",
+        "good_evening_": "¡Buenas noches!",
+        "well_done": "¡Bien hecho!",
+        "well_done_": "¡Bien hecho!",
+        "great_job": "¡Buen trabajo!",
+        "great_job_": "¡Buen trabajo!",
+        "excellent": "¡Excelente!",
+        "excellent_": "¡Excelente!",
+        "task_completed": "¡Tarea completada!",
+        "task_completed_": "¡Tarea completada!",
+        "you_are_great": "¡Eres genial!",
+        "you_are_great_": "¡Eres genial!",
+        "yo__what_s_the_word_": "¡Epa! ¿Qué cuentas?",
+        "good_day__who_goes_there_": "Buen día. ¿Quién va ahí?",
+        "halt__state_your_business_": "¡Alto! Diga su asunto.",
+        "you_re_one_of_us_now_": "¡Ahora eres uno de nosotros!",
+        "most_distinguished__proceed_": "Muy distinguido. Proceda.",
+        "accurate_as_a_clock__pass_": "¡Preciso como un reloj! Pase."
+      }
+    }
+  },
+  "landing": {
+    "navbar": {
+      "challenges": "Desafíos",
+      "agenda": "Agenda",
+      "speakers": "Mentores",
+      "join": "UNIRSE",
+      "join_now": "UNIRSE AHORA"
+    }
+  },
+  "register": {
+    "timeline": {
+      "account": "Cuenta",
+      "guide": "Elegir Guía",
+      "whatsapp": "WhatsApp"
+    },
+    "step1": {
+      "title": "Comienza tu Odisea",
+      "subtitle": "Crea tu avatar lingüístico para entrar en el reino de Gather RPG.",
+      "error_all_fields": "Por favor, completa todos los campos.",
+      "error_mismatch": "Las contraseñas no coinciden.",
+      "error_generic": "Error al registrar la cuenta. Inténtalo de nuevo.",
+      "username": "Nombre de Héroe (Username)",
+      "username_placeholder": "Ej. EldarGamer",
+      "email": "Correo Electrónico",
+      "email_placeholder": "tu@odisea.com",
+      "password": "Contraseña Secreta",
+      "confirm_password": "Confirmar Contraseña",
+      "submitting": "Invocando Cuenta...",
+      "submit": "Crear Cuenta",
+      "has_account": "¿Ya tienes un personaje creado?",
+      "login_link": "Iniciar Sesión"
+    },
+    "step2": {
+      "title": "Elige a tu Guía de Combate",
+      "subtitle": "Si tuvieras que salvar a uno del abismo... ¿a quién elegirías? Éste será el NPC con el que te comunicarás a diario.",
+      "error_select": "Por favor, selecciona un guía.",
+      "error_save": "No pudimos guardar tu selección de guía. Reintenta por favor.",
+      "loading": "Invocando opciones de guías...",
+      "mentor": "Mentor",
+      "companion": "Guía Acompañante",
+      "ready": "¡Listo para acompañarte en tu viaje!",
+      "prev": "Anterior",
+      "next": "Siguiente",
+      "submitting": "Fijando Alianza...",
+      "submit": "Elegir a mi Guía"
+    },
+    "step3": {
+      "title": "Vincular tu WhatsApp",
+      "subtitle": "La repetición diaria es la llave para consolidar tu inglés en el cerebro. ¿Te gustaría recibir notificaciones de práctica y recordatorios?",
+      "error_phone": "Por favor, ingresa tu número de WhatsApp.",
+      "error_save": "No se pudo guardar la configuración de WhatsApp. Inténtalo de nuevo.",
+      "error_terms": "No se pudo guardar la aceptación de términos. Inténtalo de nuevo.",
+      "yes_reminders": "Sí, deseo recordatorios",
+      "no_reminders": "No, prefiero avanzar solo",
+      "phone_label": "Número de Teléfono WhatsApp (con Código de País)",
+      "phone_help": "Selecciona tu país de origen en la lista y luego escribe tu número de celular.",
+      "timezone_label": "Zona Horaria",
+      "hours_label": "Horas Preferidas",
+      "hours_start": "INICIO",
+      "hours_end": "FIN",
+      "hours_to": "a",
+      "training_title": "Entrenamiento de Aventurero",
+      "training_desc": "Tu guía elegido te enviará pequeños desafíos orales y motivaciones personalizadas dentro de estas horas preferidas para que no interrumpa tus horas de sueño.",
+      "opt_out_text": "¡Entendido! Continuarás sin alertas automáticas de WhatsApp. Tu guía te esperará dentro del lobby del juego para tus prácticas.",
+      "legal_title": "Aviso Legal, Términos y Privacidad (Odisea)",
+      "legal_checkbox": "Declaro bajo la gravedad de juramento que tengo 18 años de edad o más y que acepto en su totalidad el Aviso Legal, Términos de Uso y Política de Privacidad de Odisea.",
+      "submitting": "Sincronizando Alquimia...",
+      "submit": "Completar Registro"
+    },
+    "step4": {
+      "title": "Activar Notificaciones",
+      "subtitle": "Para activar las alertas de tu guía y verificar tu número, escanea el código QR con la cámara de tu celular o presiona el botón inferior para abrir WhatsApp y enviar el mensaje predefinido.",
+      "send_message": "Envía este mensaje desde tu celular:",
+      "waiting_activation": "Esperando mensaje de activación...",
+      "open_whatsapp": "Abrir WhatsApp",
+      "skip_step": "Omitir paso por ahora"
+    }
   }
 }

@@ -35,6 +35,9 @@ type Config struct {
 
 	EvolutionAPIURL string
 	EvolutionAPIKey string
+	PiperExePath    string
+	PiperModelsDir  string
+	PiperCacheDir   string
 }
 
 func LoadConfig() *Config {
@@ -71,6 +74,9 @@ func LoadConfig() *Config {
 
 		EvolutionAPIURL: getEnv("EVOLUTION_API_URL", "http://localhost:8080"),
 		EvolutionAPIKey: getEnv("EVOLUTION_API_KEY", "evolution_secret_key"),
+		PiperExePath:    getEnv("PIPER_EXE_PATH", "piper"),
+		PiperModelsDir:  getEnv("PIPER_MODELS_DIR", "./models"),
+		PiperCacheDir:   getEnv("PIPER_CACHE_DIR", "./tts_cache"),
 	}
 
 	log.Printf("Config Loaded: DB_HOST=%s, DB_PORT=%s, DB_NAME=%s", cfg.DBHost, cfg.DBPort, cfg.DBName)

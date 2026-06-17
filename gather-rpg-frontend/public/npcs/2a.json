@@ -3,27 +3,6 @@
     {
       "filename": "portrait-idle",
       "frame": {
-        "x": 330,
-        "y": 18,
-        "w": 159,
-        "h": 145
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 159,
-        "h": 145
-      },
-      "sourceSize": {
-        "w": 159,
-        "h": 145
-      }
-    },
-    {
-      "filename": "portrait-talking",
-      "frame": {
         "x": 19,
         "y": 19,
         "w": 141,
@@ -43,7 +22,7 @@
       }
     },
     {
-      "filename": "portrait-happy",
+      "filename": "portrait-talking",
       "frame": {
         "x": 178,
         "y": 19,
@@ -61,6 +40,27 @@
       "sourceSize": {
         "w": 144,
         "h": 144
+      }
+    },
+    {
+      "filename": "portrait-happy",
+      "frame": {
+        "x": 330,
+        "y": 18,
+        "w": 159,
+        "h": 145
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 159,
+        "h": 145
+      },
+      "sourceSize": {
+        "w": 159,
+        "h": 145
       }
     },
     {
@@ -87,27 +87,6 @@
     {
       "filename": "portrait-sad",
       "frame": {
-        "x": 340,
-        "y": 176,
-        "w": 142,
-        "h": 144
-      },
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {
-        "x": 0,
-        "y": 0,
-        "w": 142,
-        "h": 144
-      },
-      "sourceSize": {
-        "w": 142,
-        "h": 144
-      }
-    },
-    {
-      "filename": "portrait-surprised",
-      "frame": {
         "x": 178,
         "y": 177,
         "w": 144,
@@ -124,6 +103,27 @@
       "sourceSize": {
         "w": 144,
         "h": 143
+      }
+    },
+    {
+      "filename": "portrait-surprised",
+      "frame": {
+        "x": 340,
+        "y": 176,
+        "w": 142,
+        "h": 144
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 142,
+        "h": 144
+      },
+      "sourceSize": {
+        "w": 142,
+        "h": 144
       }
     },
     {

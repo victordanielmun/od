@@ -28,11 +28,15 @@ export class EditorController {
     this.npcMetadata = null;
     this.enemyMetadata = null;
     this.pickupMetadata = null;
+    this.furnitureMetadata = null;
 
     this.GRID_SIZE = 100;
 
     this.onEditorEvent = this._handleEditorEvent.bind(this);
     window.addEventListener('editor-command', this.onEditorEvent);
+
+    // Broadcast that we are ready to receive state sync from UI
+    window.dispatchEvent(new CustomEvent('editor-controller-ready'));
   }
 
   pauseEnemies() {
@@ -183,6 +187,7 @@ export class EditorController {
       case 'setNPCMetadata': this.npcMetadata = value; break;
       case 'setEnemyMetadata': this.enemyMetadata = value; break;
       case 'setPickupMetadata': this.pickupMetadata = value; break;
+      case 'setFurnitureMetadata': this.furnitureMetadata = value; break;
       case 'setMoveMode': this.setMoveMode(value); break;
       case 'undo': this.undo(); break;
       case 'redo': this.redo(); break;
@@ -345,7 +350,7 @@ export class EditorController {
     const detail = {
       type: type,
       frame: tile.frame.name,
-      scale: tile.scaleX || 1,
+      scale: (type === 'build' ? (tile.data?.get('buildScale') || tile.scaleX / 1.25) : tile.scaleX) || 1,
       metadata: metadata,
       x: gx,
       y: gy
@@ -377,7 +382,7 @@ export class EditorController {
       if (interactionText !== undefined) gObj.data.set('interactionText', interactionText);
       
       const scale = this.buildMetadata.buildScale || 2;
-      gObj.setScale(scale);
+      gObj.setScale(scale * 1.25);
       gObj.data.set('buildScale', scale);
     });
     this.scene.cameras.main.flash(200, 0, 255, 0);
@@ -458,7 +463,7 @@ export class EditorController {
       if (this.tileType === 'build') newMetadata = this.buildMetadata;
       else if (this.tileType === 'npc') newMetadata = this.npcMetadata;
       else if (this.tileType === 'enemy') newMetadata = this.enemyMetadata;
-      else if (this.tileType === 'item') newMetadata = this.pickupMetadata;
+      else if (this.tileType === 'furniture' || this.tileType === 'furniture2') newMetadata = this.furnitureMetadata;
 
       this._pushHistory({ 
         action: 'replace', 
@@ -482,6 +487,7 @@ export class EditorController {
         console.log(`[Editor] Placing enemy spawn with metadata:`, currentMetadata);
       }
       else if (this.tileType === 'item') currentMetadata = this.pickupMetadata;
+      else if (this.tileType === 'furniture' || this.tileType === 'furniture2') currentMetadata = this.furnitureMetadata;
 
       this._pushHistory({ 
         action: 'place', 
@@ -501,21 +507,28 @@ export class EditorController {
       this.tileType === 'build' ? this.buildMetadata : 
       this.tileType === 'npc' ? this.npcMetadata : 
       this.tileType === 'enemy' ? this.enemyMetadata : 
-      this.tileType === 'item' ? this.pickupMetadata : null, 
+      this.tileType === 'item' ? this.pickupMetadata : 
+      (this.tileType === 'furniture' || this.tileType === 'furniture2') ? this.furnitureMetadata : null, 
       this.buildScale);
 
     this.emitStats();
   }
 
-  /** Retorna el frame por defecto para cada tipo de tile con atlas propio */
+  /** Retorna el frame por defecto para cada tipo de tile con atlas propio.
+   *  NOTA: En los atlases de furniture, 'sprite1' (y algunos más) son placeholders
+   *  de 1×1 px invisibles. Usamos el primer frame real visible de cada atlas.
+   *  - furniture.json  → primer frame visible es 'sprite2'
+   *  - furniture2.json → primer frame visible es 'sprite7'
+   */
   _getDefaultFrameForType(type) {
     switch (type) {
-      case 'forest': return 'sprite1';
-      case 'wall': return 'sprite1';
-      case 'build': return 'sprite1';
-      case 'store': return 'sprite1';
-      case 'furniture': return 'sprite1';
-      default: return 'sprite1';
+      case 'forest':    return 'sprite1';
+      case 'wall':      return 'sprite1';
+      case 'build':     return 'sprite1';
+      case 'store':     return 'sprite1';
+      case 'furniture':  return 'sprite2';   // sprite1 es 1×1 px invisible
+      case 'furniture2': return 'sprite7';   // sprite1-6 son 1×1 px invisibles
+      default:          return 'sprite1';
     }
   }
 
@@ -658,7 +671,8 @@ export class EditorController {
         voids: this.scene.voids?.getChildren()?.length || 0,
         colliders: this.scene.colliders?.getChildren()?.length || 0,
         storeTiles: this.scene.storeTiles?.getChildren()?.length || 0,
-        furniture: this.scene.storeFurniture?.getChildren()?.length || 0,
+        furniture: this.scene.storeFurniture?.getChildren()?.filter(t => t.texture.key === 'store-furniture')?.length || 0,
+        furniture2: this.scene.storeFurniture?.getChildren()?.filter(t => t.texture.key === 'store-furniture2')?.length || 0,
         enemySpawns: this.scene.enemySpawns?.getChildren()?.length || 0,
         historySize: this.history?.length || 0,
         redoSize: this.redoStack?.length || 0,

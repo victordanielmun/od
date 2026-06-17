@@ -105,10 +105,39 @@ export class MapSerializer {
         frame: safeFrame(t.frame?.name),
       })),
 
-      furniture: mm.storeFurniture.getChildren().map(t => ({
-        x: t.x, y: t.y,
-        frame: safeFrame(t.frame?.name),
-      })),
+      furniture: mm.storeFurniture.getChildren()
+        .filter(t => t.texture.key === 'store-furniture')
+        .map(t => {
+          const entry = {
+            x: t.x,
+            y: t.y,
+            frame: safeFrame(t.frame?.name),
+          };
+          const minigameType = getData(t.data, 'minigameType');
+          const minigameId = getData(t.data, 'minigameId');
+          const readText = getData(t.data, 'readText');
+          if (minigameType !== undefined) entry.minigameType = minigameType;
+          if (minigameId !== undefined) entry.minigameId = minigameId;
+          if (readText !== undefined) entry.readText = readText;
+          return entry;
+        }),
+
+      furniture2: mm.storeFurniture.getChildren()
+        .filter(t => t.texture.key === 'store-furniture2')
+        .map(t => {
+          const entry = {
+            x: t.x,
+            y: t.y,
+            frame: safeFrame(t.frame?.name),
+          };
+          const minigameType = getData(t.data, 'minigameType');
+          const minigameId = getData(t.data, 'minigameId');
+          const readText = getData(t.data, 'readText');
+          if (minigameType !== undefined) entry.minigameType = minigameType;
+          if (minigameId !== undefined) entry.minigameId = minigameId;
+          if (readText !== undefined) entry.readText = readText;
+          return entry;
+        }),
 
       enemySpawns: mm.enemySpawns.getChildren().map(t => ({
         x:          t.x,
@@ -218,7 +247,16 @@ export class MapSerializer {
       }));
 
       (data.storeTiles || []).forEach(t => place('store',     t.x, t.y, t.frame));
-      (data.furniture  || []).forEach(t => place('furniture', t.x, t.y, t.frame));
+      (data.furniture  || []).forEach(t => place('furniture', t.x, t.y, t.frame, {
+        minigameType: t.minigameType,
+        minigameId:   t.minigameId,
+        readText:     t.readText,
+      }));
+      (data.furniture2 || []).forEach(t => place('furniture2', t.x, t.y, t.frame, {
+        minigameType: t.minigameType,
+        minigameId:   t.minigameId,
+        readText:     t.readText,
+      }));
 
       (data.enemySpawns || []).forEach(t => place('enemy', t.x, t.y, null, {
         npcId:      t.npcId,

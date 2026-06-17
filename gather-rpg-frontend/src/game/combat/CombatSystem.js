@@ -40,11 +40,18 @@ export class CombatSystem {
 
     // Initial HP bar setup
     this.setupHUD();
+
+    // Scale resize listener to keep HP/MP bars at the bottom
+    this.onResize = () => this.updateHpBar();
+    this.scene.scale.on('resize', this.onResize, this);
   }
 
   destroy() {
     window.removeEventListener('ninja-card-result', this.onNinjaCardResult);
     this.scene.events.off('enemy-attack', this.onEnemyAttack);
+    if (this.onResize) {
+      this.scene.scale.off('resize', this.onResize, this);
+    }
     if (this.hpBar) this.hpBar.destroy();
     if (this.hpText) this.hpText.destroy();
     if (this.mpText) this.mpText.destroy();
@@ -78,16 +85,19 @@ export class CombatSystem {
     
     this.hpBar.clear();
     
-    const x = 40;
-    const y = 40;
-    const w = 240;
-    const h = 24;
+    const x = 20;
+    const screenHeight = this.scene.scale.height;
+    const bottomY = screenHeight - 46;
+    
+    const y = bottomY;
+    const w = 120;
+    const h = 10;
     
     // Background for HP (Border)
     this.hpBar.fillStyle(0x000000, 0.7);
-    this.hpBar.fillRoundedRect(x - 4, y - 4, w + 8, h + 8, 12);
-    this.hpBar.lineStyle(3, 0xffd700, 1);
-    this.hpBar.strokeRoundedRect(x - 4, y - 4, w + 8, h + 8, 12);
+    this.hpBar.fillRoundedRect(x - 3, y - 3, w + 6, h + 6, 5);
+    this.hpBar.lineStyle(1.5, 0xffd700, 1);
+    this.hpBar.strokeRoundedRect(x - 3, y - 3, w + 6, h + 6, 5);
 
     // Health bar fill
     const fillWidth = (this.playerHp / this.playerMaxHp) * w;
@@ -95,70 +105,24 @@ export class CombatSystem {
     
     this.hpBar.fillStyle(color, 1);
     if (fillWidth > 0) {
-      this.hpBar.fillRoundedRect(x, y, fillWidth, h, 8);
-    }
-
-    // Label for HP
-    if (!this.hpText || !this.hpText.scene) {
-      try {
-        this.hpText = this.scene.add.text(x + w / 2, y + h / 2, `HP: ${this.playerHp} / ${this.playerMaxHp}`, {
-          fontFamily: '"Outfit", sans-serif',
-          fontSize: '14px',
-          fontWeight: '900',
-          fill: '#ffffff',
-          stroke: '#000000',
-          strokeThickness: 3
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(200001);
-      } catch (e) {
-        console.warn("[CombatSystem] Failed to create HP text:", e);
-      }
-    } else {
-      try {
-        this.hpText.setText(`HP: ${this.playerHp} / ${this.playerMaxHp}`);
-      } catch (e) {
-        console.warn("[CombatSystem] Failed to update HP text:", e);
-        this.hpText = null;
-      }
+      this.hpBar.fillRoundedRect(x, y, fillWidth, h, 3);
     }
 
     // --- Mana Bar Setup ---
-    const my = 75;
-    const mh = 16;
+    const my = bottomY + h + 6;
+    const mh = 8;
 
     // Background for MP (Border)
     this.hpBar.fillStyle(0x000000, 0.7);
-    this.hpBar.fillRoundedRect(x - 4, my - 4, w + 8, mh + 8, 10);
-    this.hpBar.lineStyle(3, 0x00aaff, 1); // Blue border for mana
-    this.hpBar.strokeRoundedRect(x - 4, my - 4, w + 8, mh + 8, 10);
+    this.hpBar.fillRoundedRect(x - 3, my - 3, w + 6, mh + 6, 4);
+    this.hpBar.lineStyle(1.5, 0x00aaff, 1); // Blue border for mana
+    this.hpBar.strokeRoundedRect(x - 3, my - 3, w + 6, mh + 6, 4);
 
     // Mana bar fill
     const mpFillWidth = (this.playerMp / this.playerMaxMp) * w;
     this.hpBar.fillStyle(0x0066ff, 1);
     if (mpFillWidth > 0) {
-      this.hpBar.fillRoundedRect(x, my, mpFillWidth, mh, 6);
-    }
-
-    // Label for MP
-    if (!this.mpText || !this.mpText.scene) {
-      try {
-        this.mpText = this.scene.add.text(x + w / 2, my + mh / 2, `MP: ${this.playerMp} / ${this.playerMaxMp}`, {
-          fontFamily: '"Outfit", sans-serif',
-          fontSize: '11px',
-          fontWeight: '900',
-          fill: '#ffffff',
-          stroke: '#000000',
-          strokeThickness: 3
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(200001);
-      } catch (e) {
-        console.warn("[CombatSystem] Failed to create MP text:", e);
-      }
-    } else {
-      try {
-        this.mpText.setText(`MP: ${this.playerMp} / ${this.playerMaxMp}`);
-      } catch (e) {
-        console.warn("[CombatSystem] Failed to update MP text:", e);
-        this.mpText = null;
-      }
+      this.hpBar.fillRoundedRect(x, my, mpFillWidth, mh, 2);
     }
   }
 

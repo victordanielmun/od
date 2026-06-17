@@ -32,3 +32,9 @@ func (s *LearningService) GetChallengeMetadata() ([]string, []string, error) {
 func (s *LearningService) GetProfileByUserID(userID uuid.UUID) (*models.UserLearningProfile, error) {
 	return s.Repo.GetProfileByUserID(userID)
 }
+
+// UpdateEnglishLevel updates the user's English difficulty level
+func (s *LearningService) UpdateEnglishLevel(userID uuid.UUID, level string) error {
+	return s.Repo.UpdateEnglishLevel(userID, level)
+}
+

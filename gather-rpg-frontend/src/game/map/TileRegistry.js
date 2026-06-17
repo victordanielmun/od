@@ -25,6 +25,7 @@ const TEXTURE_MAP = {
   collider:  'tile-collider',
   store:     'store-tiles',
   furniture: 'store-furniture',
+  furniture2: 'store-furniture2',
   item:      'tile-item',
 };
 
@@ -64,7 +65,8 @@ export class TileRegistry {
       case 'void':      return mm.voids;
       case 'collider':  return mm.colliders;
       case 'store':     return mm.storeTiles;
-      case 'furniture': return mm.storeFurniture;
+      case 'furniture':
+      case 'furniture2': return mm.storeFurniture;
       case 'enemy':     return mm.enemySpawns;
       default:          return mm.walls;
     }
@@ -102,7 +104,13 @@ export class TileRegistry {
       const found = item.group.getChildren().find(
         t => Math.abs(t.x - gx) <= FIND_TOLERANCE && Math.abs(t.y - gy) <= FIND_TOLERANCE
       );
-      if (found) return { tile: found, type: item.type, group: item.group };
+      if (found) {
+        let actualType = item.type;
+        if (actualType === 'furniture' && found.texture.key === 'store-furniture2') {
+          actualType = 'furniture2';
+        }
+        return { tile: found, type: actualType, group: item.group };
+      }
     }
     return null;
   }
@@ -136,7 +144,13 @@ export class TileRegistry {
       const tile = group.getChildren().find(
         t => Math.abs(t.x - gx) <= FIND_TOLERANCE && Math.abs(t.y - gy) <= FIND_TOLERANCE
       );
-      if (tile) result.push({ tile, type, group });
+      if (tile) {
+        let actualType = type;
+        if (actualType === 'furniture' && tile.texture.key === 'store-furniture2') {
+          actualType = 'furniture2';
+        }
+        result.push({ tile, type: actualType, group });
+      }
     }
     return result;
   }
