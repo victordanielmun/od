@@ -29,6 +29,31 @@ var (
 	})
 )
 
+// ninjaCardTimeout es el tiempo máximo que un enemigo permanece bloqueado
+// esperando la respuesta de una carta ninja antes de liberarse automáticamente.
+const ninjaCardTimeout = 60 * time.Second
+
+// attackDamage define el daño autoritativo por tipo de ataque. El servidor NO
+// confía en ningún valor de daño enviado por el cliente (evita cheats); solo
+// acepta el tipo de ataque y aplica el daño correspondiente de esta tabla.
+var attackDamage = map[string]int{
+	"basic":           10,
+	"combo1":          10,
+	"combo2":          12,
+	"combo3_finisher": 20,
+	"spell":           25,
+	"throw":           15,
+}
+
+// damageForAttack devuelve el daño autoritativo para un tipo de ataque dado.
+// Tipos desconocidos o vacíos usan el daño base.
+func damageForAttack(attackType string) int {
+	if d, ok := attackDamage[attackType]; ok {
+		return d
+	}
+	return 10
+}
+
 type Hub struct {
 	Clients    map[*Client]bool
 	Rooms      map[string]*Room
@@ -249,6 +274,9 @@ func (h *Hub) handleUnregister(client *Client) {
 
 			if room, ok := h.Rooms[client.RoomID]; ok {
 				room.RemoveClient(client)
+				// Liberar enemigos bloqueados por una carta ninja sin responder de
+				// este jugador, para que no queden inmatables.
+				room.ReleaseNinjaCardsForPlayer(client.ID.String())
 				// Also remove from Redis
 				err := h.MovementService.ClearPosition(context.Background(), client.RoomID, client.ID.String())
 				if err != nil {
@@ -332,13 +360,9 @@ func (h *Hub) HandleMessage(client *Client, message []byte) {
 	case MsgWebRTCDisconnect:
 		h.handleWebRTCDisconnect(client, wsMsg.Payload)
 
-	// Combat Handlers
+	// Character class selection
 	case MsgSelectClass:
 		h.handleSelectClass(client, wsMsg.Payload)
-	case MsgEncounterEnemy:
-		h.handleEncounterEnemy(client, wsMsg.Payload)
-	case MsgCombatAction:
-		h.handleCombatAction(client, wsMsg.Payload)
 
 	// Chat Handlers
 	case MsgChatRequest:
@@ -964,132 +988,121 @@ func (h *Hub) handleSelectClass(client *Client, payload interface{}) {
 	})
 }
 
-func (h *Hub) handleEncounterEnemy(client *Client, payload interface{}) {
-	var p struct {
-		EnemyID  string `json:"enemy_id"`
-		Position struct {
-			X float64 `json:"x"`
-			Y float64 `json:"y"`
-		} `json:"position"`
-	}
-	parsePayload(payload, &p)
+// processEnemyKill ejecuta toda la lógica de progreso de misiones tras la muerte
+// de un enemigo: kills individuales (defeat_enemy / kill_boss) y kill_all,
+// emitiendo los eventos WS correspondientes (enemy_kill_progress / mission_completed).
+// Es compartida por la muerte normal y por la Ninja Card para que ambos caminos
+// avancen el progreso de forma idéntica. Pensada para ejecutarse en su propio
+// goroutine; gestiona internamente los locks de la sala.
+func (h *Hub) processEnemyKill(killerUUID uuid.UUID, enemyTemplateID uuid.UUID, room *Room, roomID string) {
+	killerID := killerUUID.String()
+	log.Printf("[Combat] processEnemyKill | killer=%s | enemyTemplateID=%s | room=%s", killerID, enemyTemplateID, roomID)
 
-	// Start Combat
-	state, err := h.CombatService.StartCombat(client.ID.String(), p.EnemyID, client.RoomID)
+	// 1. Kills individuales (defeat_enemy / kill_boss)
+	progressResults, err := h.MissionService.UpdateKillProgress(killerUUID, enemyTemplateID, roomID)
 	if err != nil {
-		client.SendError("Failed to start combat: " + err.Error())
-		return
+		log.Printf("[Combat] UpdateKillProgress ERROR for user %s: %v", killerID, err)
 	}
-
-	// Need Enemy details for payload
-	// In a real app, we would fetch it again or StartCombat returns it fully populated
-	// State has EnemyState (HP/MP), but not Name/SpriteKey which are static.
-	// Ideally StartCombat returns a struct with both state and static info, or we fetch static info here.
-	// For now, we assume client knows who it collided with or we fetch minimal info.
-
-	// Send Combat Started
-	client.SendJSON(&models.WSMessage{
-		Type: MsgCombatStarted,
-		Payload: map[string]interface{}{
-			"combat_id": state.CombatID,
-			"enemy": map[string]interface{}{
-				"id": p.EnemyID,
-				// "name": "Goblin", // Ideally fetched
-				"hp_current": state.EnemyState.HPCurrent,
-				"hp_max":     state.EnemyState.HPMax,
-			},
-			"player": map[string]interface{}{
-				"hp_current": state.PlayerState.HPCurrent,
-				"hp_max":     state.PlayerState.HPMax,
-				"mp_current": state.PlayerState.MPCurrent,
-				"mp_max":     state.PlayerState.MPMax,
-			},
-			"current_turn": state.CurrentTurn,
-		},
-	})
-}
-
-func (h *Hub) handleCombatAction(client *Client, payload interface{}) {
-	var p struct {
-		CombatID   string `json:"combat_id"`
-		ActionType string `json:"action_type"`
-		SkillID    string `json:"skill_id"`
-		ItemID     string `json:"item_id"`
-	}
-	parsePayload(payload, &p)
-
-	// Process Player Action
-	state, logEntry, err := h.CombatService.ProcessAction(p.CombatID, p.ActionType, p.SkillID)
-	if err != nil {
-		client.SendError(err.Error())
-		return
-	}
-
-	// Broadcast Turn Result (Player)
-	client.SendJSON(&models.WSMessage{
-		Type: MsgTurnResult,
-		Payload: map[string]interface{}{
-			"combat_id":    state.CombatID,
-			"turn_number":  state.TurnNumber,
-			"actions":      []*models.CombatLogEntry{logEntry},
-			"player_state": state.PlayerState,
-			"enemy_state":  state.EnemyState,
-			"next_turn":    state.CurrentTurn,
-		},
-	})
-
-	if state.Status != "active" {
-		h.handleCombatEnd(client, state)
-		return
-	}
-
-	// If next turn is Enemy, process it immediately (or delay slightly for UX)
-	if state.CurrentTurn == "enemy" {
-		go func() {
-			// Simulate think time
-			time.Sleep(1 * time.Second)
-
-			enemyState, enemyLog, err := h.CombatService.ProcessEnemyTurn(p.CombatID)
-			if err != nil {
-				return
+	for _, res := range progressResults {
+		if res.MissionDone {
+			if mission, dbErr := h.MissionService.Repo.GetMissionByID(res.MissionID); dbErr == nil {
+				h.SendToUser(killerID, &models.WSMessage{
+					Type: MsgMissionCompleted,
+					Payload: map[string]interface{}{
+						"mission_id": res.MissionID,
+						"title":      mission.Title,
+					},
+				})
 			}
-
-			client.SendJSON(&models.WSMessage{
-				Type: MsgTurnResult,
+		} else {
+			h.SendToUser(killerID, &models.WSMessage{
+				Type: MsgEnemyKillProgress,
 				Payload: map[string]interface{}{
-					"combat_id":    enemyState.CombatID,
-					"turn_number":  enemyState.TurnNumber,
-					"actions":      []*models.CombatLogEntry{enemyLog},
-					"player_state": enemyState.PlayerState,
-					"enemy_state":  enemyState.EnemyState,
-					"next_turn":    enemyState.CurrentTurn,
+					"mission_id":     res.MissionID,
+					"task_id":        res.TaskID,
+					"kills_done":     res.KillsDone,
+					"required_kills": res.RequiredKills,
+					"task_completed": res.TaskCompleted,
 				},
 			})
-
-			if enemyState.Status != "active" {
-				h.handleCombatEnd(client, enemyState)
-			}
-		}()
+		}
 	}
-}
 
-func (h *Hub) handleCombatEnd(client *Client, state *models.CombatState) {
-	client.SendJSON(&models.WSMessage{
-		Type: MsgCombatEnded,
-		Payload: map[string]interface{}{
-			"combat_id": state.CombatID,
-			"result":    state.Status,
-			// Rewards would be calculated here
-		},
-	})
+	// 2. kill_all: contar enemigos muertos en la sala
+	room.mu.RLock()
+	allDead := true
+	totalEnemies := len(room.ActiveEnemies)
+	deadEnemies := 0
+	for _, e := range room.ActiveEnemies {
+		if e.FSMState == "dead" {
+			deadEnemies++
+		} else {
+			allDead = false
+		}
+	}
+	room.mu.RUnlock()
+
+	log.Printf("[Combat] Room %s enemy status: %d/%d dead | allDead=%v", roomID, deadEnemies, totalEnemies, allDead)
+
+	if !allDead {
+		// Progreso incremental para que el HUD muestre kills en tiempo real.
+		results, _ := h.MissionService.GetKillAllProgress(killerUUID)
+		for _, res := range results {
+			h.SendToUser(killerID, &models.WSMessage{
+				Type: MsgEnemyKillProgress,
+				Payload: map[string]interface{}{
+					"mission_id":     res.MissionID,
+					"task_id":        res.TaskID,
+					"kills_done":     deadEnemies,
+					"required_kills": totalEnemies,
+					"task_completed": false,
+				},
+			})
+		}
+		return
+	}
+
+	// 3. Sala despejada: completar misiones kill_all de todos los clientes.
+	log.Printf("[Combat] Room %s fully cleared! Updating 'kill_all' missions.", roomID)
+	room.mu.RLock()
+	clientIDs := make([]uuid.UUID, 0, len(room.Clients))
+	for c := range room.Clients {
+		clientIDs = append(clientIDs, c.ID)
+	}
+	room.mu.RUnlock()
+
+	for _, cid := range clientIDs {
+		killAllResults, err := h.MissionService.UpdateKillAllProgress(cid, roomID)
+		if err != nil {
+			log.Printf("[Combat] KillAll progress error for user %s: %v", cid, err)
+			continue
+		}
+		for _, res := range killAllResults {
+			if res.MissionDone {
+				if mission, dbErr := h.MissionService.Repo.GetMissionByID(res.MissionID); dbErr == nil {
+					h.SendToUser(cid.String(), &models.WSMessage{
+						Type: MsgMissionCompleted,
+						Payload: map[string]interface{}{
+							"mission_id": res.MissionID,
+							"title":      mission.Title,
+						},
+					})
+					log.Printf("[Combat] mission_completed sent to user %s for mission %d (kill_all)", cid, res.MissionID)
+				}
+			}
+		}
+	}
 }
 
 func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 	var p struct {
 		TargetInstanceID string `json:"target_instance_id"`
-		Damage           int    `json:"damage"`
+		AttackType       string `json:"attack_type"`
 	}
 	parsePayload(payload, &p)
+
+	// El daño lo decide el servidor según el tipo de ataque, nunca el cliente.
+	dmg := damageForAttack(p.AttackType)
 
 	roomID := client.RoomID
 	if roomID == "" {
@@ -1123,7 +1136,7 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 	}
 
 	// Ninja Cards logic: If this blow would kill the enemy
-	if enemy.HP-p.Damage <= 0 && enemy.FSMState != "ninja_card" {
+	if enemy.HP-dmg <= 0 && enemy.FSMState != "ninja_card" {
 		log.Printf("[NinjaCard] Enemy %s is about to die from player %s. Triggering Ninja Card.", instanceUUID, client.ID)
 		enemy.FSMState = "ninja_card"
 		enemy.PendingNinjaCard = client.ID.String()
@@ -1156,18 +1169,36 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 					"challenge":          challenge,
 				},
 			})
+
+			// Safety timeout: si el jugador nunca responde la carta, liberar al
+			// enemigo para que no quede bloqueado e inmatable de forma permanente.
+			playerID := client.ID.String()
+			go func() {
+				time.Sleep(ninjaCardTimeout)
+				if room.ReleaseStaleNinjaCard(instanceUUID, playerID) {
+					// Cerrar el modal del jugador si sigue conectado (no-op si se fue).
+					h.SendToUser(playerID, &models.WSMessage{
+						Type: MsgNinjaCardResult,
+						Payload: map[string]interface{}{
+							"correct": false,
+							"effect":  "expired",
+						},
+					})
+				}
+			}()
 			return
 		}
 		// Fallback to normal death if challenge fails
 		room.mu.Lock()
 	}
 
-	enemy.HP -= p.Damage
-	log.Printf("[Combat] Enemy %s took %d damage from %s. HP: %d", instanceUUID, p.Damage, client.ID, enemy.HP)
+	enemy.HP -= dmg
+	log.Printf("[Combat] Enemy %s took %d damage (%s) from %s. HP: %d", instanceUUID, dmg, p.AttackType, client.ID, enemy.HP)
 
 	if enemy.HP <= 0 {
 		enemy.HP = 0
 		enemy.FSMState = "dead"
+		enemyTemplateID := enemy.EnemyID
 		room.mu.Unlock()
 
 		// Broadcast death
@@ -1181,108 +1212,8 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 		}
 		room.broadcastToAll(deathMsg)
 
-		// Update Mission Progress
-		go func() {
-			log.Printf("[Combat] Enemy killed → calling UpdateKillProgress | killer=%s | enemyTemplateID=%s | room=%s",
-				client.ID, enemy.EnemyID, roomID)
-			progressResults, err := h.MissionService.UpdateKillProgress(client.ID, enemy.EnemyID, roomID)
-			if err != nil {
-				log.Printf("[Combat] UpdateKillProgress ERROR for user %s: %v", client.ID, err)
-			}
-
-			// Notificar al cliente atacante sobre el progreso de kills
-			for _, res := range progressResults {
-				if res.MissionDone {
-					// La misión se completó: emitir mission_completed
-					if mission, dbErr := h.MissionService.Repo.GetMissionByID(res.MissionID); dbErr == nil {
-						h.SendToUser(client.ID.String(), &models.WSMessage{
-							Type: MsgMissionCompleted,
-							Payload: map[string]interface{}{
-								"mission_id": res.MissionID,
-								"title":      mission.Title,
-							},
-						})
-					}
-				} else {
-					// Progreso parcial: notificar cuántos kills van
-					h.SendToUser(client.ID.String(), &models.WSMessage{
-						Type: MsgEnemyKillProgress,
-						Payload: map[string]interface{}{
-							"mission_id":     res.MissionID,
-							"task_id":        res.TaskID,
-							"kills_done":     res.KillsDone,
-							"required_kills": res.RequiredKills,
-							"task_completed": res.TaskCompleted,
-						},
-					})
-				}
-			}
-
-			// Special case for "Kill All": check if all enemies are dead in this room
-			room.mu.RLock()
-			allDead := true
-			totalEnemies := len(room.ActiveEnemies)
-			deadEnemies := 0
-			for _, e := range room.ActiveEnemies {
-				if e.FSMState == "dead" {
-					deadEnemies++
-				} else {
-					allDead = false
-				}
-			}
-			room.mu.RUnlock()
-
-			log.Printf("[Combat] Room %s enemy status: %d/%d dead | allDead=%v", roomID, deadEnemies, totalEnemies, allDead)
-
-			// Emitir progreso incremental de kill_all al jugador atacante
-			// para que el HUD muestre kills_done en tiempo real
-			if !allDead {
-				// Buscar si el jugador tiene alguna misión kill_all activa
-				go func(killsDone, total int) {
-					results, _ := h.MissionService.GetKillAllProgress(client.ID)
-					for _, res := range results {
-						h.SendToUser(client.ID.String(), &models.WSMessage{
-							Type: MsgEnemyKillProgress,
-							Payload: map[string]interface{}{
-								"mission_id":     res.MissionID,
-								"task_id":        res.TaskID,
-								"kills_done":     killsDone,
-								"required_kills": total,
-								"task_completed": false,
-							},
-						})
-					}
-				}(deadEnemies, totalEnemies)
-			}
-
-			if allDead {
-				log.Printf("[Combat] Room %s fully cleared! Updating 'kill_all' missions.", roomID)
-				room.mu.RLock()
-				for c := range room.Clients {
-					killAllResults, err := h.MissionService.UpdateKillAllProgress(c.ID, roomID)
-					if err != nil {
-						log.Printf("[Combat] KillAll progress error for user %s: %v", c.ID, err)
-						continue
-					}
-					// Notificar al jugador si su misión se completó
-					for _, res := range killAllResults {
-						if res.MissionDone {
-							if mission, dbErr := h.MissionService.Repo.GetMissionByID(res.MissionID); dbErr == nil {
-								h.SendToUser(c.ID.String(), &models.WSMessage{
-									Type: MsgMissionCompleted,
-									Payload: map[string]interface{}{
-										"mission_id": res.MissionID,
-										"title":      mission.Title,
-									},
-								})
-								log.Printf("[Combat] mission_completed sent to user %s for mission %d (kill_all)", c.ID, res.MissionID)
-							}
-						}
-					}
-				}
-				room.mu.RUnlock()
-			}
-		}()
+		// Update Mission Progress (kills individuales + kill_all)
+		go h.processEnemyKill(client.ID, enemyTemplateID, room, roomID)
 
 	} else {
 		room.mu.Unlock()
@@ -1338,6 +1269,7 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 	if isCorrect {
 		enemy.HP = 0
 		enemy.FSMState = "dead"
+		enemyTemplateID := enemy.EnemyID
 		room.mu.Unlock()
 
 		client.SendJSON(&models.WSMessage{
@@ -1358,53 +1290,8 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 		}
 		room.broadcastToAll(deathMsg)
 
-		go func() {
-			log.Printf("[Combat] Enemy killed (Ninja) → calling UpdateKillProgress | killer=%s | room=%s", client.ID, roomID)
-			progressResults, err := h.MissionService.UpdateKillProgress(client.ID, enemy.EnemyID, roomID)
-			if err == nil {
-				for _, res := range progressResults {
-					if res.MissionDone {
-						if mission, dbErr := h.MissionService.Repo.GetMissionByID(res.MissionID); dbErr == nil {
-							h.SendToUser(client.ID.String(), &models.WSMessage{
-								Type: MsgMissionCompleted,
-								Payload: map[string]interface{}{
-									"mission_id": res.MissionID,
-									"title":      mission.Title,
-								},
-							})
-						}
-					} else {
-						h.SendToUser(client.ID.String(), &models.WSMessage{
-							Type: MsgEnemyKillProgress,
-							Payload: map[string]interface{}{
-								"mission_id":     res.MissionID,
-								"task_id":        res.TaskID,
-								"kills_done":     res.KillsDone,
-								"required_kills": res.RequiredKills,
-								"task_completed": res.TaskCompleted,
-							},
-						})
-					}
-				}
-			}
-
-			// Kill All check
-			room.mu.RLock()
-			allDead := true
-			for _, e := range room.ActiveEnemies {
-				if e.FSMState != "dead" {
-					allDead = false
-				}
-			}
-			room.mu.RUnlock()
-			if allDead {
-				room.mu.RLock()
-				for c := range room.Clients {
-					h.MissionService.UpdateKillAllProgress(c.ID, roomID)
-				}
-				room.mu.RUnlock()
-			}
-		}()
+		// Mismo progreso de misiones que la muerte normal (kills individuales + kill_all)
+		go h.processEnemyKill(client.ID, enemyTemplateID, room, roomID)
 	} else {
 		// Elegir efecto aleatorio entre 3 posibles efectos
 		// 0: enemy_heals, 1: player_takes_damage, 2: player_is_stunned
@@ -1515,6 +1402,7 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 			if client.RoomID != roomID {
 				// Switching rooms: full cleanup
 				oldRoom.RemoveClient(client)
+				oldRoom.ReleaseNinjaCardsForPlayer(client.ID.String())
 				oldRoom.Grid.RemoveUser(client.ID.String())
 				h.MovementService.ClearPosition(context.Background(), client.RoomID, client.ID.String())
 

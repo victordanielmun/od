@@ -73,21 +73,51 @@ export class PlayerManager {
       return false;
     };
 
+    const mw = this.scene.mapWidth || 2000;
+    const mh = this.scene.mapHeight || 2000;
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+    // Spiral outward from a blocked cell to find the nearest free grid cell.
+    // Deterministic (closest-first) instead of the old random jitter + center
+    // fallback, so a player whose configured spawn sits on a wall always lands on
+    // the adjacent open tile rather than wherever a few random tries happened to
+    // fall. Returns null only if the entire searched area is blocked.
+    const findNearestFreeCell = (sx, sy) => {
+      const baseGX = snapToGrid(sx);
+      const baseGY = snapToGrid(sy);
+      const maxRings = Math.ceil(Math.max(mw, mh) / GRID);
+      for (let ring = 0; ring <= maxRings; ring++) {
+        for (let dx = -ring; dx <= ring; dx++) {
+          for (let dy = -ring; dy <= ring; dy++) {
+            // Only test the outer border of each ring (inner cells already checked).
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+            const cx = clamp(baseGX + dx * GRID, GRID / 2, mw - GRID / 2);
+            const cy = clamp(baseGY + dy * GRID, GRID / 2, mh - GRID / 2);
+            if (!isBlockedAt(cx, cy)) return { x: cx, y: cy };
+          }
+        }
+      }
+      return null;
+    };
+
+    // 1. Ensure the base spawn is on a free cell. The map's configured spawn point
+    //    overlapping a wall is a data issue, not fatal — we self-heal here. Logged at
+    //    debug level (the real fix is moving the spawn in the map editor); the old
+    //    console.warn fired every join on such maps and buried the console.
     if (isBlockedAt(startX, startY)) {
-      console.warn('[PlayerManager] Spawn coords land on a blocked tile — falling back to map default or center');
-      startX = this.scene.mapDefaultSpawnX ?? Math.floor(this.scene.mapWidth / 2);
-      startY = this.scene.mapDefaultSpawnY ?? Math.floor(this.scene.mapHeight / 2);
-      if (isBlockedAt(startX, startY)) { startX += GRID; startY += GRID; }
+      console.debug('[PlayerManager] Configured spawn is on a blocked tile — relocating to nearest free cell.');
+      const free = findNearestFreeCell(startX, startY);
+      if (free) {
+        startX = free.x;
+        startY = free.y;
+      }
     }
 
-    // Spread the spawn ±100px per axis so concurrent joiners don't stack exactly on
-    // top of each other. Try a few jittered candidates and keep the first one that is
-    // in-bounds and not on a wall; if none work, keep the validated base position.
+    // 2. Spread the spawn ±100px per axis so concurrent joiners don't stack exactly
+    //    on top of each other. Keep the first jittered candidate that is in-bounds and
+    //    free; if none work, keep the validated base position.
     {
       const JITTER = 100;
-      const mw = this.scene.mapWidth || 2000;
-      const mh = this.scene.mapHeight || 2000;
-      const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
       for (let i = 0; i < 8; i++) {
         const cx = clamp(startX + spawnJitter(JITTER), GRID / 2, mw - GRID / 2);
         const cy = clamp(startY + spawnJitter(JITTER), GRID / 2, mh - GRID / 2);

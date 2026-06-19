@@ -263,3 +263,47 @@ func (r *Room) GetClientsCount() int {
 	defer r.mu.RUnlock()
 	return len(r.Clients)
 }
+
+// releaseNinjaCardEnemy resetea un enemigo que estaba esperando la respuesta de
+// una carta ninja para que vuelva a ser atacable. El golpe mortal nunca se
+// aplicó, así que el enemigo conserva su HP actual (>0) y vuelve a perseguir.
+// DEBE llamarse con r.mu ya bloqueado.
+func (r *Room) releaseNinjaCardEnemy(enemy *models.ActiveEnemy) {
+	enemy.FSMState = "idle"
+	enemy.PendingNinjaCard = ""
+	enemy.TargetID = ""
+	if enemy.HP <= 0 {
+		enemy.HP = 1
+	}
+}
+
+// ReleaseNinjaCardsForPlayer libera todos los enemigos cuya carta ninja estaba
+// pendiente para playerID (p. ej. al desconectarse o salir de la sala), evitando
+// que queden bloqueados e inmatables para siempre.
+func (r *Room) ReleaseNinjaCardsForPlayer(playerID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, enemy := range r.ActiveEnemies {
+		if enemy.FSMState == "ninja_card" && enemy.PendingNinjaCard == playerID {
+			log.Printf("[NinjaCard] Releasing enemy %s locked by departed player %s", enemy.InstanceID, playerID)
+			r.releaseNinjaCardEnemy(enemy)
+		}
+	}
+}
+
+// ReleaseStaleNinjaCard libera un enemigo concreto si sigue esperando la carta
+// ninja del mismo jugador tras vencer el timeout. Devuelve true si lo liberó.
+func (r *Room) ReleaseStaleNinjaCard(instanceID uuid.UUID, playerID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	enemy, ok := r.ActiveEnemies[instanceID]
+	if !ok {
+		return false
+	}
+	if enemy.FSMState == "ninja_card" && enemy.PendingNinjaCard == playerID {
+		log.Printf("[NinjaCard] Timeout: releasing enemy %s after unanswered card from %s", instanceID, playerID)
+		r.releaseNinjaCardEnemy(enemy)
+		return true
+	}
+	return false
+}

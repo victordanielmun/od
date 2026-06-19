@@ -90,7 +90,7 @@ func main() {
 	presenceService := services.NewPresenceService(userRepo)
 	movementService := services.NewMovementService()
 	peerService := services.NewPeerService(movementService)
-	combatService := services.NewCombatService(database.DB, database.RedisClient)
+	combatService := services.NewCombatService(database.DB)
 
 	learningRepo := repository.NewLearningRepository()
 	learningService := services.NewLearningService(learningRepo)

@@ -256,7 +256,7 @@ export class CombatSystem {
 
     if (nearestEnemy) {
       console.log(`[CombatSystem] Hit enemy ${nearestEnemy.id} at dist ${minDist.toFixed(1)}px`);
-      useGameStore.getState().sendPlayerAttack(nearestEnemy.id);
+      useGameStore.getState().sendPlayerAttack(nearestEnemy.id, 'basic');
       
       const hitEnemy = nearestEnemy.enemy;
       if (hitEnemy.sprite) {
@@ -316,7 +316,7 @@ export class CombatSystem {
 
     if (nearestEnemy) {
       console.log(`[CombatSystem Combo] Hit enemy ${nearestEnemy.id} via combo ${animKey}`);
-      useGameStore.getState().sendPlayerAttack(nearestEnemy.id);
+      useGameStore.getState().sendPlayerAttack(nearestEnemy.id, animKey);
       
       const hitEnemy = nearestEnemy.enemy;
       if (hitEnemy.sprite) {
@@ -394,7 +394,7 @@ export class CombatSystem {
       if (!enemy.active || enemy.fsm === 'dead') return;
       const dist = window.Phaser.Math.Distance.Between(this.scene.player.x, this.scene.player.y, enemy.x, enemy.y);
       if (dist < hitRange) {
-        useGameStore.getState().sendPlayerAttack(id);
+        useGameStore.getState().sendPlayerAttack(id, 'spell');
         if (enemy.sprite) {
           enemy.sprite.setTint(0xcc33ff);
           this.scene.time.delayedCall(300, () => {
@@ -462,7 +462,7 @@ export class CombatSystem {
     this.scene.physics.add.overlap(proj, this.scene.enemiesGroup, (projectile, enemy) => {
       if (enemy.active && enemy.fsm !== 'dead') {
         const instanceId = enemy.config?.instance_id || enemy.npcId;
-        useGameStore.getState().sendPlayerAttack(instanceId);
+        useGameStore.getState().sendPlayerAttack(instanceId, 'throw');
         this._spawnHitEffect(enemy.x, enemy.y);
         if (enemy.sprite) {
           enemy.sprite.setTint(0x00ffff);

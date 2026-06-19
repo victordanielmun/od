@@ -69,11 +69,14 @@ export class EnemySystem {
     const { instance_id } = e.detail;
     const sprite = this.activeEnemies.get(instance_id);
     if (sprite) {
+      console.log(`[EnemySystem] enemy_died received → playing death + removing ${instance_id}`);
       sprite.updateHealth(0, 100); // Triggers death animation
       this.scene.time.delayedCall(1500, () => {
         if (sprite.active) sprite.destroy();
         this.activeEnemies.delete(instance_id);
       });
+    } else {
+      console.warn(`[EnemySystem] enemy_died for unknown/already-removed instance ${instance_id}`);
     }
   }
 }

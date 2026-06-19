@@ -47,6 +47,16 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 	}
 	userID, _ := uuid.Parse(userIDStr)
 
+	// Progress is scoped to the room instance it was accepted in. Read it for the
+	// room the player is currently in so the mission list/HUD reflects real
+	// progress (nil would only match lobby/global progress and always show 0).
+	var roomID *uuid.UUID
+	if ridStr := c.Query("room_id"); ridStr != "" {
+		if rid, err := uuid.Parse(ridStr); err == nil {
+			roomID = &rid
+		}
+	}
+
 	// Fetch player's english level
 	var profile models.UserLearningProfile
 	playerLevel := models.DifficultyBeginner
@@ -78,6 +88,8 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 		Title         string           `json:"title"`
 		DescriptionEn string           `json:"description_en"`
 		ObjectiveEn   string           `json:"objective_en"`
+		SceneKey      string           `json:"scene_key"`
+		Mode          string           `json:"mode"`
 		Tasks         []TaskWithStatus `json:"tasks"`
 		OverallStatus string           `json:"status"`
 	}
@@ -85,7 +97,7 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 	result := make([]MissionWithStatus, 0)
 	for _, m := range missions {
 		tasks, _ := h.Service.GetTasks(m.ID)
-		progress, _ := h.Service.GetProgressReadOnly(userID, m.ID, nil)
+		progress, _ := h.Service.GetProgressReadOnly(userID, m.ID, roomID)
 
 		var completedMap map[string]bool
 		if progress != nil && progress.TasksCompleted != nil {
@@ -135,6 +147,8 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 			Title:         m.Title,
 			DescriptionEn: m.DescriptionEn,
 			ObjectiveEn:   m.ObjectiveEn,
+			SceneKey:      m.SceneKey,
+			Mode:          string(m.Mode),
 			OverallStatus: overallStatus,
 			Tasks:         taskStatuses,
 		})

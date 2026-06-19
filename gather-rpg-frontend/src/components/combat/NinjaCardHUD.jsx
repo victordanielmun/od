@@ -54,10 +54,11 @@ export const NinjaCardHUD = () => {
               {isCorrect ? '¡CORRECTO!' : '¡INCORRECTO!'}
             </h2>
             <p className="text-xl text-white text-center px-4">
-              {isCorrect ? 'Enemigo eliminado' : 
+              {isCorrect ? 'Enemigo eliminado' :
                resultEffect === 'enemy_heals' ? 'El enemigo se ha curado completamente.' :
                resultEffect === 'player_takes_damage' ? '¡Respuesta incorrecta! Has recibido 30 de daño.' :
                resultEffect === 'player_is_stunned' ? '¡Respuesta incorrecta! Estás aturdido por 3 segundos.' :
+               resultEffect === 'expired' ? '¡Se acabó el tiempo! El enemigo se ha recuperado.' :
                'El enemigo se ha recuperado.'}
             </p>
           </div>

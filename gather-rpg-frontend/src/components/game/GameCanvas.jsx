@@ -2,11 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import * as Phaser from 'phaser';
 
 import { MainScene } from '../../game/scenes/MainScene';
-import { CombatScene } from '../../game/scenes/CombatScene';
 import { useGameStore } from '../../store/gameStore';
 import { VideoOverlay } from './VideoOverlay';
 import { MediaControls } from './MediaControls';
-import { CombatUI } from '../combat/CombatUI';
 import { useRoomStore } from '../../store/roomStore';
 import { Minus, Plus } from 'lucide-react';
 
@@ -56,7 +54,7 @@ export const GameCanvas = () => {
         roundPixels: true,
         desynchronized: true
       },
-      scene: [MainScene, CombatScene]
+      scene: [MainScene]
     };
 
     gameRef.current = new Phaser.Game(config);
@@ -126,7 +124,6 @@ export const GameCanvas = () => {
       />
       <VideoOverlay />
       <MediaControls />
-      <CombatUI />
 
       {activeChallengeId && (
         <div className="absolute inset-0 z-30 bg-black/70 backdrop-blur-sm flex items-center justify-center p-8">

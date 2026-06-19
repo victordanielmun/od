@@ -668,8 +668,10 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     fetchActiveMission: async (sceneKey, silent = false) => {
         if (!silent) set({ activeMission: null }); // Clear previous mission state
         try {
-
-            const response = await api.get(`/missions/scene/${sceneKey}`);
+            // Pasar room_id para que el progreso devuelto sea el de ESTA instancia
+            // (el progreso está scoped por sala; sin esto el HUD mostraría 0).
+            const roomId = get().currentRoomId;
+            const response = await api.get(`/missions/scene/${sceneKey}${roomId ? `?room_id=${roomId}` : ''}`);
             if (response.data && response.data.length > 0) {
                 const mission = response.data.find(m => m?.status !== 'completed') || null;
 
@@ -801,13 +803,14 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
         set({ ninjaCardData: null });
     },
 
-    sendPlayerAttack: (enemyInstanceId, damage = 10) => {
+    sendPlayerAttack: (enemyInstanceId, attackType = 'basic') => {
         const roomId = get().currentRoomId;
         if (roomId && enemyInstanceId) {
-            console.log(`[gameStore] Sending player_attack for enemy: ${enemyInstanceId} with damage: ${damage}`);
-            wsClient.send('player_attack', { 
+            console.log(`[gameStore] Sending player_attack for enemy: ${enemyInstanceId} (${attackType})`);
+            // El servidor decide el daño según attack_type; el cliente solo informa el tipo.
+            wsClient.send('player_attack', {
                 target_instance_id: enemyInstanceId,
-                damage: damage,
+                attack_type: attackType,
                 room_id: roomId
             });
         }

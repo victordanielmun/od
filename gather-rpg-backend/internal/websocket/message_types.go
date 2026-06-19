@@ -33,13 +33,6 @@ const (
 	MsgAudioMuteState      = "audio_mute_state" // Broadcast: user toggled self-mute in a session
 
 
-	// Combat
-	MsgEncounterEnemy = "encounter_enemy"
-	MsgCombatStarted  = "combat_started"
-	MsgCombatAction   = "combat_action"
-	MsgTurnResult     = "turn_result"
-	MsgCombatEnded    = "combat_ended"
-
 	// Proximity Chat
 	MsgChatRequest      = "chat_request"
 	MsgChatRequestBcast = "chat_request_broadcast" // Notify target

@@ -1,7 +1,6 @@
 // import * as Phaser from 'phaser'; 
 const Phaser = window.Phaser;
 import { useAuthStore } from '../../store/authStore';
-import wsClient from '../../services/websocket';
 import { PlayerSprite } from '../entities/PlayerSprite';
 import { loadCharacterSprites, createCharacterAnimations } from '../config/CharacterConfig';
 
@@ -77,27 +76,6 @@ export class MainScene extends Phaser.Scene {
       this.myPlayerId = user.id; // Assuming user object has id
     }
 
-    // Spawn placeholder enemies
-    this.enemies = [];
-    const enemySpawns = [
-      { x: 200, y: 200, enemyId: 'slime-001' },
-      { x: 600, y: 400, enemyId: 'goblin-001' },
-    ];
-
-    enemySpawns.forEach(spawn => {
-      const enemy = this.add.circle(spawn.x, spawn.y, 15, 0xff0000);
-      this.physics.add.existing(enemy);
-      enemy.body.setImmovable(true);
-      enemy.enemyId = spawn.enemyId;
-
-      // Label
-      this.add.text(spawn.x, spawn.y - 30, 'Enemy', {
-        fontSize: '12px',
-        fill: '#ff0000'
-      }).setOrigin(0.5);
-
-      this.enemies.push(enemy);
-    });
   }
 
   configureCameraBounds(gameSize) {
@@ -226,10 +204,6 @@ export class MainScene extends Phaser.Scene {
   updatePlayer(id, player) {
     const sprite = this.playerSprites.get(id);
     if (sprite) {
-      // Check enemy collision
-      if (id === this.myPlayerId) {
-        this.checkEnemyCollision(sprite);
-      }
 
       // Calculate velocity for animation
       const dx = player.x - sprite.x;
@@ -250,48 +224,6 @@ export class MainScene extends Phaser.Scene {
         this.ensureCameraFollow();
       }
     }
-  }
-
-  checkEnemyCollision(playerSprite) {
-    if (this.inCombat) return;
-
-    this.enemies.forEach(enemy => {
-      if (!enemy.visible) return;
-
-      const dist = Phaser.Math.Distance.Between(
-        playerSprite.x, playerSprite.y,
-        enemy.x, enemy.y
-      );
-
-      if (dist < 30) { // Collision radius
-        this.handleEnemyEncounter(enemy);
-      }
-    });
-  }
-
-  handleEnemyEncounter(enemySprite) {
-    this.inCombat = true; // Prevent double trigger
-
-    wsClient.send('encounter_enemy', {
-      enemy_id: enemySprite.enemyId,
-      position: { x: enemySprite.x, y: enemySprite.y }
-    });
-
-    enemySprite.setVisible(false);
-
-    // Launch Combat Scene
-    this.scene.pause('MainScene');
-    this.scene.launch('CombatScene', {
-      enemyId: enemySprite.enemyId,
-      enemySprite: enemySprite
-    });
-
-    // Reset flag when returning? No, CombatScene will resume MainScene.
-    // MainScene needs to know when combat ends to set inCombat = false.
-    // We can listen to 'resume' event.
-    this.events.on('resume', () => {
-      this.inCombat = false;
-    });
   }
 
   removePlayer(id) {

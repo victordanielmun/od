@@ -78,12 +78,23 @@ class WebSocketClient {
         }
     }
 
+    isReady() {
+        return !!this.ws && this.ws.readyState === WebSocket.OPEN;
+    }
+
     send(type, payload) {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        if (this.isReady()) {
             this.ws.send(JSON.stringify({ type, payload }));
-        } else {
-            console.warn('WebSocket is not connected. Cannot send message:', type);
+            return true;
         }
+        // Rate-limit the warning: high-frequency messages (update_position at 60fps)
+        // would otherwise flood the console while the socket is down/reconnecting.
+        const now = Date.now();
+        if (!this._lastNotConnectedWarn || now - this._lastNotConnectedWarn > 2000) {
+            console.warn(`WebSocket not connected. Dropping outbound messages until reconnect (last: ${type})`);
+            this._lastNotConnectedWarn = now;
+        }
+        return false;
     }
 
     on(type, callback) {
