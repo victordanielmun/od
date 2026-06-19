@@ -242,9 +242,23 @@ type MapPickup struct {
 	X         float64   `json:"x"`
 	Y         float64   `json:"y"`
 	Quantity  int       `gorm:"default:1" json:"quantity"`
-	IsPickedUp bool     `gorm:"default:false" json:"is_picked_up"`
+	IsPickedUp bool     `gorm:"default:false" json:"is_picked_up"` // DEPRECATED: legacy global flag, no longer the authority for combat pickups
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// MapPickupClaim records that a specific player has consumed a specific pickup
+// template within their CURRENT attempt at a scene. Claims are per-player (so
+// each user gets their own copy of the map items) and are cleared on (re)entry
+// to the scene, which makes the items reappear on retry. Replaces the single
+// global MapPickup.IsPickedUp flag for combat/mission maps.
+type MapPickupClaim struct {
+	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	PlayerID  uuid.UUID `gorm:"type:uuid;not null;index:idx_pickup_claim_player_scene" json:"player_id"`
+	SceneKey  string    `gorm:"size:100;not null;index:idx_pickup_claim_player_scene" json:"scene_key"`
+	PickupID  uuid.UUID `gorm:"type:uuid;not null;index" json:"pickup_id"`
+	ClaimedAt time.Time `json:"claimed_at"`
+}
+
 type PlayerNPCGift struct {
 	ID              uint      `gorm:"primaryKey" json:"id"`
 	PlayerID        uuid.UUID `gorm:"type:uuid;not null;index:idx_player_npc_gift" json:"player_id"`

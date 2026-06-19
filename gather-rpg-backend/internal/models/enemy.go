@@ -69,12 +69,23 @@ type ActiveEnemy struct {
 	Y          float64   `json:"y"`
 	HP         int       `json:"hp"`
 	HPMax      int       `json:"hp_max"`
-	FSMState   string    `json:"fsm_state"` // "idle", "chase", "attack", "dead", "ninja_card"
+	FSMState   string    `json:"fsm_state"` // "idle", "chase", "attack", "hurt", "knocked", "dead", "ninja_card"
 	TargetID   string    `json:"target_id"` // UserID of the targeted player
+	HurtUntil  time.Time `json:"-"`         // mientras now < HurtUntil el enemigo está aturdido (no se mueve ni ataca)
 	PendingNinjaCard string `json:"pending_ninja_card,omitempty"` // Player ID that triggered the ninja card
 	WaveNum    int       `json:"wave_num"`
 	NPCID      string    `json:"npc_id"`    // From template config
 	SpriteID   string    `json:"sprite_id"` // Asset ID ('1', '2', etc.)
+	Damage     int       `json:"damage"`      // daño por ataque (del EnemySpawn)
+	Speed      float64   `json:"speed"`       // px/s
+	AttackRate int       `json:"attack_rate"` // ms entre ataques
+	Type       string    `json:"type"`        // "melee" (default), "thrower", "fast", "boss"
+
+	// Boss FSM (solo type=boss)
+	NextAbilityAt time.Time `json:"-"` // próxima vez que puede usar una habilidad especial (skill/charge)
+	BusyUntil     time.Time `json:"-"` // mientras now < BusyUntil mantiene la acción en curso (telegraph/dash)
+	ChargeVX      float64   `json:"-"` // velocidad de embestida (px/tick) fijada al iniciar el charge
+	ChargeVY      float64   `json:"-"`
 }
 
 type EnemyUpdateBroadcast struct {

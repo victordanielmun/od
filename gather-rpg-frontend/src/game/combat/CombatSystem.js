@@ -38,6 +38,12 @@ export class CombatSystem {
     this.onEnemyAttack = (data) => this._handleEnemyAttack(data);
     this.scene.events.on('enemy-attack', this.onEnemyAttack);
 
+    // HP autoritativo del servidor (E2): el server manda el HP y la muerte.
+    this.onPlayerHP = (e) => this._handlePlayerHP(e);
+    window.addEventListener('player-hp-update', this.onPlayerHP);
+    this.onPlayerDiedServer = () => this.onPlayerDeath();
+    window.addEventListener('player-died-server', this.onPlayerDiedServer);
+
     // Initial HP bar setup
     this.setupHUD();
 
@@ -48,6 +54,8 @@ export class CombatSystem {
 
   destroy() {
     window.removeEventListener('ninja-card-result', this.onNinjaCardResult);
+    window.removeEventListener('player-hp-update', this.onPlayerHP);
+    window.removeEventListener('player-died-server', this.onPlayerDiedServer);
     this.scene.events.off('enemy-attack', this.onEnemyAttack);
     if (this.onResize) {
       this.scene.scale.off('resize', this.onResize, this);
@@ -132,11 +140,8 @@ export class CombatSystem {
     
     if (!correct) {
       if (effect === 'player_takes_damage') {
-        const dmg = damage || 30;
-        console.log(`[CombatSystem] Player taking damage from incorrect Ninja Card: ${dmg}`);
-        this.playerHp = Math.max(0, this.playerHp - dmg);
-        this.updateHpBar();
-        
+        // El daño lo aplica el servidor (manda player_hp / player_died). Aquí
+        // solo reproducimos el feedback visual.
         if (this.scene.player) {
           this.scene.player.playAnimation('hurt', 400);
           if (this.scene.player.sprite) this.scene.player.sprite.setTint(0xff4444);
@@ -147,10 +152,6 @@ export class CombatSystem {
               this.scene.player.playAnimation('idle');
             }
           });
-        }
-        
-        if (this.playerHp <= 0) {
-          this.onPlayerDeath();
         }
       } else if (effect === 'player_is_stunned') {
         const dur = duration || 3000;
@@ -178,17 +179,16 @@ export class CombatSystem {
   _handleEnemyAttack(data) {
     if (this.isDead || this.scene.isSpectating) return;
     if (this.playerAttackIFrames > 0) return;
-    
-    console.log(`[CombatSystem] Recibiendo ataque de enemigo: ${data.damage} de daño`);
-    this.playerHp = Math.max(0, this.playerHp - data.damage);
-    this.playerAttackIFrames = 800; // 0.8s iFrames
-    this.updateHpBar();
-    
-    if (this.playerHp <= 0) {
-      this.onPlayerDeath();
-      return;
+    this.playerAttackIFrames = 800; // throttle local de reportes (el server también valida i-frames)
+
+    // El daño/HP/muerte los decide el SERVIDOR. Solo reportamos el golpe con el
+    // enemigo que conectó; el server aplica su daño y nos manda el HP (player_hp).
+    const enemyInstanceId = data?.enemy?.config?.instance_id;
+    if (enemyInstanceId) {
+      useGameStore.getState().sendPlayerHit(enemyInstanceId);
     }
 
+    // Feedback visual local (hurt/tint).
     if (this.scene.player) {
       this.scene.player.playAnimation('hurt', 400);
       if (this.scene.player.sprite) {
@@ -204,8 +204,15 @@ export class CombatSystem {
     }
   }
 
+  _handlePlayerHP(e) {
+    const { hp, hp_max } = e.detail || {};
+    if (typeof hp === 'number') this.playerHp = hp;
+    if (typeof hp_max === 'number' && hp_max > 0) this.playerMaxHp = hp_max;
+    this.updateHpBar();
+  }
+
   onPlayerDeath() {
-    console.log("[CombatSystem] Player has died locally");
+    console.log("[CombatSystem] Player death (server-authoritative)");
     if (this.isDead || useGameStore.getState().ninjaCardData) return;
     
     this.isDead = true;
@@ -351,10 +358,11 @@ export class CombatSystem {
     if (now - (this._lastSpellTime || 0) < 4000) return;
     this._lastSpellTime = now;
 
-    // Consume Mana & Scroll
+    // El pergamino es tu "libro de hechizos": basta con poseerlo. Lanzar cuesta
+    // MP, no consume el scroll (es un item grant_skill de un solo uso; gastarlo en
+    // cada cast provocaba un 500 al re-desbloquear la habilidad ya aprendida).
     this.playerMp -= 30;
     this.updateHpBar();
-    useGameStore.getState().useItem(scrollEntry.id);
 
     const charId = this.scene.player.characterId || '1';
     const animKey = `char-${charId}-special`;
@@ -439,6 +447,7 @@ export class CombatSystem {
       this.scene.player.playAnimation('projectile', 500);
     }
 
+    // Fallback siempre disponible: círculo de energía generado por código.
     if (!this.scene.textures.exists('energy-ball')) {
       const g = this.scene.make.graphics({ x: 0, y: 0, add: false });
       g.fillStyle(0x00ffff, 1);
@@ -449,11 +458,35 @@ export class CombatSystem {
       g.destroy();
     }
 
-    const proj = this.scene.physics.add.sprite(this.scene.player.x, this.scene.player.y - 20, 'energy-ball');
+    // Si el item tiene sprite (icon_key), úsalo como proyectil; si no está cargado
+    // todavía, se carga on-demand y se intercambia la textura en vuelo (los
+    // siguientes lanzamientos ya lo usan al instante). Fallback: el círculo.
+    const iconKey = itemEntry.item?.icon_key;
+    const spriteKey = iconKey ? `item-sprite-${iconKey}` : null;
+    const hasSprite = spriteKey && this.scene.textures.exists(spriteKey);
+    const initialKey = hasSprite ? spriteKey : 'energy-ball';
+
+    const proj = this.scene.physics.add.sprite(this.scene.player.x, this.scene.player.y - 20, initialKey);
+    if (hasSprite) proj.setDisplaySize(28, 28);
     proj.setDepth(this.scene.player.depth + 10);
     const direction = this.scene.player.sprite.flipX ? -1 : 1;
+    proj.setFlipX(direction < 0);
     proj.body.setVelocityX(direction * 400);
     proj.body.setAllowGravity(false);
+
+    // Carga diferida del sprite del item si aún no estaba en caché.
+    if (spriteKey && !hasSprite && !this.scene.load.isLoading()) {
+      const url = iconKey.endsWith('.png') ? `/Items/sprites/${iconKey}` : `/Items/sprites/${iconKey}.png`;
+      this.scene.load.image(spriteKey, url);
+      this.scene.load.once(`filecomplete-image-${spriteKey}`, () => {
+        if (proj.active && this.scene.textures.exists(spriteKey)) {
+          proj.setTexture(spriteKey);
+          proj.setDisplaySize(28, 28);
+          proj.setFlipX(direction < 0);
+        }
+      });
+      this.scene.load.start();
+    }
 
     this.scene.time.delayedCall(1500, () => {
       if (proj.active) proj.destroy();
@@ -499,15 +532,14 @@ export class CombatSystem {
 
     // Consume item
     useGameStore.getState().useItem(itemEntry.id);
+    // La curación del HP de combate la aplica el servidor (manda player_hp).
+    useGameStore.getState().sendPlayerHeal();
 
     const charId = this.scene.player.characterId || '1';
     const animKey = `char-${charId}-potion`;
     if (this.scene.anims.exists(animKey)) {
       this.scene.player.playAnimation('potion', 600);
     }
-
-    this.playerHp = Math.min(this.playerMaxHp, this.playerHp + 30);
-    this.updateHpBar();
 
     for (let i = 0; i < 15; i++) {
       this.scene.time.delayedCall(i * 40, () => {

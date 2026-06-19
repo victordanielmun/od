@@ -452,31 +452,38 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
 
                 wsClient.on('mission_completed', (payload) => {
                     console.log("[gameStore] Mission completed event received:", payload);
-                    
-                    const { addNotification } = useNotificationStore.getState();
+
                     const title = payload.title || "Misión";
-                    addNotification('success', `🏆 ¡MISIÓN COMPLETADA: ${title}!`);
-                    
+
                     // Clear active mission state
                     set({ activeMission: null });
 
-                    // Auto-redirect to lobby after a few seconds to let players see the success message
-                    setTimeout(() => {
-                        console.log("[gameStore] Auto-redirecting to lobby after mission completion");
-                        window.dispatchEvent(new CustomEvent('lobby-change-map', {
-                            detail: { 
-                                targetMap: 'lobby',
-                                targetX: 0,
-                                targetY: 0
-                            }
-                        }));
-                    }, 4000);
+                    // Mostrar un modal claro de "Misión Completada" (sin auto-redirigir).
+                    // El jugador decide cuándo volver al lobby.
+                    window.dispatchEvent(new CustomEvent('mission-completed-overlay', {
+                        detail: { title }
+                    }));
                 });
 
                 wsClient.on('enemy_update', (payload) => {
                     // console.log(`[gameStore] Received enemy_update for ${payload.enemies?.length} enemies`);
                     // Dispatch to Phaser scenes (LobbyScene)
                     window.dispatchEvent(new CustomEvent('enemies-update', { detail: payload }));
+                });
+
+                wsClient.on('wave_started', (payload) => {
+                    const { current_wave, max_wave } = payload || {};
+                    console.log(`[gameStore] Wave started: ${current_wave}/${max_wave}`);
+                    useNotificationStore.getState().addNotification('info', `🌊 Oleada ${current_wave} de ${max_wave}`);
+                    window.dispatchEvent(new CustomEvent('wave-started', { detail: payload }));
+                });
+
+                // HP autoritativo del jugador (E2): el server decide HP/daño/muerte.
+                wsClient.on('player_hp', (payload) => {
+                    window.dispatchEvent(new CustomEvent('player-hp-update', { detail: payload }));
+                });
+                wsClient.on('player_died', () => {
+                    window.dispatchEvent(new CustomEvent('player-died-server'));
                 });
 
                 wsClient.on('enemy_died', (payload) => {
@@ -668,10 +675,9 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     fetchActiveMission: async (sceneKey, silent = false) => {
         if (!silent) set({ activeMission: null }); // Clear previous mission state
         try {
-            // Pasar room_id para que el progreso devuelto sea el de ESTA instancia
-            // (el progreso está scoped por sala; sin esto el HUD mostraría 0).
-            const roomId = get().currentRoomId;
-            const response = await api.get(`/missions/scene/${sceneKey}${roomId ? `?room_id=${roomId}` : ''}`);
+            // El progreso es room-agnostic (una fila por player+mission, scoped por
+            // escena), así que no hace falta room_id aquí.
+            const response = await api.get(`/missions/scene/${sceneKey}`);
             if (response.data && response.data.length > 0) {
                 const mission = response.data.find(m => m?.status !== 'completed') || null;
 
@@ -814,6 +820,24 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                 room_id: roomId
             });
         }
+    },
+
+    // El jugador reporta que un enemigo lo golpeó; el servidor aplica el daño.
+    sendPlayerHit: (enemyInstanceId) => {
+        const roomId = get().currentRoomId;
+        if (roomId && enemyInstanceId) {
+            wsClient.send('player_hit', { enemy_instance_id: enemyInstanceId, room_id: roomId });
+        }
+    },
+
+    // Solicita revivir (reset de HP server-side).
+    sendPlayerRespawn: () => {
+        wsClient.send('player_respawn', {});
+    },
+
+    // Notifica el uso de poción de vida; el servidor cura el HP autoritativo.
+    sendPlayerHeal: () => {
+        wsClient.send('player_heal', {});
     },
 
     teleportToFriend: (friendId) => {

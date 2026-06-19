@@ -97,7 +97,8 @@ export class NPCManager {
 
     const defState = tmpl.default_state || def.default_state || 'idle';
     const initialAnim = STATE_TO_ANIM[defState] || STATE_TO_ANIM.idle;
-    sprite.playAnimation(initialAnim.body);
+    const spawnAnim = defState === 'walking' ? 'idle-waiting' : (initialAnim.body || 'idle-waiting');
+    sprite.playAnimation(spawnAnim);
 
     container.add(sprite);
 
@@ -116,8 +117,8 @@ export class NPCManager {
       shopId: def.shop_id,
       roomId: instance.room_id,
       // Movement Params
-      movementType: tmpl.movement_type || 'static',
-      movementRange: tmpl.movement_range || 0,
+      movementType: (tmpl.movement_type && tmpl.movement_type !== 'static') ? tmpl.movement_type : (defState === 'walking' ? 'wander' : 'static'),
+      movementRange: tmpl.movement_range || (defState === 'walking' ? 150 : 0),
       movementSpeed: tmpl.movement_speed || 50,
       spawnX: tmpl.position_x,
       spawnY: tmpl.position_y,
@@ -255,7 +256,8 @@ export class NPCManager {
           if (sprite) {
             const defState = data.defaultState || 'idle';
             const animConfig = STATE_TO_ANIM[defState] || STATE_TO_ANIM.idle;
-            sprite.playAnimation(animConfig.body || 'idle-waiting');
+            const idleAnim = defState === 'walking' ? 'idle-waiting' : (animConfig.body || 'idle-waiting');
+            sprite.playAnimation(idleAnim);
           }
 
           // Wait before picking next target

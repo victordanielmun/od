@@ -149,6 +149,7 @@ export class MapSerializer {
         speed:      getData(t.data, 'speed'),
         damage:     getData(t.data, 'damage'),
         attackRate: getData(t.data, 'attackRate'),
+        type:       getData(t.data, 'type', 'melee'),
       })),
     };
 
@@ -267,6 +268,7 @@ export class MapSerializer {
         speed:      t.speed,
         attackRate: t.attackRate,
         damage:     t.damage,
+        type:       t.type || 'melee',
       }));
 
       console.log('[MapSerializer] Map imported successfully');

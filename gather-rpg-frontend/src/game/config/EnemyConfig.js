@@ -18,6 +18,9 @@ export const ENEMY_CONFIG = {
     idle:    'idle',
     chase:   'walking',
     attack:  'attack',
+    throw:   'attack',
+    skill:   'attack',
+    charge:  'walking',
     hurt:    'hurt',
     knocked: 'knocked',
     dead:    'dying'

@@ -37,4 +37,5 @@ type EnemySpawn struct {
 	Speed    float64   `json:"speed"`
 	Damage   int       `json:"damage"`
 	AttackRate int     `json:"attack_rate"`
+	Type     string    `json:"type"` // "melee" (default), "thrower", "fast", "boss"
 }

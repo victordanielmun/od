@@ -63,6 +63,12 @@ const (
 	MsgEnemyUpdate      = "enemy_update"
 	MsgEnemyDied        = "enemy_died"
 	MsgPlayerAttack     = "player_attack"
+	MsgWaveStarted      = "wave_started"
+	MsgPlayerHit        = "player_hit"    // c→s: el jugador reporta que un enemigo lo golpeó
+	MsgPlayerHP         = "player_hp"     // s→c: HP autoritativo del jugador
+	MsgPlayerDied       = "player_died"   // s→c: el jugador murió (HP a 0)
+	MsgPlayerRespawn    = "player_respawn" // c→s: el jugador solicita revivir (reset HP)
+	MsgPlayerHeal       = "player_heal"   // c→s: el jugador usó una poción de vida (cura server-side)
 
 	// Ninja Cards
 	MsgNinjaCardTriggered = "ninja_card_triggered"

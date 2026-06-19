@@ -238,7 +238,7 @@ export class LobbyScene extends Phaser.Scene {
     // 3. NPCs (Dynamic from Backend)
     this.npcManager.reset();
     this.npcManager.loadNPCs();
-    this.pickupManager.loadMapPickups();
+    this.pickupManager.resetAndLoadMapPickups();
     this.nearbyNPC = null;
     this.nearbyPickup = null;
 

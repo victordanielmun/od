@@ -9,6 +9,7 @@ import { BottomHUD } from '../components/lobby/BottomHUD';
 import { Sidebar } from '../components/lobby/Sidebar';
 import { MapEditorUI } from '../components/lobby/MapEditorUI';
 import { DeathOverlay } from '../components/lobby/DeathOverlay';
+import { MissionCompleteOverlay } from '../components/lobby/MissionCompleteOverlay';
 import { PrivateMapPINToast } from '../components/lobby/PrivateMapPINToast';
 import { NotificationContainer } from '../components/common/NotificationContainer';
 import { useAuthStore } from '../store/authStore';
@@ -415,6 +416,7 @@ export const LobbyLayout = () => {
 
       {/* Death Overlay (Z-Index 1000) */}
       <DeathOverlay />
+      <MissionCompleteOverlay />
       <NinjaCardHUD />
 
       {/* Mission Welcome Banner */}

@@ -47,16 +47,6 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 	}
 	userID, _ := uuid.Parse(userIDStr)
 
-	// Progress is scoped to the room instance it was accepted in. Read it for the
-	// room the player is currently in so the mission list/HUD reflects real
-	// progress (nil would only match lobby/global progress and always show 0).
-	var roomID *uuid.UUID
-	if ridStr := c.Query("room_id"); ridStr != "" {
-		if rid, err := uuid.Parse(ridStr); err == nil {
-			roomID = &rid
-		}
-	}
-
 	// Fetch player's english level
 	var profile models.UserLearningProfile
 	playerLevel := models.DifficultyBeginner
@@ -97,7 +87,9 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 	result := make([]MissionWithStatus, 0)
 	for _, m := range missions {
 		tasks, _ := h.Service.GetTasks(m.ID)
-		progress, _ := h.Service.GetProgressReadOnly(userID, m.ID, roomID)
+		// Progreso room-agnostic: hay una sola fila por (player, mission), scoped
+		// implícitamente por la escena de la misión.
+		progress, _ := h.Service.GetProgressReadOnly(userID, m.ID, nil)
 
 		var completedMap map[string]bool
 		if progress != nil && progress.TasksCompleted != nil {

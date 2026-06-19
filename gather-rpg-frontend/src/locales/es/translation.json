@@ -587,7 +587,9 @@
       "mysterious_adventure": "Aventura Misteriosa",
       "task_completed_badge": "✅ Completado",
       "task_objective_badge": "⚔️ Objetivo",
-      "enemies_defeated": "Enemigos eliminados: {{done}}/{{req}}"
+      "enemies_defeated": "Enemigos eliminados: {{done}}/{{req}}",
+      "return_lobby": "Volver al Lobby",
+      "stay_here": "Seguir aquí"
     }
   },
   "items": {

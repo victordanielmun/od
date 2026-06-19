@@ -33,6 +33,24 @@ var (
 // esperando la respuesta de una carta ninja antes de liberarse automáticamente.
 const ninjaCardTimeout = 60 * time.Second
 
+// playerIFrames: ventana de invulnerabilidad tras recibir daño (server-side).
+const playerIFrames = 700 * time.Millisecond
+
+// Curación por poción (server-side): cantidad fija y cooldown para acotar abuso.
+const (
+	playerHealAmount   = 30
+	playerHealCooldown = 8 * time.Second
+)
+
+// Stagger: al ser golpeado el enemigo queda aturdido (no se mueve ni ataca) un
+// breve tiempo. Golpes fuertes (>= strongHitDamage, p. ej. el finisher) provocan
+// un "knocked" más largo.
+const (
+	hurtStunDuration    = 300 * time.Millisecond
+	knockedStunDuration = 500 * time.Millisecond
+	strongHitDamage     = 20
+)
+
 // attackDamage define el daño autoritativo por tipo de ataque. El servidor NO
 // confía en ningún valor de daño enviado por el cliente (evita cheats); solo
 // acepta el tipo de ataque y aplica el daño correspondiente de esta tabla.
@@ -402,6 +420,15 @@ func (h *Hub) HandleMessage(client *Client, message []byte) {
 
 	case MsgPlayerAttack:
 		h.handlePlayerAttack(client, wsMsg.Payload)
+
+	case MsgPlayerHit:
+		h.handlePlayerHit(client, wsMsg.Payload)
+
+	case MsgPlayerRespawn:
+		h.handlePlayerRespawn(client)
+
+	case MsgPlayerHeal:
+		h.handlePlayerHeal(client)
 
 	case MsgNinjaCardAnswer:
 		h.handleNinjaCardAnswer(client, wsMsg.Payload)
@@ -996,10 +1023,12 @@ func (h *Hub) handleSelectClass(client *Client, payload interface{}) {
 // goroutine; gestiona internamente los locks de la sala.
 func (h *Hub) processEnemyKill(killerUUID uuid.UUID, enemyTemplateID uuid.UUID, room *Room, roomID string) {
 	killerID := killerUUID.String()
-	log.Printf("[Combat] processEnemyKill | killer=%s | enemyTemplateID=%s | room=%s", killerID, enemyTemplateID, roomID)
+	// El progreso de misión se scope por escena (no por la sala efímera).
+	sceneKey := room.SceneKey
+	log.Printf("[Combat] processEnemyKill | killer=%s | enemyTemplateID=%s | room=%s | scene=%s", killerID, enemyTemplateID, roomID, sceneKey)
 
 	// 1. Kills individuales (defeat_enemy / kill_boss)
-	progressResults, err := h.MissionService.UpdateKillProgress(killerUUID, enemyTemplateID, roomID)
+	progressResults, err := h.MissionService.UpdateKillProgress(killerUUID, enemyTemplateID, sceneKey)
 	if err != nil {
 		log.Printf("[Combat] UpdateKillProgress ERROR for user %s: %v", killerID, err)
 	}
@@ -1040,13 +1069,20 @@ func (h *Hub) processEnemyKill(killerUUID uuid.UUID, enemyTemplateID uuid.UUID, 
 			allDead = false
 		}
 	}
+	moreWavesPending := len(room.PendingSpawns) > 0
 	room.mu.RUnlock()
 
-	log.Printf("[Combat] Room %s enemy status: %d/%d dead | allDead=%v", roomID, deadEnemies, totalEnemies, allDead)
+	// El nivel solo está limpiado si la oleada actual está muerta Y no quedan
+	// oleadas por aparecer. Limpiar una oleada intermedia NO completa el kill_all;
+	// tickAI spawneará la siguiente.
+	levelCleared := allDead && !moreWavesPending
 
-	if !allDead {
+	log.Printf("[Combat] Room %s enemy status: %d/%d dead | allDead=%v | morePending=%v | levelCleared=%v",
+		roomID, deadEnemies, totalEnemies, allDead, moreWavesPending, levelCleared)
+
+	if !levelCleared {
 		// Progreso incremental para que el HUD muestre kills en tiempo real.
-		results, _ := h.MissionService.GetKillAllProgress(killerUUID)
+		results, _ := h.MissionService.GetKillAllProgress(killerUUID, sceneKey)
 		for _, res := range results {
 			h.SendToUser(killerID, &models.WSMessage{
 				Type: MsgEnemyKillProgress,
@@ -1072,7 +1108,7 @@ func (h *Hub) processEnemyKill(killerUUID uuid.UUID, enemyTemplateID uuid.UUID, 
 	room.mu.RUnlock()
 
 	for _, cid := range clientIDs {
-		killAllResults, err := h.MissionService.UpdateKillAllProgress(cid, roomID)
+		killAllResults, err := h.MissionService.UpdateKillAllProgress(cid, sceneKey)
 		if err != nil {
 			log.Printf("[Combat] KillAll progress error for user %s: %v", cid, err)
 			continue
@@ -1092,6 +1128,113 @@ func (h *Hub) processEnemyKill(killerUUID uuid.UUID, enemyTemplateID uuid.UUID, 
 			}
 		}
 	}
+}
+
+// sendPlayerHP envía al cliente su HP autoritativo actual.
+func (h *Hub) sendPlayerHP(client *Client) {
+	client.SendJSON(&models.WSMessage{
+		Type: MsgPlayerHP,
+		Payload: map[string]interface{}{
+			"hp":     client.HP,
+			"hp_max": client.HPMax,
+		},
+	})
+}
+
+// applyDamageToPlayer resta daño server-side respetando i-frames y emite el HP.
+// Devuelve true si el daño se aplicó (no estaba en i-frames ni muerto).
+func (h *Hub) applyDamageToPlayer(client *Client, dmg int, respectIFrames bool) bool {
+	if client.IsDead || dmg <= 0 {
+		return false
+	}
+	now := time.Now()
+	if respectIFrames && now.Sub(client.LastDamageAt) < playerIFrames {
+		return false
+	}
+	client.LastDamageAt = now
+
+	client.HP -= dmg
+	if client.HP < 0 {
+		client.HP = 0
+	}
+	h.sendPlayerHP(client)
+
+	if client.HP == 0 && !client.IsDead {
+		client.IsDead = true
+		client.SendJSON(&models.WSMessage{Type: MsgPlayerDied, Payload: map[string]interface{}{}})
+	}
+	return true
+}
+
+// handlePlayerHit: el cliente reporta que un enemigo lo golpeó. El servidor
+// valida el enemigo y aplica SU daño (no el del cliente), con i-frames.
+func (h *Hub) handlePlayerHit(client *Client, payload interface{}) {
+	if client.IsDead {
+		return
+	}
+	var p struct {
+		EnemyInstanceID string `json:"enemy_instance_id"`
+	}
+	parsePayload(payload, &p)
+
+	roomID := client.RoomID
+	if roomID == "" {
+		return
+	}
+	h.mu.RLock()
+	room, ok := h.Rooms[roomID]
+	h.mu.RUnlock()
+	if !ok {
+		return
+	}
+
+	instanceUUID, err := uuid.Parse(p.EnemyInstanceID)
+	if err != nil {
+		return
+	}
+
+	room.mu.RLock()
+	enemy, exists := room.ActiveEnemies[instanceUUID]
+	dmg := 0
+	if exists && enemy.FSMState != "dead" {
+		dmg = enemy.Damage
+		if dmg <= 0 {
+			dmg = 10
+		}
+	}
+	room.mu.RUnlock()
+
+	if dmg == 0 {
+		return // enemigo inexistente o muerto
+	}
+	h.applyDamageToPlayer(client, dmg, true)
+}
+
+// handlePlayerRespawn: el cliente solicita revivir; reset de HP server-side.
+func (h *Hub) handlePlayerRespawn(client *Client) {
+	client.HP = client.HPMax
+	client.IsDead = false
+	client.LastDamageAt = time.Time{}
+	h.sendPlayerHP(client)
+}
+
+// handlePlayerHeal: cura server-side al usar una poción de vida. Cantidad fija y
+// cooldown para acotar abuso; el HP queda autoritativo en el servidor.
+func (h *Hub) handlePlayerHeal(client *Client) {
+	if client.IsDead || client.HP >= client.HPMax {
+		return
+	}
+	now := time.Now()
+	if now.Sub(client.LastHealAt) < playerHealCooldown {
+		return
+	}
+	client.LastHealAt = now
+
+	client.HP += playerHealAmount
+	if client.HP > client.HPMax {
+		client.HP = client.HPMax
+	}
+	h.sendPlayerHP(client)
 }
 
 func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
@@ -1135,8 +1278,10 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 		return
 	}
 
-	// Ninja Cards logic: If this blow would kill the enemy
-	if enemy.HP-dmg <= 0 && enemy.FSMState != "ninja_card" {
+	// Ninja Cards logic: If this blow would kill the enemy.
+	// El boss NO usa la card de un solo jugador (su muerte la decide una card
+	// multijugador — E4). Por ahora muere directo al llegar a 0 HP.
+	if enemy.HP-dmg <= 0 && enemy.FSMState != "ninja_card" && enemy.Type != EnemyTypeBoss {
 		log.Printf("[NinjaCard] Enemy %s is about to die from player %s. Triggering Ninja Card.", instanceUUID, client.ID)
 		enemy.FSMState = "ninja_card"
 		enemy.PendingNinjaCard = client.ID.String()
@@ -1216,6 +1361,15 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 		go h.processEnemyKill(client.ID, enemyTemplateID, room, roomID)
 
 	} else {
+		// Stagger: el enemigo se traba brevemente al recibir el golpe. El tick de
+		// IA respeta HurtUntil y no lo mueve ni lo deja atacar hasta que expire.
+		if dmg >= strongHitDamage {
+			enemy.FSMState = "knocked"
+			enemy.HurtUntil = time.Now().Add(knockedStunDuration)
+		} else {
+			enemy.FSMState = "hurt"
+			enemy.HurtUntil = time.Now().Add(hurtStunDuration)
+		}
 		room.mu.Unlock()
 	}
 }
@@ -1330,6 +1484,11 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 		enemy.PendingNinjaCard = ""
 		room.mu.Unlock()
 
+		// El daño de la penalización se aplica server-side (sin i-frames).
+		if damage > 0 {
+			h.applyDamageToPlayer(client, damage, false)
+		}
+
 		log.Printf("[NinjaCard Debug] Broadcasting NinjaCard result to client %s: correct=false, effect=%s, damage=%d, duration=%d", client.ID, effectType, damage, duration)
 		client.SendJSON(&models.WSMessage{
 			Type: MsgNinjaCardResult,
@@ -1426,6 +1585,12 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 
 	client.RoomID = roomID
 	room.AddClient(client)
+
+	// Reset de combate al entrar a una sala (respawn por re-entrada).
+	client.HP = client.HPMax
+	client.IsDead = false
+	client.LastDamageAt = time.Time{}
+	h.sendPlayerHP(client)
 
 	// Notify others that an ally has joined (System Notification)
 	if room.Type == "cooperative" || room.Type == "mission" {

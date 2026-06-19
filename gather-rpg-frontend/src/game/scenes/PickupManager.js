@@ -10,6 +10,22 @@ export class PickupManager {
     this.activePickups = []; // Array of pickup containers
   }
 
+  // Clears this player's claims for the current scene on the backend, then
+  // reloads the pickups so every item is available again. Called on (re)entry
+  // to a scene/mission instance (each scene.restart() re-runs create()), so a
+  // retry — including death + retry — restores the items, mirroring how combat
+  // enemies are regenerated per room entry. Per-player claims also mean another
+  // user opening the same scene gets their own full set.
+  async resetAndLoadMapPickups() {
+    const scene = this.scene;
+    try {
+      await api.post(`/inventory/pickups/${scene.currentMapKey}/reset`);
+    } catch (err) {
+      console.error('[PickupManager] Failed to reset map pickups:', err);
+    }
+    await this.loadMapPickups();
+  }
+
   async loadMapPickups() {
     const scene = this.scene;
     try {

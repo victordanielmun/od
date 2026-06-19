@@ -7,6 +7,9 @@ const STATES = {
   IDLE:    'idle',
   CHASE:   'chase',
   ATTACK:  'attack',
+  THROW:   'throw',
+  SKILL:   'skill',
+  CHARGE:  'charge',
   HURT:    'hurt',
   KNOCKED: 'knocked',
   DEAD:    'dead',
@@ -81,13 +84,30 @@ export default class EnemySprite extends NPCSprite {
   // ─── Sincronizar desde el Servidor (Multiplayer) ─────────────────────────
   syncFromServer(data) {
     if (this.fsm === STATES.DEAD) return;
+    this.enemyType = data.type || 'melee';
     const oldX = this.x;
     // Actualizar posición (suavizado o directo)
     this.setPosition(data.x, data.y);
     
     // Actualizar estado de la animación
     if (data.fsm_state) {
+        const wasSkill = this.fsm === STATES.SKILL;
+        const wasCharge = this.fsm === STATES.CHARGE;
         this._changeState(data.fsm_state);
+        // El stun (hurt/knocked) es autoritativo del servidor. Mantener el timer
+        // local arriba mientras el server siga mandando ese estado, para que la
+        // FSM local no salga sola del aturdimiento entre ticks (evita parpadeo).
+        if (data.fsm_state === 'hurt' || data.fsm_state === 'knocked') {
+            this.stateTimer = 250;
+        }
+        // El AoE del boss se dispara una sola vez, al entrar en 'skill'.
+        if (this.fsm === STATES.SKILL && !wasSkill) {
+            this._doSkill();
+        }
+        // Reiniciar el flag de contacto al iniciar una nueva embestida.
+        if (this.fsm === STATES.CHARGE && !wasCharge) {
+            this._chargeHitDealt = false;
+        }
     }
 
     if (data.target_id) {
@@ -104,8 +124,13 @@ export default class EnemySprite extends NPCSprite {
         this.target = this.scene.player;
     }
 
-    // Orientar el sprite según el objetivo o el movimiento
-    if (this.target && this.target.active && (this.fsm === STATES.CHASE || this.fsm === STATES.ATTACK)) {
+    // Orientar el sprite hacia el jugador siempre que esté enganchado con él
+    // (persiguiendo, atacando o aturdido). Si no, según el movimiento. Antes el
+    // estado hurt/knocked no actualizaba el flip y el enemigo quedaba mirando al
+    // lado contrario del jugador si este se movía durante el aturdimiento.
+    const engaged = this.fsm === STATES.CHASE || this.fsm === STATES.ATTACK ||
+                    this.fsm === STATES.HURT || this.fsm === STATES.KNOCKED;
+    if (this.target && this.target.active && engaged) {
         this.setFacing(this.target.x < this.x ? 'left' : 'right');
     } else if (data.x < oldX) {
         this.setFacing('left');
@@ -136,22 +161,30 @@ export default class EnemySprite extends NPCSprite {
     }
     
     this.healthBar.clear();
-    
-    const width = 40;
-    const height = 4;
+
+    // El boss muestra una barra más grande y alta para destacar como jefe.
+    const isBoss = this.enemyType === 'boss';
+    const width = isBoss ? 90 : 40;
+    const height = isBoss ? 7 : 4;
     const x = -width / 2;
-    const y = -40;
+    const y = isBoss ? -56 : -40;
 
     // Background
     this.healthBar.fillStyle(0x000000, 0.7);
-    this.healthBar.fillRect(x, y, width, height);
+    this.healthBar.fillRect(x - 1, y - 1, width + 2, height + 2);
 
     // HP Fill
     const fillPercent = Math.max(0, this.hp / this.maxHp);
     const fillColor = fillPercent > 0.5 ? 0x00ff00 : (fillPercent > 0.25 ? 0xffff00 : 0xff0000);
-    
+
     this.healthBar.fillStyle(fillColor, 1);
     this.healthBar.fillRect(x, y, width * fillPercent, height);
+
+    // Borde dorado para el boss.
+    if (isBoss) {
+      this.healthBar.lineStyle(1.5, 0xffd700, 1);
+      this.healthBar.strokeRect(x - 1, y - 1, width + 2, height + 2);
+    }
   }
 
   // ─── Devolver al pool ────────────────────────────────────────────────────
@@ -208,6 +241,13 @@ export default class EnemySprite extends NPCSprite {
     return ENEMY_CONFIG.STATE_TO_ANIM[state] || 'idle';
   }
 
+  // Cadencia de ataque en ms. El servidor manda attack_rate (snake_case); el modo
+  // local BeatEmUp usa attackRate (camelCase). Fallback 1200ms. Esto hace que un
+  // enemigo 'fast' (attack_rate bajo) ataque notablemente más seguido.
+  _getAttackRate() {
+    return this.config?.attack_rate ?? this.config?.attackRate ?? 1200;
+  }
+
   // ─── Recibir daño (llamado desde HitboxSystem) ───────────────────────────
   takeDamage(amount, knockbackVec) {
     if (this.fsm === STATES.DEAD) return;
@@ -231,7 +271,7 @@ export default class EnemySprite extends NPCSprite {
     this._changeState(isStrong ? STATES.KNOCKED : STATES.HURT);
 
     // T03: Reset cooldown → no puede atacar inmediatamente al recuperarse
-    this.attackCooldown = (this.config?.attackRate ?? 1200) * 0.8;
+    this.attackCooldown = this._getAttackRate() * 0.8;
 
     // T02: Parar inmediatamente antes del knockback
     if (this.body) this.body.setVelocity(0, 0);
@@ -277,6 +317,12 @@ export default class EnemySprite extends NPCSprite {
           this._changeState(STATES.IDLE);
           break;
         }
+        // El thrower no persigue ni hace melee localmente: su posición (incluido
+        // el kiting) la gobierna el servidor, que lo pasa a 'throw' en rango.
+        if (this.enemyType === 'thrower') {
+          if (this.body) this.body.setVelocity(0, 0);
+          break;
+        }
         this._moveTowardTarget();
         if (this._distToTarget() < (this.config?.attackRange ?? 70)) {
           this._changeState(STATES.ATTACK);
@@ -300,10 +346,57 @@ export default class EnemySprite extends NPCSprite {
           }
           this._doAttack();
           this._attackHitDealt = false;
-          this.attackCooldown = this.config?.attackRate ?? 1200;
+          this.attackCooldown = this._getAttackRate();
         }
         if (this._distToTarget() > (this.config?.attackRange ?? 70) + 20) {
           this._changeState(STATES.CHASE);
+        }
+        break;
+
+      case STATES.SKILL:
+        // El boss "canaliza" la habilidad: no se mueve, mira al jugador. El AoE
+        // se dispara una vez al entrar al estado (ver syncFromServer → _doSkill).
+        if (this.body) this.body.setVelocity(0, 0);
+        if (this.target && this.target.active) {
+          this.setFacing(this.target.x < this.x ? 'left' : 'right');
+        }
+        break;
+
+      case STATES.CHARGE:
+        // Embestida: la posición la mueve el servidor. Aplica daño por contacto
+        // una sola vez por embestida (gateado por targetId).
+        if (this.target && this.target.active && !this._chargeHitDealt) {
+          const myPlayerId = this.scene.playerManager?.myPlayerId;
+          const isMine = !this.targetId || !myPlayerId || this.targetId === myPlayerId;
+          const d = this._distToTarget();
+          if (isMine && d < 95) {
+            this._chargeHitDealt = true;
+            this.scene.events.emit('enemy-attack', {
+              enemy: this,
+              damage: Math.round((this.config?.damage ?? 10) * 2),
+            });
+          }
+        }
+        break;
+
+      case STATES.THROW:
+        // Enemigo a distancia: no se mueve, mira al jugador y lanza proyectiles
+        // según su cadencia. El estado lo gobierna el servidor (fsm_state=throw).
+        if (this.body) this.body.setVelocity(0, 0);
+        if (this.target && this.target.active) {
+          this.setFacing(this.target.x < this.x ? 'left' : 'right');
+        }
+        this.attackCooldown -= delta;
+        if (this.attackCooldown <= 0) {
+          const animKey = this._resolveAnim(STATES.THROW);
+          const fullAnimKey = `enemy-${this.npcId}-${animKey}`;
+          if (this.scene.anims.exists(fullAnimKey)) {
+            this.sprite.play(fullAnimKey, true);
+          } else {
+            this.playAnimation(animKey);
+          }
+          this._doThrow();
+          this.attackCooldown = this._getAttackRate();
         }
         break;
 
@@ -434,6 +527,69 @@ export default class EnemySprite extends NPCSprite {
     this.scene.events.emit('enemy-attack', {
       enemy:  this,
       damage: this.config?.damage ?? 10,
+    });
+  }
+
+  // Lanza un proyectil enemigo hacia el jugador (tipo 'thrower'). Solo el cliente
+  // que es el objetivo crea el proyectil "con daño"; los demás solo ven la anim.
+  _doThrow() {
+    const myPlayerId = this.scene.playerManager?.myPlayerId;
+    if (this.targetId && myPlayerId && this.targetId !== myPlayerId) return;
+    if (!this.target || !this.target.active) return;
+
+    const scene = this.scene;
+
+    // Textura de proyectil enemigo (círculo rojo) generada una vez.
+    if (!scene.textures.exists('enemy-projectile')) {
+      const g = scene.make.graphics({ x: 0, y: 0, add: false });
+      g.fillStyle(0xff3344, 1);
+      g.fillCircle(10, 10, 7);
+      g.lineStyle(2, 0xffaa88, 0.9);
+      g.strokeCircle(10, 10, 9);
+      g.generateTexture('enemy-projectile', 20, 20);
+      g.destroy();
+    }
+
+    const proj = scene.physics.add.sprite(this.x, this.y - 10, 'enemy-projectile');
+    proj.setDepth(this.depth + 5);
+    proj.body.setAllowGravity(false);
+
+    // Dirigir hacia la posición actual del jugador.
+    const speed = 320;
+    const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+    proj.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+
+    scene.time.delayedCall(2500, () => { if (proj.active) proj.destroy(); });
+
+    const damage = this.config?.damage ?? 10;
+    scene.physics.add.overlap(proj, this.target, (projectile) => {
+      // Reutiliza el flujo de daño del jugador (HP/iframes en CombatSystem).
+      scene.events.emit('enemy-attack', { enemy: this, damage });
+      projectile.destroy();
+    });
+  }
+
+  // Habilidad AoE del boss (type=boss). Telegrafía un círculo de daño; tras una
+  // breve demora, si el jugador sigue dentro, recibe daño aumentado (puede esquivar).
+  _doSkill() {
+    const myPlayerId = this.scene.playerManager?.myPlayerId;
+    if (this.targetId && myPlayerId && this.targetId !== myPlayerId) return;
+    if (!this.target || !this.target.active) return;
+
+    const scene = this.scene;
+    const radius = 180;
+
+    const gfx = scene.add.circle(this.x, this.y, radius, 0xff3344, 0.18).setDepth(this.depth - 1);
+    gfx.setStrokeStyle(3, 0xff3344, 0.85);
+    scene.tweens.add({ targets: gfx, alpha: 0, scale: 1.05, duration: 800, onComplete: () => gfx.destroy() });
+
+    const damage = Math.round((this.config?.damage ?? 10) * 1.5);
+    scene.time.delayedCall(500, () => {
+      if (!this.target || !this.target.active) return;
+      const d = window.Phaser.Math.Distance.Between(this.x, this.y, this.target.x, this.target.y);
+      if (d <= radius) {
+        scene.events.emit('enemy-attack', { enemy: this, damage });
+      }
     });
   }
 }

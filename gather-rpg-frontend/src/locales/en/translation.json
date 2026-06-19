@@ -580,7 +580,9 @@
       "mysterious_adventure": "Mysterious Adventure",
       "task_completed_badge": "✅ Completed",
       "task_objective_badge": "⚔️ Objective",
-      "enemies_defeated": "Enemies defeated: {{done}}/{{req}}"
+      "enemies_defeated": "Enemies defeated: {{done}}/{{req}}",
+      "return_lobby": "Return to Lobby",
+      "stay_here": "Stay here"
     }
   },
   "items": {

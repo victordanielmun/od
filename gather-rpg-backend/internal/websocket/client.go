@@ -39,6 +39,13 @@ type Client struct {
 	X         float64
 	Y         float64
 	Anim      string
+
+	// Combat (server-authoritative): HP del jugador, i-frames y muerte.
+	HP           int
+	HPMax        int
+	IsDead       bool
+	LastDamageAt time.Time
+	LastHealAt   time.Time
 }
 
 func NewClient(hub *Hub, conn *websocket.Conn, id uuid.UUID, username string) *Client {
@@ -49,6 +56,8 @@ func NewClient(hub *Hub, conn *websocket.Conn, id uuid.UUID, username string) *C
 		Username:   username,
 		send:       make(chan []byte, 256),
 		PosLimiter: rate.NewLimiter(rate.Limit(20), 20),
+		HP:         100,
+		HPMax:      100,
 	}
 }
 

@@ -124,7 +124,10 @@ func (s *MissionService) AcceptMission(userID uuid.UUID, missionID uint, roomID 
 		return nil, err
 	}
 
-	if existing, err := s.Repo.GetPlayerProgressInRoom(playerID, missionID, roomID); err == nil && existing != nil {
+	// Idempotent per (player, mission), NOT per room instance. Combat rooms are
+	// ephemeral, so a room-scoped lookup created a fresh (reset) progress on every
+	// re-entry. Looking up room-agnostically preserves progress across instances.
+	if existing, err := s.Repo.GetPlayerProgress(playerID, missionID); err == nil && existing != nil {
 		if existing.Status == models.StatusNotStarted {
 			existing.Status = models.StatusInProgress
 			s.Repo.CreateOrUpdateProgress(existing)
@@ -370,22 +373,28 @@ type KillProgressResult struct {
 }
 
 // activeMissionProgresses returns the player's ACCEPTED (in_progress) missions,
-// scoped to the given room instance when roomID is a valid UUID. This is what
-// makes kills count only toward missions the player explicitly accepted in this
-// instance (fixes the "phantom progress" + cross-instance counting issues).
-func (s *MissionService) activeMissionProgresses(playerID uuid.UUID, roomID string) []models.PlayerMissionProgress {
-	q := database.DB.Where("player_id = ? AND status = ?", playerID, string(models.StatusInProgress))
-	if rid, err := uuid.Parse(roomID); err == nil {
-		q = q.Where("room_id = ?", rid)
+// scoped to the given SCENE (not a room instance). Combat rooms are ephemeral —
+// they're recreated on each entry and destroyed when empty — so scoping by room
+// UUID orphaned progress on re-entry. Scoping by the mission's scene_key keeps
+// progress stable across instances of the same map while still preventing kills
+// in one scene from counting toward missions of another scene.
+func (s *MissionService) activeMissionProgresses(playerID uuid.UUID, sceneKey string) []models.PlayerMissionProgress {
+	q := database.DB.
+		Where("player_mission_progresses.player_id = ? AND player_mission_progresses.status = ?",
+			playerID, string(models.StatusInProgress))
+	if sceneKey != "" {
+		q = q.Joins("JOIN missions ON missions.id = player_mission_progresses.mission_id").
+			Where("missions.scene_key = ?", sceneKey).
+			Select("player_mission_progresses.*")
 	}
 	var progresses []models.PlayerMissionProgress
 	q.Find(&progresses)
 	return progresses
 }
 
-func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uuid.UUID, roomID string) ([]KillProgressResult, error) {
+func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uuid.UUID, sceneKey string) ([]KillProgressResult, error) {
 	fmt.Printf("\n[KillProgress] ============ INICIO UpdateKillProgress ============\n")
-	fmt.Printf("[KillProgress] userID=%s | enemyTemplateID=%s | roomID=%s\n", userID, enemyTemplateID, roomID)
+	fmt.Printf("[KillProgress] userID=%s | enemyTemplateID=%s | sceneKey=%s\n", userID, enemyTemplateID, sceneKey)
 
 	// 1. Obtener playerStats (playerID interno)
 	var stats models.PlayerStats
@@ -396,8 +405,8 @@ func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uu
 	playerID := stats.ID
 	fmt.Printf("[KillProgress] playerID interno = %s\n", playerID)
 
-	// 2. Misiones aceptadas (in_progress) del jugador EN ESTA INSTANCIA
-	progresses := s.activeMissionProgresses(playerID, roomID)
+	// 2. Misiones aceptadas (in_progress) del jugador EN ESTA ESCENA
+	progresses := s.activeMissionProgresses(playerID, sceneKey)
 	fmt.Printf("[KillProgress] Misiones activas encontradas: %d\n", len(progresses))
 	for _, p := range progresses {
 		fmt.Printf("[KillProgress]   → missionID=%d | status=%s\n", p.MissionID, p.Status)
@@ -558,7 +567,7 @@ func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uu
 
 
 
-func (s *MissionService) UpdateKillAllProgress(userID uuid.UUID, roomID string) ([]KillProgressResult, error) {
+func (s *MissionService) UpdateKillAllProgress(userID uuid.UUID, sceneKey string) ([]KillProgressResult, error) {
 	var stats models.PlayerStats
 	if err := database.DB.First(&stats, "user_id = ?", userID).Error; err != nil {
 		return nil, err
@@ -566,10 +575,10 @@ func (s *MissionService) UpdateKillAllProgress(userID uuid.UUID, roomID string) 
 	playerID := stats.ID
 
 	fmt.Printf("\n[KillAllProgress] ============ INICIO UpdateKillAllProgress ============\n")
-	fmt.Printf("[KillAllProgress] userID=%s | roomID=%s | playerID=%s\n", userID, roomID, playerID)
+	fmt.Printf("[KillAllProgress] userID=%s | sceneKey=%s | playerID=%s\n", userID, sceneKey, playerID)
 
-	// Misiones aceptadas (in_progress) del jugador EN ESTA INSTANCIA
-	progresses := s.activeMissionProgresses(playerID, roomID)
+	// Misiones aceptadas (in_progress) del jugador EN ESTA ESCENA
+	progresses := s.activeMissionProgresses(playerID, sceneKey)
 	fmt.Printf("[KillAllProgress] Misiones activas encontradas: %d\n", len(progresses))
 	for _, p := range progresses {
 		fmt.Printf("[KillAllProgress]   → missionID=%d | status=%s\n", p.MissionID, p.Status)
@@ -663,14 +672,14 @@ func (s *MissionService) UpdateKillAllProgress(userID uuid.UUID, roomID string) 
 
 // GetKillAllProgress retorna las tareas kill_all activas del jugador (sin modificar nada).
 // Se usa para emitir progreso incremental al HUD cuando muere un enemigo.
-func (s *MissionService) GetKillAllProgress(userID uuid.UUID) ([]KillProgressResult, error) {
+func (s *MissionService) GetKillAllProgress(userID uuid.UUID, sceneKey string) ([]KillProgressResult, error) {
 	var stats models.PlayerStats
 	if err := database.DB.First(&stats, "user_id = ?", userID).Error; err != nil {
 		return nil, err
 	}
 	playerID := stats.ID
 
-	progresses := s.activeMissionProgresses(playerID, "")
+	progresses := s.activeMissionProgresses(playerID, sceneKey)
 
 	var results []KillProgressResult
 	for _, p := range progresses {

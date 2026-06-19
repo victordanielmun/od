@@ -61,6 +61,7 @@ func main() {
 		&models.PlayerMissionProgress{},
 		&models.PlayerLearningStats{},
 		&models.MapPickup{},
+		&models.MapPickupClaim{},
 		&models.PlayerNPCGift{},
 		// ── WhatsApp Integration System ──────────────────────────────────
 		&models.WhatsAppContact{},
@@ -296,6 +297,7 @@ func main() {
 	inventory.Post("/test-add", inventoryHandler.AddTestItem)
 	inventory.Post("/pickup/:id", pickupHandler.Pickup)
 	inventory.Get("/pickups/:scene", pickupHandler.GetPickups)
+	inventory.Post("/pickups/:scene/reset", pickupHandler.ResetPickups)
 	inventory.Post("/use/:id", inventoryHandler.UseItem)
 
 	// Shop Routes
