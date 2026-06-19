@@ -6,19 +6,29 @@ import (
 
 	"gather-rpg-backend/internal/config"
 	"gather-rpg-backend/internal/database"
-	"gather-rpg-backend/internal/models"
 )
 
 func main() {
 	cfg := config.LoadConfig()
 	database.ConnectPostgres(cfg)
 
-	var definitions []models.NPCDefinition
-	if err := database.DB.Find(&definitions).Error; err != nil {
-		log.Fatalf("Error finding definitions: %v", err)
+	// Query indexes for player_mission_progresses
+	rows, err := database.DB.Raw(`
+		SELECT indexname, indexdef 
+		FROM pg_indexes 
+		WHERE tablename = 'player_mission_progresses'
+	`).Rows()
+	if err != nil {
+		log.Fatalf("Error querying indexes: %v", err)
 	}
+	defer rows.Close()
 
-	for _, d := range definitions {
-		fmt.Printf("NPC Def: ID=%d, Name=%s, Sprite=%s, VoiceType=%s, InteractionMode=%s\n", d.ID, d.Name, d.Sprite, d.VoiceType, d.InteractionMode)
+	fmt.Printf("=== Indexes on player_mission_progresses ===\n")
+	for rows.Next() {
+		var name, def string
+		if err := rows.Scan(&name, &def); err != nil {
+			log.Fatalf("Error scanning row: %v", err)
+		}
+		fmt.Printf("Index: %s\nDef: %s\n\n", name, def)
 	}
 }

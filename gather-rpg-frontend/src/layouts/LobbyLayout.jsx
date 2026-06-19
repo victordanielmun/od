@@ -112,8 +112,11 @@ export const LobbyLayout = () => {
   const userRole = useAuthStore(state => state.user?.role);
   const activeMission = useGameStore(state => state.activeMission);
   const fetchActiveMission = useGameStore(state => state.fetchActiveMission);
+  const acceptMission = useGameStore(state => state.acceptMission);
   const currentSceneKey = useGameStore(state => state.currentSceneKey);
   const currentRoomId = useGameStore(state => state.currentRoomId);
+  const currentRoomScene = useGameStore(state => state.currentRoomScene);
+  const acceptedMissionRef = useRef(null);
   const currentInviteCode = useGameStore(state => state.currentInviteCode);
   const rooms = useRoomStore.getState().rooms;
   const currentRoom = rooms.find(r => r.id === currentRoomId);
@@ -254,6 +257,24 @@ export const LobbyLayout = () => {
       fetchActiveMission(currentSceneKey);
     }
   }, [currentRoomId, currentSceneKey, fetchActiveMission]);
+
+  // Accept the scene's mission on arrival in its instance (One Map, One Mission).
+  // Progress is no longer auto-created, so this binds the mission to THIS room so
+  // that kills/tasks count toward it. Skips lobby. Idempotent on the backend.
+  useEffect(() => {
+    if (!currentRoomId || !activeMission || currentSceneKey === 'lobby') return;
+    if (activeMission.scene_key !== currentSceneKey) return;
+    // During a teleport the scene_key flips to the new map before the new room's
+    // room_joined arrives, so currentRoomId can still point at the previous room
+    // (e.g. the castle where the mission master lives). Only bind once the room
+    // actually belongs to this scene, so the mission isn't accepted against the
+    // wrong room.
+    if (currentRoomScene !== currentSceneKey) return;
+    const key = `${activeMission.id}:${currentRoomId}`;
+    if (acceptedMissionRef.current === key) return;
+    acceptedMissionRef.current = key;
+    acceptMission(activeMission.id);
+  }, [activeMission, currentRoomId, currentRoomScene, currentSceneKey, acceptMission]);
 
   // Open Help guide automatically the first time entering the Lobby in this session
   useEffect(() => {

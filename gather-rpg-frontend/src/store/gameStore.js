@@ -12,6 +12,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     messages: [],
     listenersInitialized: false,
     currentRoomId: null,
+    currentRoomScene: null, // scene_key that the current room actually belongs to
     currentSceneKey: 'lobby',
     currentInviteCode: null,
     activeChallengeId: null,
@@ -95,8 +96,14 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
 
                 wsClient.on('room_joined', (payload) => {
                     console.log("Room joined:", payload.room_id);
+                    // Resolve the scene this room belongs to. room_joined doesn't carry
+                    // scene_key, so we use the value captured at map_join_approved for
+                    // this same room_id (set _pendingRoomScene below).
+                    const pending = get()._pendingRoomScene;
+                    const roomScene = (pending && pending.roomId === payload.room_id) ? pending.sceneKey : get().currentRoomScene;
                     set({
                         currentRoomId: payload.room_id,
+                        currentRoomScene: roomScene,
                         currentInviteCode: payload.invite_code || null,
                         players: new Map() // Clear players from previous room
                     });
@@ -106,7 +113,12 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
 
                 wsClient.on('map_join_approved', (payload) => {
                     console.log("Map join approved:", payload);
-                    set({ currentInviteCode: payload.invite_code || null });
+                    // Remember which scene this upcoming room belongs to so room_joined
+                    // can tag currentRoomScene accurately (room_joined lacks scene_key).
+                    set({
+                        currentInviteCode: payload.invite_code || null,
+                        _pendingRoomScene: { roomId: payload.room_id, sceneKey: payload.scene_key }
+                    });
                     // Server has found/created a room for us. Now join it.
                     // Payload: { room_id, scene_key, type, x?, y?, invite_code? }
                     // We dispatch a custom event so the UI/Canvas can handle the scene transition
@@ -524,6 +536,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
             listenersInitialized: false,
             players: new Map(),
             currentRoomId: null,
+            currentRoomScene: null,
             currentInviteCode: null,
             activeChallengeId: null,
             challengeParticipants: [],
@@ -684,6 +697,20 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
         } catch (err) {
             console.error("Failed to fetch missions:", err);
             if (!silent) set({ activeMission: null });
+        }
+    },
+
+    // Explicitly accept/start a mission, scoped to the current room instance.
+    // Progress is no longer auto-created on view, so this must be called for the
+    // mission to begin tracking (and for kills to count toward it).
+    acceptMission: async (missionId) => {
+        if (!missionId) return;
+        const roomId = get().currentRoomId;
+        try {
+            await api.post(`/missions/${missionId}/accept${roomId ? `?room_id=${roomId}` : ''}`);
+            console.log(`[gameStore] Mission ${missionId} accepted (room ${roomId || 'none'})`);
+        } catch (err) {
+            console.error('Failed to accept mission:', err);
         }
     },
 

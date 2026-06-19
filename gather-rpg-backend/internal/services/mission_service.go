@@ -91,6 +91,61 @@ func (s *MissionService) GetProgress(userID uuid.UUID, missionID uint) (*models.
 	return progress, nil
 }
 
+// resolvePlayerID maps an auth user UUID to the internal PlayerStats ID.
+func (s *MissionService) resolvePlayerID(userID uuid.UUID) (uuid.UUID, error) {
+	var stats models.PlayerStats
+	if err := database.DB.First(&stats, "user_id = ?", userID).Error; err != nil {
+		return uuid.Nil, fmt.Errorf("player stats not found: %w", err)
+	}
+	return stats.ID, nil
+}
+
+// GetProgressReadOnly returns the player's progress WITHOUT creating one.
+// Returns (nil, nil) when no progress exists — i.e. the mission hasn't been
+// accepted (in this room). Used by listings so that merely viewing missions
+// no longer auto-starts them.
+func (s *MissionService) GetProgressReadOnly(userID uuid.UUID, missionID uint, roomID *uuid.UUID) (*models.PlayerMissionProgress, error) {
+	playerID, err := s.resolvePlayerID(userID)
+	if err != nil {
+		return nil, err
+	}
+	progress, err := s.Repo.GetPlayerProgressInRoom(playerID, missionID, roomID)
+	if err != nil {
+		return nil, nil // not found = not accepted (not an error)
+	}
+	return progress, nil
+}
+
+// AcceptMission explicitly starts a mission for the player in a given room
+// instance. Idempotent: returns the existing progress if already accepted.
+func (s *MissionService) AcceptMission(userID uuid.UUID, missionID uint, roomID *uuid.UUID) (*models.PlayerMissionProgress, error) {
+	playerID, err := s.resolvePlayerID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if existing, err := s.Repo.GetPlayerProgressInRoom(playerID, missionID, roomID); err == nil && existing != nil {
+		if existing.Status == models.StatusNotStarted {
+			existing.Status = models.StatusInProgress
+			s.Repo.CreateOrUpdateProgress(existing)
+		}
+		return existing, nil
+	}
+
+	progress := &models.PlayerMissionProgress{
+		PlayerID:       playerID,
+		MissionID:      missionID,
+		RoomID:         roomID,
+		Status:         models.StatusInProgress,
+		TasksCompleted: []byte("{}"),
+		StartedAt:      time.Now(),
+	}
+	if err := s.Repo.CreateOrUpdateProgress(progress); err != nil {
+		return nil, err
+	}
+	return progress, nil
+}
+
 // CheckTaskCondition evaluates if the player meets the requirements for a specific task.
 func (s *MissionService) CheckTaskCondition(userID uuid.UUID, task *models.MissionTask, roomID uuid.UUID) (bool, string, error) {
 	var stats models.PlayerStats
@@ -101,9 +156,9 @@ func (s *MissionService) CheckTaskCondition(userID uuid.UUID, task *models.Missi
 
 	switch task.Type {
 	case models.TaskTypeBringItem, models.TaskTypeFindItem, models.TaskTypeCollectItems:
-		return s.checkBringItem(playerID, task.RequiredItem)
+		return s.checkBringItem(playerID, task.RequiredItem, task.RequiredQuantity)
 	case models.TaskTypeDefeatEnemy, models.TaskTypeKillBoss, models.TaskTypeKillAll:
-		return s.checkDefeatEnemy(playerID, task.RequiredEnemy)
+		return s.checkKillTaskDone(playerID, task.MissionID, task.ID)
 	case models.TaskTypeTalkToNPC:
 		return s.checkTalkToNPC(playerID, task.TargetNPCTemplateID, task.MissionID)
 	case models.TaskTypeDeliverMsg, models.TaskTypePronunciation:
@@ -114,31 +169,49 @@ func (s *MissionService) CheckTaskCondition(userID uuid.UUID, task *models.Missi
 	return false, "Unknown task type", nil
 }
 
-func (s *MissionService) checkBringItem(playerID uuid.UUID, itemName string) (bool, string, error) {
+func (s *MissionService) checkBringItem(playerID uuid.UUID, itemName string, requiredQty int) (bool, string, error) {
 	if itemName == "" {
 		return true, "", nil
 	}
+	if requiredQty < 1 {
+		requiredQty = 1 // 0 = compat: exigir al menos 1
+	}
 
-	var count int64
-	// Search in inventories, joining with items table to match by name
+	var total int64
+	// Sum the quantity across all inventory rows that match the item name
 	err := database.DB.Table("inventories").
 		Joins("JOIN items ON items.id = inventories.item_id").
 		Where("inventories.player_id = ? AND items.name ILIKE ?", playerID, itemName).
-		Count(&count).Error
+		Select("COALESCE(SUM(inventories.quantity), 0)").
+		Scan(&total).Error
 
 	if err != nil {
 		return false, "", err
 	}
 
-	if count > 0 {
-		return true, "I see you have the item!", nil
+	if total >= int64(requiredQty) {
+		return true, "I see you have the items!", nil
 	}
-	return false, "You don't have the required item yet.", nil
+	return false, fmt.Sprintf("You still need %d more.", requiredQty-int(total)), nil
 }
 
-func (s *MissionService) checkDefeatEnemy(playerID uuid.UUID, enemyName string) (bool, string, error) {
-	// Placeholder: In a real RPG, we'd have a 'killed_enemies' table or mission state.
-	// For now, let's assume it's true if the player has any record in a mock table (future proofing).
+// checkKillTaskDone returns true if the WS kill handlers (UpdateKillProgress /
+// UpdateKillAllProgress) already marked this kill/boss/clear task as completed
+// in the player's mission progress. Replaces the old always-false placeholder.
+func (s *MissionService) checkKillTaskDone(playerID uuid.UUID, missionID uint, taskID uint) (bool, string, error) {
+	progress, err := s.Repo.GetPlayerProgress(playerID, missionID)
+	if err != nil || progress == nil || progress.TasksCompleted == nil {
+		return false, "The enemies are still lurking around.", nil
+	}
+
+	var completed map[string]bool
+	if err := json.Unmarshal(progress.TasksCompleted, &completed); err != nil {
+		return false, "The enemies are still lurking around.", nil
+	}
+
+	if completed[fmt.Sprint(taskID)] {
+		return true, "Well done, the threat is gone!", nil
+	}
 	return false, "The enemies are still lurking around.", nil
 }
 
@@ -162,6 +235,39 @@ func (s *MissionService) checkTalkToNPC(playerID uuid.UUID, targetTmplID *uint, 
 		return true, "Ah, I see you've already spoken with them.", nil
 	}
 	return false, "You should go talk to our friend first.", nil
+}
+
+// deliverRewards grants the mission's gold, XP and item reward to the player.
+// Callers MUST invoke it exactly once, on the transition to "completed"
+// (the kill handlers already filter out already-completed missions, and
+// UpdateTaskProgress guards with wasCompleted), so this is not re-entrant-safe
+// on its own — it just centralizes the previously-triplicated grant logic.
+func (s *MissionService) deliverRewards(playerID uuid.UUID, missionID uint) {
+	var mission models.Mission
+	if err := database.DB.First(&mission, missionID).Error; err != nil {
+		return
+	}
+
+	// 1. Gold + XP
+	var stats models.PlayerStats
+	if err := database.DB.First(&stats, "id = ?", playerID).Error; err == nil {
+		stats.Gold += mission.RewardGold
+		stats.Experience += mission.RewardXP
+		database.DB.Save(&stats)
+		fmt.Printf("[MissionService] Delivered %d Gold and %d XP to player %s for mission %d\n", mission.RewardGold, mission.RewardXP, playerID, missionID)
+	}
+
+	// 2. Item
+	if mission.RewardItemID != nil && mission.RewardQuantity > 0 {
+		var existing models.Inventory
+		if database.DB.Where("player_id = ? AND item_id = ?", playerID, *mission.RewardItemID).First(&existing).Error == nil {
+			existing.Quantity += mission.RewardQuantity
+			database.DB.Save(&existing)
+		} else {
+			database.DB.Create(&models.Inventory{PlayerID: playerID, ItemID: *mission.RewardItemID, Quantity: mission.RewardQuantity})
+		}
+		fmt.Printf("[MissionService] Delivered %d of item %s to player %s for mission %d\n", mission.RewardQuantity, mission.RewardItemID, playerID, missionID)
+	}
 }
 
 // UpdateTaskProgress marks a specific task as completed in the player's progress.
@@ -188,9 +294,12 @@ func (s *MissionService) UpdateTaskProgress(userID uuid.UUID, missionID uint, ta
 			if (task.Type == models.TaskTypeBringItem || task.Type == models.TaskTypeFindItem || task.Type == models.TaskTypeCollectItems) && task.RequiredItem != "" {
 				item, err := s.InvRepo.GetItemByName(task.RequiredItem)
 				if err == nil {
-					// Consume 1 unit (default for now)
-					s.InvRepo.RemoveItemFromInventory(playerID, item.ID, 1)
-					fmt.Printf("[MissionService] Consumed item '%s' for task %d completion\n", task.RequiredItem, taskID)
+					qty := task.RequiredQuantity
+					if qty < 1 {
+						qty = 1
+					}
+					s.InvRepo.RemoveItemFromInventory(playerID, item.ID, qty)
+					fmt.Printf("[MissionService] Consumed %d of item '%s' for task %d completion\n", qty, task.RequiredItem, taskID)
 				}
 			}
 		}
@@ -215,35 +324,10 @@ func (s *MissionService) UpdateTaskProgress(userID uuid.UUID, missionID uint, ta
 		now := time.Now()
 		progress.CompletedAt = &now
 
-		// Deliver Rewards
-		var mission models.Mission
-		if err := database.DB.First(&mission, missionID).Error; err == nil {
-			// 1. Add Gold
-			var stats models.PlayerStats
-			if err := database.DB.First(&stats, "id = ?", playerID).Error; err == nil {
-				stats.Gold += mission.RewardGold
-				stats.Experience += mission.RewardXP
-				database.DB.Save(&stats)
-				fmt.Printf("[MissionService] Delivered %d Gold and %d XP to player %s for mission %d\n", mission.RewardGold, mission.RewardXP, playerID, missionID)
-			}
-
-			// 2. Add Item
-			if mission.RewardItemID != nil && mission.RewardQuantity > 0 {
-				inv := &models.Inventory{
-					PlayerID: playerID,
-					ItemID:   *mission.RewardItemID,
-					Quantity: mission.RewardQuantity,
-				}
-				var existing models.Inventory
-				err := database.DB.Where("player_id = ? AND item_id = ?", inv.PlayerID, inv.ItemID).First(&existing).Error
-				if err == nil {
-					existing.Quantity += inv.Quantity
-					database.DB.Save(&existing)
-				} else {
-					database.DB.Create(inv)
-				}
-				fmt.Printf("[MissionService] Delivered %d of item %s to player %s for mission %d\n", mission.RewardQuantity, mission.RewardItemID, playerID, missionID)
-			}
+		// Deliver rewards only on the transition to completed, so re-running this
+		// task update on an already-completed mission can't double-grant.
+		if !wasCompleted {
+			s.deliverRewards(playerID, missionID)
 		}
 	}
 
@@ -285,6 +369,20 @@ type KillProgressResult struct {
 	MissionDone    bool
 }
 
+// activeMissionProgresses returns the player's ACCEPTED (in_progress) missions,
+// scoped to the given room instance when roomID is a valid UUID. This is what
+// makes kills count only toward missions the player explicitly accepted in this
+// instance (fixes the "phantom progress" + cross-instance counting issues).
+func (s *MissionService) activeMissionProgresses(playerID uuid.UUID, roomID string) []models.PlayerMissionProgress {
+	q := database.DB.Where("player_id = ? AND status = ?", playerID, string(models.StatusInProgress))
+	if rid, err := uuid.Parse(roomID); err == nil {
+		q = q.Where("room_id = ?", rid)
+	}
+	var progresses []models.PlayerMissionProgress
+	q.Find(&progresses)
+	return progresses
+}
+
 func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uuid.UUID, roomID string) ([]KillProgressResult, error) {
 	fmt.Printf("\n[KillProgress] ============ INICIO UpdateKillProgress ============\n")
 	fmt.Printf("[KillProgress] userID=%s | enemyTemplateID=%s | roomID=%s\n", userID, enemyTemplateID, roomID)
@@ -298,12 +396,8 @@ func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uu
 	playerID := stats.ID
 	fmt.Printf("[KillProgress] playerID interno = %s\n", playerID)
 
-	// 2. Buscar misiones activas del jugador
-	var progresses []models.PlayerMissionProgress
-	database.DB.Where("player_id = ? AND status IN ?", playerID, []string{
-		string(models.StatusInProgress),
-		string(models.StatusNotStarted),
-	}).Find(&progresses)
+	// 2. Misiones aceptadas (in_progress) del jugador EN ESTA INSTANCIA
+	progresses := s.activeMissionProgresses(playerID, roomID)
 	fmt.Printf("[KillProgress] Misiones activas encontradas: %d\n", len(progresses))
 	for _, p := range progresses {
 		fmt.Printf("[KillProgress]   → missionID=%d | status=%s\n", p.MissionID, p.Status)
@@ -436,27 +530,9 @@ func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uu
 
 			fmt.Printf("[KillProgress]   Misión %d: 🎉 COMPLETADA TOTALMENTE\n", p.MissionID)
 
-			// Entregar recompensas
-			var mission models.Mission
-			if err := database.DB.First(&mission, p.MissionID).Error; err == nil {
-				var mStats models.PlayerStats
-				if err := database.DB.First(&mStats, "id = ?", playerID).Error; err == nil {
-					mStats.Gold += mission.RewardGold
-					mStats.Experience += mission.RewardXP
-					database.DB.Save(&mStats)
-					fmt.Printf("[KillProgress]   Recompensas: +%d gold, +%d xp\n", mission.RewardGold, mission.RewardXP)
-				}
-				if mission.RewardItemID != nil && mission.RewardQuantity > 0 {
-					inv := &models.Inventory{PlayerID: playerID, ItemID: *mission.RewardItemID, Quantity: mission.RewardQuantity}
-					var existing models.Inventory
-					if database.DB.Where("player_id = ? AND item_id = ?", inv.PlayerID, inv.ItemID).First(&existing).Error == nil {
-						existing.Quantity += inv.Quantity
-						database.DB.Save(&existing)
-					} else {
-						database.DB.Create(inv)
-					}
-				}
-			}
+			// Entregar recompensas. La query de arriba filtra misiones ya
+			// completadas, así que esta rama solo corre en la transición.
+			s.deliverRewards(playerID, p.MissionID)
 
 			for i := range results {
 				if results[i].MissionID == p.MissionID {
@@ -492,13 +568,8 @@ func (s *MissionService) UpdateKillAllProgress(userID uuid.UUID, roomID string) 
 	fmt.Printf("\n[KillAllProgress] ============ INICIO UpdateKillAllProgress ============\n")
 	fmt.Printf("[KillAllProgress] userID=%s | roomID=%s | playerID=%s\n", userID, roomID, playerID)
 
-	// BUGFIX: incluir 'not_started' además de 'in_progress'
-	// La misión puede estar 'not_started' si el jugador nunca había matado un enemigo antes.
-	var progresses []models.PlayerMissionProgress
-	database.DB.Where("player_id = ? AND status IN ?", playerID, []string{
-		string(models.StatusInProgress),
-		string(models.StatusNotStarted),
-	}).Find(&progresses)
+	// Misiones aceptadas (in_progress) del jugador EN ESTA INSTANCIA
+	progresses := s.activeMissionProgresses(playerID, roomID)
 	fmt.Printf("[KillAllProgress] Misiones activas encontradas: %d\n", len(progresses))
 	for _, p := range progresses {
 		fmt.Printf("[KillAllProgress]   → missionID=%d | status=%s\n", p.MissionID, p.Status)
@@ -562,26 +633,9 @@ func (s *MissionService) UpdateKillAllProgress(userID uuid.UUID, roomID string) 
 				now := time.Now()
 				p.CompletedAt = &now
 
-				// Entregar recompensas
-				var mission models.Mission
-				if err := database.DB.First(&mission, p.MissionID).Error; err == nil {
-					var mStats models.PlayerStats
-					if err := database.DB.First(&mStats, "id = ?", playerID).Error; err == nil {
-						mStats.Gold += mission.RewardGold
-						mStats.Experience += mission.RewardXP
-						database.DB.Save(&mStats)
-					}
-					if mission.RewardItemID != nil && mission.RewardQuantity > 0 {
-						inv := &models.Inventory{PlayerID: playerID, ItemID: *mission.RewardItemID, Quantity: mission.RewardQuantity}
-						var existing models.Inventory
-						if database.DB.Where("player_id = ? AND item_id = ?", inv.PlayerID, inv.ItemID).First(&existing).Error == nil {
-							existing.Quantity += inv.Quantity
-							database.DB.Save(&existing)
-						} else {
-							database.DB.Create(inv)
-						}
-					}
-				}
+				// Entregar recompensas. La query filtra misiones ya completadas,
+				// así que esta rama solo corre en la transición.
+				s.deliverRewards(playerID, p.MissionID)
 
 				// Marcar todos los resultados de esta misión como completados
 				for i := range results {
@@ -616,11 +670,7 @@ func (s *MissionService) GetKillAllProgress(userID uuid.UUID) ([]KillProgressRes
 	}
 	playerID := stats.ID
 
-	var progresses []models.PlayerMissionProgress
-	database.DB.Where("player_id = ? AND status IN ?", playerID, []string{
-		string(models.StatusInProgress),
-		string(models.StatusNotStarted),
-	}).Find(&progresses)
+	progresses := s.activeMissionProgresses(playerID, "")
 
 	var results []KillProgressResult
 	for _, p := range progresses {

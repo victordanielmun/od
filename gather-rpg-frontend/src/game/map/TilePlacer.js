@@ -158,6 +158,7 @@ export class TilePlacer {
       if (metadata.definitionId !== undefined) sprite.data.set('definitionId', metadata.definitionId);
       if (metadata.role !== undefined)         sprite.data.set('role', metadata.role);
       if (metadata.state !== undefined)        sprite.data.set('state', metadata.state);
+      if (metadata.facing !== undefined)       sprite.data.set('facing', metadata.facing);
       // Soportar tanto missionIds (array) como missionId (legacy singular)
       if (metadata.missionIds !== undefined) {
         sprite.data.set('missionIds', metadata.missionIds);

@@ -88,6 +88,7 @@ export class MapSerializer {
         missionId:    getData(t.data, 'missionId'),   // compat legacy
         templateId:   getData(t.data, 'templateId'),
         state:        getData(t.data, 'state'),
+        facing:       getData(t.data, 'facing'),
       })),
 
       pickups: mm.pickups.getChildren().map(t => ({
@@ -239,6 +240,7 @@ export class MapSerializer {
         missionIds:   t.missionIds,
         missionId:    t.missionId,
         state:        t.state,
+        facing:       t.facing,
       }));
 
       (data.pickups || []).forEach(t => place('item', t.x, t.y, null, {

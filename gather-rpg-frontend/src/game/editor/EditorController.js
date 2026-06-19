@@ -1,4 +1,6 @@
 import { useAuthStore } from '../../store/authStore';
+import { useNotificationStore } from '../../store/notificationStore';
+import api from '../../services/api';
 
 export class EditorController {
   constructor(scene) {
@@ -396,12 +398,47 @@ export class EditorController {
     }
   }
 
+  // Removes a live NPC (a backend instance, with or without an editor marker)
+  // at the given grid cell. Deletes it locally for instant feedback and from
+  // the DB via DELETE /admin/npcs/:templateId so the map won't respawn it.
+  // Returns true if an NPC was found and removed locally.
+  _eraseLiveNPCAt(gx, gy) {
+    const npc = this.scene.npcs.find(
+      n => Math.abs(n.x - gx) < this.GRID_SIZE && Math.abs(n.y - gy) < this.GRID_SIZE
+    );
+    if (!npc) return false;
+
+    const tid = npc.npcData?.templateId;
+
+    // Remove locally first for instant feedback
+    if (tid != null) this.scene.npcSprites.delete(tid);
+    npc.destroy();
+    this.scene.npcs = this.scene.npcs.filter(n => n !== npc);
+
+    // Persist deletion to the backend (template + room instances + mission roles)
+    if (tid != null) {
+      api.delete(`/admin/npcs/${tid}`)
+        .then(() => console.log(`[Editor] NPC template ${tid} deleted from DB`))
+        .catch((err) => {
+          const msg = err?.response?.data?.error || 'No se pudo borrar el NPC en el servidor.';
+          console.error('[Editor] Failed to delete NPC template:', msg);
+          useNotificationStore.getState().addNotification('error', msg);
+        });
+    }
+    return true;
+  }
+
   _editorPlaceOrErase(gx, gy) {
     if (gx < 0 || gx > this.scene.mapWidth || gy < 0 || gy > this.scene.mapHeight) return;
 
     const existingTiles = this.scene._findAllTilesAt(gx, gy);
 
     if (this.tool === 'eraser') {
+      // A live NPC (backend instance) is deleted directly — even when it has no
+      // coincident editor marker tile — and removed from the DB so the map
+      // won't respawn it on reload.
+      const npcErased = this._eraseLiveNPCAt(gx, gy);
+
       if (existingTiles.length > 0) {
         const floorIndex = existingTiles.findIndex(t => t.type === 'floor');
         let toErase = null;
@@ -411,30 +448,31 @@ export class EditorController {
           toErase = existingTiles[existingTiles.length - 1];
         }
 
+        // If we just deleted a live NPC and the only tile here is floor, keep
+        // the floor — the admin's intent was to remove the NPC, not the ground.
+        if (toErase && npcErased && toErase.type === 'floor') {
+          toErase = null;
+        }
+
         if (toErase) {
           this._pushHistory({ action: 'remove', type: toErase.type, x: gx, y: gy });
           this.redoStack = [];
-          
+
           toErase.tile.destroy();
 
-          if (toErase.type === 'npc') {
-            const npcToRemove = this.scene.npcs.find(n => Math.abs(n.x - gx) < this.GRID_SIZE && Math.abs(n.y - gy) < this.GRID_SIZE);
-            if (npcToRemove) {
-              const tid = npcToRemove.npcData?.templateId;
-              if (tid) this.scene.npcSprites.delete(tid);
-              npcToRemove.destroy();
-              this.scene.npcs = this.scene.npcs.filter(n => n !== npcToRemove);
-            }
-          } else if (toErase.type === 'item') {
+          if (toErase.type === 'item') {
             const pickupToRemove = this.scene.activePickups.find(p => Math.abs(p.x - gx) < this.GRID_SIZE && Math.abs(p.y - gy) < this.GRID_SIZE);
             if (pickupToRemove) {
               pickupToRemove.destroy();
               this.scene.activePickups = this.scene.activePickups.filter(p => p !== pickupToRemove);
             }
           }
-
-          this.emitStats();
+          // NPC container + DB deletion is handled by _eraseLiveNPCAt above.
         }
+      }
+
+      if (npcErased || existingTiles.length > 0) {
+        this.emitStats();
       }
       return;
     }

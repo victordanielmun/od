@@ -140,7 +140,7 @@ export const MapEditorUI = ({ gameRef }) => {
   const [activeTile, setActiveTile] = useState('wall');
   const [activeTexture, setActiveTexture] = useState('sprite1');
   const [buildMeta, setBuildMeta] = useState({ portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '' });
-  const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [], state: 'idle' });
+  const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [], state: 'idle', facing: 'right' });
   const [enemyMeta, setEnemyMeta] = useState({ npcId: '', waveNum: 1, hp: 50, speed: 120, damage: 10, attackRate: 1000 });
   const [buildScale, setBuildScale] = useState(2.5);
   const [availableMaps, setAvailableMaps] = useState([]);
@@ -227,7 +227,8 @@ export const MapEditorUI = ({ gameRef }) => {
         setNpcMeta({
           definitionId: metadata.definitionId || '',
           missionIds: Array.isArray(metadata.missionIds) ? metadata.missionIds : (metadata.missionId ? [metadata.missionId] : []),
-          state: mapFaceToBodyState(metadata.state || 'idle')
+          state: mapFaceToBodyState(metadata.state || 'idle'),
+          facing: metadata.facing || 'right'
         });
         setPickupMeta({
           itemId: metadata.itemId || '',
@@ -266,7 +267,7 @@ export const MapEditorUI = ({ gameRef }) => {
       dispatchEditorCommand('setBuildScale', buildScale);
       dispatchEditorCommand('setBuildMetadata', buildMeta);
       dispatchEditorCommand('setFurnitureMetadata', furnitureMeta);
-      dispatchEditorCommand('setNpcMetadata', npcMeta);
+      dispatchEditorCommand('setNPCMetadata', npcMeta);
       dispatchEditorCommand('setEnemyMetadata', enemyMeta);
       dispatchEditorCommand('setPickupMetadata', pickupMeta);
     };
@@ -1091,6 +1092,15 @@ export const MapEditorUI = ({ gameRef }) => {
                     <option value="sad">Sad (Row 4)</option>
                     <option value="walking">Walking (Row 5)</option>
                     <option value="dying">Dying (Row 6)</option>
+                  </select>
+                </div>
+
+                <div className="mb-2">
+                  <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.facing') || 'Facing / Dirección'}</label>
+                  <select value={npcMeta.facing || 'right'} onChange={e => updateNpcMeta('facing', e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none">
+                    <option value="right">➡️ {t('lobby.editor.facing_right') || 'Derecha'}</option>
+                    <option value="left">⬅️ {t('lobby.editor.facing_left') || 'Izquierda'}</option>
                   </select>
                 </div>
 

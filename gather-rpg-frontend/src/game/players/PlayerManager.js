@@ -2,6 +2,16 @@ import { useAuthStore } from '../../store/authStore';
 import { useGameStore } from '../../store/gameStore';
 import { PlayerSprite } from '../entities/PlayerSprite';
 
+/**
+ * Devuelve un desplazamiento aleatorio entero entre -range y +range (px).
+ * Se usa para "esparcir" el punto de aparición: si el spawn es (400, 400),
+ * el jugador puede aparecer en cualquier punto dentro de ±range en cada eje,
+ * evitando que varios usuarios que entran al mismo punto queden apilados.
+ */
+function spawnJitter(range = 100) {
+  return Math.round((Math.random() * 2 - 1) * range);
+}
+
 export class PlayerManager {
   constructor(scene) {
     this.scene = scene;
@@ -19,6 +29,17 @@ export class PlayerManager {
     const user = useAuthStore.getState().user;
     if (!user?.id) return;
     this.myPlayerId = String(user.id);
+
+    // Idempotency guard: during a teleport the scene is restarted while the previous
+    // scene's loadServerMapConfig promise is still in flight. Phaser reuses the same
+    // scene instance on restart, so both the stale and the new map-load callbacks can
+    // call createMyPlayer() on the same scene, leaving an orphaned duplicate self-sprite
+    // on the canvas. Destroy any existing self player before creating a new one.
+    if (this.scene.player) {
+      console.warn('[PlayerManager] Self player already exists — destroying previous sprite to avoid duplicate.');
+      try { this.scene.player.destroy(); } catch (e) { /* sprite already gone */ }
+      this.scene.player = null;
+    }
 
     const urlParams = new URLSearchParams(window.location.search);
     let startX = this.scene.initData?.spawnX != null ? Number(this.scene.initData.spawnX) : (urlParams.get('spawnX') ? Number(urlParams.get('spawnX')) : null);
@@ -59,6 +80,25 @@ export class PlayerManager {
       if (isBlockedAt(startX, startY)) { startX += GRID; startY += GRID; }
     }
 
+    // Spread the spawn ±100px per axis so concurrent joiners don't stack exactly on
+    // top of each other. Try a few jittered candidates and keep the first one that is
+    // in-bounds and not on a wall; if none work, keep the validated base position.
+    {
+      const JITTER = 100;
+      const mw = this.scene.mapWidth || 2000;
+      const mh = this.scene.mapHeight || 2000;
+      const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+      for (let i = 0; i < 8; i++) {
+        const cx = clamp(startX + spawnJitter(JITTER), GRID / 2, mw - GRID / 2);
+        const cy = clamp(startY + spawnJitter(JITTER), GRID / 2, mh - GRID / 2);
+        if (!isBlockedAt(cx, cy)) {
+          startX = cx;
+          startY = cy;
+          break;
+        }
+      }
+    }
+
     this.scene.player = new PlayerSprite(
       this.scene,
       startX,
@@ -85,9 +125,12 @@ export class PlayerManager {
     if (this.scene.npcs) {
       this.scene.npcs.forEach(npc => this.scene.physics.add.collider(this.scene.player, npc));
     }
-    
-    // Add colliders for existing other players (if any already created)
-    this.sprites.forEach(sprite => this.scene.physics.add.collider(this.scene.player, sprite));
+
+    // NOTE: No player-vs-player colliders. Everyone spawns at the same map default
+    // point, and resolving two overlapping circular bodies at distance 0 makes Phaser
+    // pick a degenerate separation direction, shoving a player sideways every frame
+    // (the "drifts left on join" bug). This is a social/learning game — players pass
+    // through each other like in Gather.
 
     this.scene.cameras.main.startFollow(this.scene.player, true, 0.1, 0.1);
 
@@ -163,9 +206,8 @@ export class PlayerManager {
     this.scene.add.existing(newPlayer);
     this.sprites.set(id, newPlayer);
 
-    if (this.scene.player && this.scene.player.body) {
-      this.scene.physics.add.collider(this.scene.player, newPlayer);
-    }
+    // No player-vs-player collider on purpose — see createMyPlayer(). Overlapping
+    // spawns would otherwise shove the local player sideways indefinitely.
   }
 
   updateOtherPlayer(id, player) {

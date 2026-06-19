@@ -288,6 +288,7 @@ func main() {
 	missions.Get("/scene/:key", missionHandler.GetMissionsByScene)
 	missions.Get("/npc/:id", missionHandler.GetMissionsByNPC)
 	missions.Get("/:id/validate", missionHandler.ValidateMissionCompletion)
+	missions.Post("/:id/accept", missionHandler.AcceptMission)
 
 	// Inventory Routes
 	inventory := app.Group("/inventory", middleware.Protected(cfg))

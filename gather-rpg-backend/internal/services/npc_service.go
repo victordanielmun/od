@@ -234,6 +234,7 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 		MissionIDs   []string `json:"missionIds"`
 		TemplateID   string   `json:"templateId"`
 		State        string   `json:"state"`
+		Facing       string   `json:"facing"`
 	}
 	type mapConfig struct {
 		NPCZones []mapObject `json:"npcZones"`
@@ -314,6 +315,9 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 			if zone.State != "" {
 				foundTmpl.DefaultState = models.NPCState(zone.State)
 			}
+			if zone.Facing != "" {
+				foundTmpl.FacingDirection = zone.Facing
+			}
 			s.Repo.UpdateTemplate(foundTmpl)
 			matchedTemplateIDs[foundTmpl.ID] = true
 			finalTmplID = foundTmpl.ID
@@ -323,12 +327,17 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 			if initialState == "" {
 				initialState = models.NPCStateIdle
 			}
+			facing := zone.Facing
+			if facing == "" {
+				facing = "right"
+			}
 			newTmpl := &models.NPCTemplate{
 				SceneKey:        sceneKey,
 				NPCDefinitionID: uint(defID),
 				PositionX:       zone.X,
 				PositionY:       zone.Y,
 				DefaultState:    initialState,
+				FacingDirection: facing,
 			}
 			if err := s.Repo.CreateTemplate(newTmpl); err == nil {
 				matchedTemplateIDs[newTmpl.ID] = true

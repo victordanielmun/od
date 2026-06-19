@@ -92,11 +92,9 @@ export class NPCSprite extends Phaser.GameObjects.Container {
   }
 
   setFacing(direction) {
-    if (direction === 'left') {
-        this.sprite.setFlipX(true);
-    } else if (direction === 'right') {
-        this.sprite.setFlipX(false);
-    }
+    // Mirror left/right like the player. Any other value (e.g. the legacy
+    // 'south' default) falls back to facing right for a consistent look.
+    this.sprite.setFlipX(direction === 'left');
   }
 
   preUpdate(time, delta) {

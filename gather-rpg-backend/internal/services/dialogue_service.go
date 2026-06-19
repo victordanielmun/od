@@ -3,12 +3,12 @@ package services
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
-	"strings"
-	"time"
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/repository"
+	"regexp"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -46,21 +46,21 @@ type DialogueRequest struct {
 }
 
 type DialogueResponse struct {
-	NPCResponse          string                 `json:"npc_response"`
-	NPCResponseES        string                 `json:"npc_response_es"`
-	NPCState             models.NPCState        `json:"npc_state"`
-	PronunciationEval    models.PronunciationEval `json:"pronunciation_eval"`
-	PronunciationMessage string                 `json:"pronunciation_message"`
-	FeedbackSuggestion   string                 `json:"feedback_suggestion"`
-	TaskCompleted        bool                   `json:"task_completed"`
-	TaskProgress         string                 `json:"task_progress"`
-	IsShop               bool                   `json:"is_shop"`
-	ItemGift             *models.Item           `json:"item_gift"`
-	GiftQuantity         int                    `json:"gift_quantity"`
-	MissionNewlyCompleted bool                  `json:"mission_newly_completed"`
-	MissionDetails       *models.Mission        `json:"mission_details,omitempty"`
-	BuyItemID            *string                `json:"buy_item_id,omitempty"`
-	BuyQuantity          int                    `json:"buy_quantity,omitempty"`
+	NPCResponse           string                   `json:"npc_response"`
+	NPCResponseES         string                   `json:"npc_response_es"`
+	NPCState              models.NPCState          `json:"npc_state"`
+	PronunciationEval     models.PronunciationEval `json:"pronunciation_eval"`
+	PronunciationMessage  string                   `json:"pronunciation_message"`
+	FeedbackSuggestion    string                   `json:"feedback_suggestion"`
+	TaskCompleted         bool                     `json:"task_completed"`
+	TaskProgress          string                   `json:"task_progress"`
+	IsShop                bool                     `json:"is_shop"`
+	ItemGift              *models.Item             `json:"item_gift"`
+	GiftQuantity          int                      `json:"gift_quantity"`
+	MissionNewlyCompleted bool                     `json:"mission_newly_completed"`
+	MissionDetails        *models.Mission          `json:"mission_details,omitempty"`
+	BuyItemID             *string                  `json:"buy_item_id,omitempty"`
+	BuyQuantity           int                      `json:"buy_quantity,omitempty"`
 }
 
 func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, error) {
@@ -90,6 +90,21 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 		}
 	}
 
+	// Conversation row must exist BEFORE we evaluate task conditions. Some
+	// conditions (e.g. "talk to NPC") count this player's conversations with the
+	// target NPC; if it's created afterwards, the very act of talking wouldn't be
+	// registered on the turn it happens, leaving the task perpetually unmet while
+	// the AI still reports task_completed.
+	conv, err := s.MissionRepo.GetConversation(actualPlayerID, instance.ID, req.MissionID)
+	if err != nil {
+		conv = &models.Conversation{
+			PlayerID:      actualPlayerID,
+			NPCInstanceID: instance.ID,
+			MissionID:     req.MissionID,
+		}
+		s.MissionRepo.CreateConversation(conv)
+	}
+
 	// 2. Mission Context
 	var missionRole *models.NPCMissionRole
 	var currentTask *models.MissionTask
@@ -103,35 +118,24 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 	// architecture where regular NPCs (type 'other', 'guide', etc.) act as task targets.
 	if req.MissionID != nil {
 		missionRole, _ = s.MissionRepo.GetMissionRole(req.NPCTemplateID, *req.MissionID)
-		
+
 		tasks, _ := s.MissionSvc.GetTasks(*req.MissionID)
 		progress, _ := s.MissionSvc.GetProgress(req.PlayerID, *req.MissionID)
-		
+
 		var completedTasks map[string]bool
 		json.Unmarshal(progress.TasksCompleted, &completedTasks)
 
-		// Find the first uncompleted task
+		// Find the first uncompleted task targeting this NPC
 		for i := range tasks {
 			if !completedTasks[fmt.Sprint(tasks[i].ID)] {
 				// Only if the NPC is the target for this task
 				if tasks[i].TargetNPCTemplateID != nil && *tasks[i].TargetNPCTemplateID == req.NPCTemplateID {
 					currentTask = &tasks[i]
 					conditionMet, conditionMsg, _ = s.MissionSvc.CheckTaskCondition(req.PlayerID, currentTask, req.RoomID)
+					break
 				}
-				break
 			}
 		}
-	}
-
-	// 3. Conversation History
-	conv, err := s.MissionRepo.GetConversation(actualPlayerID, instance.ID, req.MissionID)
-	if err != nil {
-		conv = &models.Conversation{
-			PlayerID:      actualPlayerID,
-			NPCInstanceID: instance.ID,
-			MissionID:     req.MissionID,
-		}
-		s.MissionRepo.CreateConversation(conv)
 	}
 
 	// 3. Short-circuit: If purpose already fulfilled, skip AI
@@ -145,7 +149,7 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 				tasks, _ := s.MissionSvc.GetTasks(*req.MissionID)
 				var completedTasks map[string]bool
 				json.Unmarshal(progress.TasksCompleted, &completedTasks)
-				
+
 				hasNPCActiveTasks := false
 				allNPCActiveTasksCompleted := true
 				for _, t := range tasks {
@@ -163,7 +167,7 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 		}
 	}
 
-	if (instance.TaskCompleted || isTaskCompletedForPlayer) && instance.NPCTemplate.SuccessMessage != "" {
+	if isTaskCompletedForPlayer && instance.NPCTemplate.SuccessMessage != "" {
 		return &DialogueResponse{
 			NPCResponse:   instance.NPCTemplate.SuccessMessage,
 			NPCState:      models.NPCStateHappy,
@@ -172,7 +176,7 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 	}
 
 	history, _ := s.MissionRepo.GetMessages(conv.ID, 5)
-	
+
 	// 4. Cache Check (Only for good pronunciation to avoid caching error corrections)
 	var aiRespRaw string
 	var aiResp DialogueResponse
@@ -196,12 +200,12 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 	// 5. AIService Call (if Cache Miss)
 	if !fromCache {
 		systemPrompt := s.buildSystemPrompt(npcDef, instance.NPCTemplate, missionRole, currentTask, conditionMet, conditionMsg, req.PronunciationMetadata)
-		
+
 		historyPrompt := ""
 		for i := len(history) - 1; i >= 0; i-- {
 			historyPrompt += fmt.Sprintf("Player: %s\nNPC: %s\n", history[i].PlayerInput, history[i].NPCResponse)
 		}
-		userPrompt := fmt.Sprintf("History:\n%s\nCurrent Input: %s\nPronunciation Score: %.0f", 
+		userPrompt := fmt.Sprintf("History:\n%s\nCurrent Input: %s\nPronunciation Score: %.0f",
 			historyPrompt, req.PlayerInput, req.PronunciationScore)
 
 		startLLM := time.Now()
@@ -308,18 +312,37 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 	}
 
 	// 5. Post-Process: Update Progress & State
-	if aiResp.TaskCompleted && conditionMet && currentTask != nil {
-		newlyDone, _ := s.MissionSvc.UpdateTaskProgress(req.PlayerID, *req.MissionID, currentTask.ID, true)
-		aiResp.MissionNewlyCompleted = newlyDone
-		if newlyDone {
-			mission, _ := s.MissionRepo.GetMissionByID(*req.MissionID)
-			aiResp.MissionDetails = mission
+	// The frontend paints its "task completed" UI from the task_completed flag we
+	// return, so that flag must mirror what we actually persist. Otherwise the AI
+	// can claim completion (green banner) while progress silently fails to advance.
+	// We only report success when UpdateTaskProgress actually runs and succeeds.
+	taskActuallyCompleted := false
+	if aiResp.TaskCompleted && currentTask != nil && req.MissionID != nil {
+		if conditionMet {
+			newlyDone, err := s.MissionSvc.UpdateTaskProgress(req.PlayerID, *req.MissionID, currentTask.ID, true)
+			if err != nil {
+				fmt.Printf("[DialogueService] ERROR persisting task %d for mission %d: %v\n", currentTask.ID, *req.MissionID, err)
+			} else {
+				taskActuallyCompleted = true
+				aiResp.MissionNewlyCompleted = newlyDone
+				if newlyDone {
+					mission, _ := s.MissionRepo.GetMissionByID(*req.MissionID)
+					aiResp.MissionDetails = mission
+				}
+			}
+		} else {
+			fmt.Printf("[DialogueService] AI flagged task %d complete but its condition is not met (%s); not persisting.\n", currentTask.ID, conditionMsg)
 		}
-		instance.TaskCompleted = true
-		
+		// Per-player progress (MissionProgress, updated just above) is the source of
+		// truth. We intentionally do NOT set the shared room-instance TaskCompleted flag
+		// so other players sharing the room aren't affected during an individual mission.
+
 		// We no longer override the NPCResponse here because we want the AI's natural completion message.
 		// The SuccessMessage is already provided to the AI as context in the system prompt.
 	}
+	// Keep the returned flag in lockstep with what we actually saved so the client
+	// never shows a "completed" state we didn't persist.
+	aiResp.TaskCompleted = taskActuallyCompleted
 
 	if aiResp.NPCState != "" {
 		instance.CurrentState = aiResp.NPCState
@@ -385,10 +408,10 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 }
 
 func (s *DialogueService) buildSystemPrompt(
-	npc models.NPCDefinition, 
+	npc models.NPCDefinition,
 	tmpl models.NPCTemplate,
-	role *models.NPCMissionRole, 
-	task *models.MissionTask, 
+	role *models.NPCMissionRole,
+	task *models.MissionTask,
 	conditionMet bool,
 	conditionMsg string,
 	pronMetadata map[string]interface{},
@@ -400,7 +423,7 @@ func (s *DialogueService) buildSystemPrompt(
 	if tmpl.Instructions != "" {
 		knowledge = tmpl.Instructions
 	}
-	
+
 	if role != nil {
 		missionCtx = role.KnowledgeSummary
 		npcTask = role.TaskDescription
@@ -506,20 +529,20 @@ JSON FORMAT:
 func normalizeInput(input string) string {
 	// Lowercase
 	s := strings.ToLower(input)
-	
+
 	// Remove punctuation
 	reg := regexp.MustCompile(`[^a-z0-9\s]+`)
 	s = reg.ReplaceAllString(s, "")
-	
+
 	// Trim extra spaces
 	s = strings.Join(strings.Fields(s), " ")
-	
+
 	return s
 }
 
 func sanitizeJSON(input string) string {
 	cleaned := strings.TrimSpace(input)
-	
+
 	// 1. Strip markdown wrappers (```json ... ``` or ``` ... ```)
 	if strings.HasPrefix(cleaned, "```") {
 		firstLineEnd := strings.Index(cleaned, "\n")

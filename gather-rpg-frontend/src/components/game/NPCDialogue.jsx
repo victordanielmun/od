@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronRight, ShoppingBag, MapPin, Compass, ShieldCheck, Map } from 'lucide-react';
+import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronRight, ShoppingBag, MapPin, Compass, ShieldCheck, Map, CheckCircle } from 'lucide-react';
 import api from '../../services/api';
 import { analyzeDialogueAudio, generateTTS, getTTSAudioUrl } from '../../services/voiceApi';
 import ShopModal from '../common/ShopModal';
@@ -97,8 +97,11 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const [completedMissionData, setCompletedMissionData] = useState(null);
     const [showAudioTranscript, setShowAudioTranscript] = useState(false);
     const [showTooltip, setShowTooltip] = useState(false);
+    const [taskCompletedBanner, setTaskCompletedBanner] = useState(null);
+    const [npcTaskDone, setNpcTaskDone] = useState(false); // this NPC's task already completed by the player
     const hasPlayedGreeting = useRef(false);
-    
+    const taskBannerTimeoutRef = useRef(null);
+
     const mediaRecorderRef = useRef(null);
     const audioRef = useRef(null);
     const audioChunksRef = useRef([]);
@@ -156,6 +159,10 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 const res = await api.get(`/missions/npc/${npcData.templateId}${npcData.roomId ? `?room_id=${npcData.roomId}` : ''}`);
                 const data = res.data;
                 console.log("[NPCDialogue] API Response (data):", data);
+
+                // Whether THIS player already completed this NPC's task (per-player).
+                // Used to show a persistent "task done" check when reopening the dialogue.
+                setNpcTaskDone(!!data.npc_task_completed);
                 
                 // Set custom greeting or default (in English)
                 const npcGreetingEn = data.greeting || t('npc.dialogue.default_greeting', { lng: 'en', username: user?.username || t('lobby.sidebar.traveler', { lng: 'en' }) });
@@ -232,6 +239,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
         return () => {
             stopAudio();
+            if (taskBannerTimeoutRef.current) clearTimeout(taskBannerTimeoutRef.current);
             window.dispatchEvent(new CustomEvent('npc-interaction-end', {
                 detail: { templateId: npcData.templateId }
             }));
@@ -275,7 +283,9 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             return;
         }
 
-        // Normal logic for same-scene missions
+        // Normal logic for same-scene missions: the player is already in this
+        // instance, so accept the mission now (binds progress to this room).
+        useGameStore.getState().acceptMission(mission.id);
         setSelectedMissionId(mission.id);
         setLoadingMissionId(null);
     };
@@ -415,12 +425,23 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 console.log("[NPCDialogue] Task or Mission completed! Refreshing active mission...");
                 fetchActiveMission(currentSceneKey, true);
             }
+
+            // Visual confirmation that the current task was completed (distinct from the
+            // full-mission overlay, which only fires on mission_newly_completed). Without
+            // this the player only sees the NPC's final line with no explicit "task done".
+            if (data.task_completed) {
+                setTaskCompletedBanner({ progress: data.task_progress || '' });
+                if (taskBannerTimeoutRef.current) clearTimeout(taskBannerTimeoutRef.current);
+                taskBannerTimeoutRef.current = setTimeout(() => setTaskCompletedBanner(null), 4500);
+            }
+
             setMessages(prev => [...prev, {
                 sender: 'npc',
                 text: data.npc_response,
                 translation: data.npc_response_es,
                 timestamp: new Date(),
-                eval: data.pronunciation_eval
+                eval: data.pronunciation_eval,
+                taskCompleted: data.task_completed && !data.mission_newly_completed
             }]);
             
             setNpcState(data.npc_state || 'idle');
@@ -607,16 +628,20 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 </div>
             )}
 
+            {/* Close Button — rendered as a direct child of the root so it lives in the
+                top-level stacking context and is never trapped behind the dialogue bubble /
+                mission hub (which sit in a nested z-10 context). z-[210] keeps it above
+                everything (incl. the Mission Complete overlay at z-200) so there is ALWAYS
+                a visible way back to the map, regardless of dialogue/mission state. */}
+            <button
+                onClick={handleClose}
+                className="fixed top-6 right-6 z-[210] p-3 bg-[var(--color-orange-vibrant)] text-white border-2 border-[var(--color-gold)] shadow-2xl hover:bg-[var(--color-accent-blue)] transition-colors pointer-events-auto"
+            >
+                <X size={24} />
+            </button>
+
             {/* Main Dialogue UI */}
             <div className="relative w-full max-w-5xl px-4 pointer-events-auto">
-                
-                {/* Close Button (Fixed to viewport) */}
-                <button 
-                    onClick={handleClose} 
-                    className="fixed top-6 right-6 z-[100] p-3 bg-[var(--color-orange-vibrant)] text-white border-2 border-[var(--color-gold)] shadow-2xl hover:bg-[var(--color-accent-blue)] transition-colors pointer-events-auto"
-                >
-                    <X size={24} />
-                </button>
 
                 {/* NPC Portrait (Izquierda) */}
                 <div className="absolute left-[-40px] bottom-[-40px] z-20 pointer-events-none drop-shadow-2xl">
@@ -808,6 +833,11 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                             {getTranslation(lastMessage)}
                                         </p>
                                     )}
+                                    {lastMessage.sender === 'npc' && (lastMessage.taskCompleted || npcTaskDone) && (
+                                        <div className="flex items-center gap-2 mt-3 px-3 py-1.5 self-start bg-green-100 border-2 border-green-700 text-green-800 font-medieval uppercase text-sm tracking-wider shadow-sm animate-in fade-in duration-500">
+                                            <CheckCircle size={18} className="text-green-700" /> {t('npc.dialogue.task_done_check')}
+                                        </div>
+                                    )}
                                 </div>
                             {lastMessage.sender === 'npc' && (
                                 <div className="flex flex-col gap-2">
@@ -904,6 +934,16 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                 </div>
                             )}
                         </div>
+
+                        {/* Task Completed banner — rendered at the end of the
+                            conversation so it's never clipped by the bubble's
+                            overflow-hidden and reads as the latest beat. */}
+                        {taskCompletedBanner && (
+                            <div className="self-center mt-2 z-50 flex items-center gap-3 px-6 py-2.5 bg-gradient-to-r from-green-700 to-green-500 text-white border-4 border-green-900 shadow-2xl animate-in slide-in-from-bottom-4 fade-in duration-500 font-medieval uppercase tracking-wider">
+                                <CheckCircle size={24} className="text-white animate-bounce" />
+                                <span className="font-black italic text-sm">{t('npc.dialogue.task_complete_banner')}</span>
+                            </div>
+                        )}
                     </div>
 
                         {/* Input Area (Centered within bubble) */}

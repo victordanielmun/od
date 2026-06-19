@@ -419,14 +419,36 @@ export const AdminMissions = () => {
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <button onClick={() => { 
-                                                                setEditingTask(task); 
-                                                                setActiveMissionId(mission.id); 
+                                                            <button onClick={async () => {
+                                                                setEditingTask(task);
+                                                                setActiveMissionId(mission.id);
                                                                 setMissionFormData(prev => ({ ...prev, scene_key: mission.scene_key }));
                                                                 setTaskFormData(task);
-                                                                // Clear edits first, useEffect will pick up the correct values from mapNPCs
+                                                                // Clear edits first; we then load them deterministically below.
                                                                 setNpcInstanceEdits({ instructions: '', success_message: '', greeting: '' });
-                                                                setIsTaskModalOpen(true); 
+                                                                setIsTaskModalOpen(true);
+                                                                // Deterministically load the NPC instance config for editing.
+                                                                // Relying only on the reactive effect is racy: opening the modal
+                                                                // changes scene_key, which refetches mapNPCs asynchronously, so the
+                                                                // instructions textarea could stay empty. Fetch the scene NPCs here
+                                                                // and populate directly.
+                                                                if (task.target_npc_template_id) {
+                                                                    try {
+                                                                        const res = await api.get(`/admin/npc-instances?scene_key=${mission.scene_key}`);
+                                                                        const list = res.data || [];
+                                                                        setMapNPCs(list);
+                                                                        const npc = list.find(n => String(n.id) === String(task.target_npc_template_id));
+                                                                        if (npc) {
+                                                                            setNpcInstanceEdits({
+                                                                                instructions: npc.instructions || '',
+                                                                                success_message: npc.success_message || '',
+                                                                                greeting: npc.greeting || ''
+                                                                            });
+                                                                        }
+                                                                    } catch (e) {
+                                                                        console.warn('[AdminMissions] Could not load NPC instructions for editing:', e);
+                                                                    }
+                                                                }
                                                             }} className="p-2 text-gray-400 hover:text-white"><Edit2 size={16} /></button>
                                                             <button onClick={() => deleteTask(mission.id, task.id)} className="p-2 text-red-400 hover:text-red-300"><Trash2 size={16} /></button>
                                                         </div>

@@ -158,6 +158,7 @@ type MissionTask struct {
 	DescriptionEn         string    `json:"description_en"`
 	TargetNPCTemplateID   *uint     `json:"target_npc_template_id"`
 	RequiredItem         string    `gorm:"size:100" json:"required_item"`
+	RequiredQuantity     int       `gorm:"default:0" json:"required_quantity"` // 0 = 1 (cantidad de ítem a entregar/recolectar)
 	RequiredEnemy        string    `gorm:"size:100" json:"required_enemy"`
 	RequiredKills        int       `gorm:"default:0" json:"required_kills"` // 0 = no aplica / matar cualquier cantidad
 	PronunciationMinScore int       `gorm:"default:80" json:"pronunciation_min_score"`

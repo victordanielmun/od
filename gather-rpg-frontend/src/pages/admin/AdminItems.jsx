@@ -131,10 +131,14 @@ export const AdminItems = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
+            const payload = {
+                ...formData,
+                grants_skill_id: formData.grants_skill_id || null
+            };
             if (editingItem) {
-                await api.put(`/admin/items/${editingItem.id}`, formData);
+                await api.put(`/admin/items/${editingItem.id}`, payload);
             } else {
-                await api.post('/admin/items', formData);
+                await api.post('/admin/items', payload);
             }
             setIsModalOpen(false);
             setEditingItem(null);

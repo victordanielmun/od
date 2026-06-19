@@ -6,10 +6,10 @@ import (
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/services"
-	"strconv"
-	"time"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"strconv"
+	"time"
 )
 
 type MissionHandler struct {
@@ -63,7 +63,6 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 	}
 	missions = filteredMissions
 
-
 	type TaskWithStatus struct {
 		ID            uint   `json:"id"`
 		Description   string `json:"description"`
@@ -71,23 +70,23 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 		IsCompleted   bool   `json:"is_completed"`
 		KillsDone     int    `json:"kills_done"`
 		RequiredKills int    `json:"required_kills"`
+		NPCID         *uint  `json:"npc_id"`
 	}
 
 	type MissionWithStatus struct {
-		ID             uint             `json:"id"`
-		Title          string           `json:"title"`
-		DescriptionEn  string           `json:"description_en"`
-		ObjectiveEn    string           `json:"objective_en"`
-		Tasks          []TaskWithStatus `json:"tasks"`
-		OverallStatus  string           `json:"status"`
+		ID            uint             `json:"id"`
+		Title         string           `json:"title"`
+		DescriptionEn string           `json:"description_en"`
+		ObjectiveEn   string           `json:"objective_en"`
+		Tasks         []TaskWithStatus `json:"tasks"`
+		OverallStatus string           `json:"status"`
 	}
 
 	result := make([]MissionWithStatus, 0)
 	for _, m := range missions {
 		tasks, _ := h.Service.GetTasks(m.ID)
-		progress, _ := h.Service.GetProgress(userID, m.ID)
+		progress, _ := h.Service.GetProgressReadOnly(userID, m.ID, nil)
 
-		
 		var completedMap map[string]bool
 		if progress != nil && progress.TasksCompleted != nil {
 			json.Unmarshal(progress.TasksCompleted, &completedMap)
@@ -121,6 +120,7 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 				IsCompleted:   completedMap[fmt.Sprint(t.ID)],
 				KillsDone:     killsDone,
 				RequiredKills: reqKills,
+				NPCID:         t.TargetNPCTemplateID,
 			})
 		}
 
@@ -206,12 +206,13 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 	}
 
 	type NPCMissionHub struct {
-		NPCName    string           `json:"npc_name"`
-		NPCType    string           `json:"npc_type"`
-		Greeting   string           `json:"greeting"`
-		IsMerchant bool             `json:"is_merchant"`
-		Shop       *models.Shop     `json:"shop"`
-		Missions   []MissionSummary `json:"missions"`
+		NPCName          string           `json:"npc_name"`
+		NPCType          string           `json:"npc_type"`
+		Greeting         string           `json:"greeting"`
+		IsMerchant       bool             `json:"is_merchant"`
+		Shop             *models.Shop     `json:"shop"`
+		Missions         []MissionSummary `json:"missions"`
+		NPCTaskCompleted bool             `json:"npc_task_completed"`
 	}
 
 	missionSummaries := make([]MissionSummary, 0)
@@ -220,8 +221,8 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		if m.Status != "active" {
 			continue
 		}
-		
-		progress, _ := h.Service.GetProgress(userID, m.ID)
+
+		progress, _ := h.Service.GetProgressReadOnly(userID, m.ID, nil)
 		tasks, _ := h.Service.GetTasks(m.ID)
 
 		var completedMap map[string]bool
@@ -233,7 +234,7 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		}
 
 		currentInstruction := m.DescriptionEn
-		
+
 		// If NPC is not a master, prioritize finding a task or role SPECIFIC to this NPC
 		if tmpl.NPCDefinition.Type != models.NPCTypeMaster {
 			// 1. Try to find a specific role for this NPC/Mission
@@ -261,7 +262,22 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 					}
 				}
 				if !foundIncomplete {
-					currentInstruction = npcTasks[len(npcTasks)-1].DescriptionEn
+					// This NPC's own tasks are all complete. Surfacing the completed task as
+					// the "current task" contradicts the map tracker (which shows it struck
+					// through). Fall back to the mission's next globally-incomplete task so the
+					// dialogue stays consistent with progress; only if everything is done keep
+					// this NPC's last task.
+					fellBack := false
+					for _, t := range tasks {
+						if !completedMap[fmt.Sprint(t.ID)] {
+							currentInstruction = t.DescriptionEn
+							fellBack = true
+							break
+						}
+					}
+					if !fellBack {
+						currentInstruction = npcTasks[len(npcTasks)-1].DescriptionEn
+					}
 				}
 			}
 		} else {
@@ -274,27 +290,22 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 			}
 		}
 
+		// progress may be nil if GetProgress failed (e.g. missing PlayerStats);
+		// fall back to "not_started" instead of dereferencing nil.
+		summaryStatus := "not_started"
+		if progress != nil {
+			summaryStatus = string(progress.Status)
+		}
+
 		missionSummaries = append(missionSummaries, MissionSummary{
 			ID:                m.ID,
 			Title:             m.Title,
 			Description:       m.DescriptionEn,
 			Objective:         m.ObjectiveEn,
-			Status:            string(progress.Status),
+			Status:            summaryStatus,
 			SceneKey:          m.SceneKey,
 			PlayerInstruction: currentInstruction,
 		})
-	}
-
-	// Get room_id query parameter and check for room instance task completion
-	roomIDStr := c.Query("room_id")
-	var instance models.NPCRoomInstance
-	hasRoomInstance := false
-	if roomIDStr != "" {
-		if roomUUID, err := uuid.Parse(roomIDStr); err == nil {
-			if err := database.DB.Where("room_id = ? AND npc_template_id = ?", roomUUID, tmplID).First(&instance).Error; err == nil {
-				hasRoomInstance = true
-			}
-		}
 	}
 
 	hasNPCMissions := false
@@ -308,7 +319,7 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		}
 		hasNPCMissions = true
 
-		progress, _ := h.Service.GetProgress(userID, m.ID)
+		progress, _ := h.Service.GetProgressReadOnly(userID, m.ID, nil)
 		if progress != nil && progress.Status == models.StatusCompleted {
 			isMissionCompletedForPlayer = true
 			continue
@@ -344,7 +355,10 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		greeting = tmpl.Greeting
 	}
 
-	if (hasRoomInstance && instance.TaskCompleted) || isTaskCompletedForPlayer {
+	// Per-player gating: show the NPC's success message only if THIS player has
+	// completed the task. We ignore any shared room-instance flag so players sharing
+	// the room during an individual mission don't see each other's completion.
+	if isTaskCompletedForPlayer {
 		if tmpl.SuccessMessage != "" {
 			greeting = tmpl.SuccessMessage
 		}
@@ -356,12 +370,13 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(NPCMissionHub{
-		NPCName:    tmpl.NPCDefinition.Name,
-		NPCType:    string(tmpl.NPCDefinition.Type),
-		Greeting:   greeting,
-		IsMerchant: tmpl.NPCDefinition.ShopID != nil,
-		Shop:       shopPtr,
-		Missions:   missionSummaries,
+		NPCName:          tmpl.NPCDefinition.Name,
+		NPCType:          string(tmpl.NPCDefinition.Type),
+		Greeting:         greeting,
+		IsMerchant:       tmpl.NPCDefinition.ShopID != nil,
+		Shop:             shopPtr,
+		Missions:         missionSummaries,
+		NPCTaskCompleted: isTaskCompletedForPlayer,
 	})
 }
 
@@ -388,4 +403,35 @@ func (h *MissionHandler) ValidateMissionCompletion(c *fiber.Ctx) error {
 		"completed": completed,
 		"mission":   mission,
 	})
+}
+
+// AcceptMission explicitly starts a mission for the player, optionally scoped to
+// the room instance (room_id query param). Progress is no longer auto-created on
+// view, so the client must call this to begin tracking a mission.
+func (h *MissionHandler) AcceptMission(c *fiber.Ctx) error {
+	missionIDStr := c.Params("id")
+	mID, err := strconv.ParseUint(missionIDStr, 10, 32)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid Mission ID"})
+	}
+
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+	userID, _ := uuid.Parse(userIDStr)
+
+	var roomID *uuid.UUID
+	if rstr := c.Query("room_id"); rstr != "" {
+		if rid, perr := uuid.Parse(rstr); perr == nil {
+			roomID = &rid
+		}
+	}
+
+	progress, err := h.Service.AcceptMission(userID, uint(mID), roomID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"status": "accepted", "progress": progress})
 }

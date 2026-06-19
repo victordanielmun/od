@@ -171,6 +171,20 @@ func (r *MissionRepository) GetPlayerProgress(playerID uuid.UUID, missionID uint
 	return &progress, nil
 }
 
+// GetPlayerProgressInRoom looks up progress scoped to a specific room instance.
+// When roomID is nil it falls back to any progress for (player, mission).
+func (r *MissionRepository) GetPlayerProgressInRoom(playerID uuid.UUID, missionID uint, roomID *uuid.UUID) (*models.PlayerMissionProgress, error) {
+	q := database.DB.Where("player_id = ? AND mission_id = ?", playerID, missionID)
+	if roomID != nil {
+		q = q.Where("room_id = ?", *roomID)
+	}
+	var progress models.PlayerMissionProgress
+	if err := q.First(&progress).Error; err != nil {
+		return nil, err
+	}
+	return &progress, nil
+}
+
 func (r *MissionRepository) CreateOrUpdateProgress(progress *models.PlayerMissionProgress) error {
 	return database.DB.Save(progress).Error
 }
