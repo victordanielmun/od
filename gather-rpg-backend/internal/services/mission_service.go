@@ -130,7 +130,9 @@ func (s *MissionService) AcceptMission(userID uuid.UUID, missionID uint, roomID 
 	if existing, err := s.Repo.GetPlayerProgress(playerID, missionID); err == nil && existing != nil {
 		if existing.Status == models.StatusNotStarted {
 			existing.Status = models.StatusInProgress
-			s.Repo.CreateOrUpdateProgress(existing)
+			if err := s.Repo.CreateOrUpdateProgress(existing); err != nil {
+				return nil, fmt.Errorf("failed to persist mission progress: %w", err)
+			}
 		}
 		return existing, nil
 	}
@@ -301,8 +303,11 @@ func (s *MissionService) UpdateTaskProgress(userID uuid.UUID, missionID uint, ta
 					if qty < 1 {
 						qty = 1
 					}
-					s.InvRepo.RemoveItemFromInventory(playerID, item.ID, qty)
-					fmt.Printf("[MissionService] Consumed %d of item '%s' for task %d completion\n", qty, task.RequiredItem, taskID)
+					if err := s.InvRepo.RemoveItemFromInventory(playerID, item.ID, qty); err != nil {
+						fmt.Printf("[MissionService] WARN: failed to consume %d of item '%s' for task %d: %v\n", qty, task.RequiredItem, taskID, err)
+					} else {
+						fmt.Printf("[MissionService] Consumed %d of item '%s' for task %d completion\n", qty, task.RequiredItem, taskID)
+					}
 				}
 			}
 		}

@@ -318,7 +318,9 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 			if zone.Facing != "" {
 				foundTmpl.FacingDirection = zone.Facing
 			}
-			s.Repo.UpdateTemplate(foundTmpl)
+			if err := s.Repo.UpdateTemplate(foundTmpl); err != nil {
+				log.Printf("[NPCService] WARN: failed to update template %d: %v", foundTmpl.ID, err)
+			}
 			matchedTemplateIDs[foundTmpl.ID] = true
 			finalTmplID = foundTmpl.ID
 		} else {
@@ -383,7 +385,9 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 	// 3. Delete orphans
 	for _, tmpl := range existing {
 		if !matchedTemplateIDs[tmpl.ID] {
-			s.Repo.DeleteTemplate(tmpl.ID)
+			if err := s.Repo.DeleteTemplate(tmpl.ID); err != nil {
+				log.Printf("[NPCService] WARN: failed to delete orphan template %d: %v", tmpl.ID, err)
+			}
 		}
 	}
 
@@ -403,7 +407,9 @@ func (s *NPCService) syncMissionsForTemplate(templateID uint, missionIDs []uint,
 			MissionID:     mID,
 			Role:          models.NPCRole(role),
 		}
-		s.MissionRepo.CreateOrUpdateMissionRole(newRole)
+		if err := s.MissionRepo.CreateOrUpdateMissionRole(newRole); err != nil {
+			log.Printf("[NPCService] WARN: failed to save mission role (tmpl=%d mission=%d): %v", templateID, mID, err)
+		}
 	}
 }
 

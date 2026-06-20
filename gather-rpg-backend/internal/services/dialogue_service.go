@@ -102,7 +102,9 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 			NPCInstanceID: instance.ID,
 			MissionID:     req.MissionID,
 		}
-		s.MissionRepo.CreateConversation(conv)
+		if err := s.MissionRepo.CreateConversation(conv); err != nil {
+			fmt.Printf("[DialogueService] WARN: failed to create conversation: %v\n", err)
+		}
 	}
 
 	// 2. Mission Context
@@ -307,8 +309,11 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 			ConditionMet:    conditionMet,
 			ResponseJSON:    string(cleanJSON),
 		}
-		s.NPCRepo.SaveCachedDialogue(newCache)
-		fmt.Printf("[DialogueService] Saved response to DB Cache for '%s'\n", normalizedInput)
+		if err := s.NPCRepo.SaveCachedDialogue(newCache); err != nil {
+			fmt.Printf("[DialogueService] WARN: failed to save cached dialogue for '%s': %v\n", normalizedInput, err)
+		} else {
+			fmt.Printf("[DialogueService] Saved response to DB Cache for '%s'\n", normalizedInput)
+		}
 	}
 
 	// 5. Post-Process: Update Progress & State
@@ -385,10 +390,12 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 		}
 	}
 
-	s.NPCRepo.UpdateRoomInstance(instance)
+	if err := s.NPCRepo.UpdateRoomInstance(instance); err != nil {
+		fmt.Printf("[DialogueService] WARN: failed to update room instance %d: %v\n", instance.ID, err)
+	}
 
 	// Save Message
-	s.MissionRepo.AddMessage(&models.ConversationMessage{
+	if err := s.MissionRepo.AddMessage(&models.ConversationMessage{
 		ConversationID:     conv.ID,
 		PlayerInput:        req.PlayerInput,
 		PronunciationScore: req.PronunciationScore,
@@ -399,7 +406,9 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 		PronunciationMsg:   aiResp.PronunciationMessage,
 		FeedbackSuggestion: aiResp.FeedbackSuggestion,
 		TaskCompleted:      aiResp.TaskCompleted,
-	})
+	}); err != nil {
+		fmt.Printf("[DialogueService] WARN: failed to save conversation message: %v\n", err)
+	}
 
 	totalTime := time.Since(startTotal).Milliseconds()
 	fmt.Printf("[Performance] Go Backend: ProcessInput complete. Total time: %d ms\n\n", totalTime)

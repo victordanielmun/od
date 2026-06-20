@@ -24,7 +24,7 @@ func TestChatFlow(t *testing.T) {
 		Username: "User1",
 		send:     make(chan []byte, 10),
 	}
-	hub.Clients[client1] = true
+	hub.trackClient(client1)
 
 	id2 := uuid.New()
 	client2 := &Client{
@@ -33,7 +33,7 @@ func TestChatFlow(t *testing.T) {
 		Username: "User2",
 		send:     make(chan []byte, 10),
 	}
-	hub.Clients[client2] = true
+	hub.trackClient(client2)
 
 	// 1. Chat Request (User1 -> User2)
 	reqPayload := models.ChatRequestPayload{

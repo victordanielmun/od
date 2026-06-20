@@ -96,8 +96,8 @@ func TestWebRTCSignalingRequiresSessionID(t *testing.T) {
 
 	client1 := &Client{Hub: hub, ID: uuid.New(), Username: "User1", RoomID: roomID, send: make(chan []byte, 10)}
 	client2 := &Client{Hub: hub, ID: uuid.New(), Username: "User2", RoomID: roomID, send: make(chan []byte, 10)}
-	hub.Clients[client1] = true
-	hub.Clients[client2] = true
+	hub.trackClient(client1)
+	hub.trackClient(client2)
 	room.AddClient(client1)
 	room.AddClient(client2)
 
@@ -133,8 +133,8 @@ func TestWebRTCSignalingRoomSessionAllowsOnlyPairedPeers(t *testing.T) {
 
 	client1 := &Client{Hub: hub, ID: uuid.New(), Username: "User1", RoomID: roomID, send: make(chan []byte, 10)}
 	client2 := &Client{Hub: hub, ID: uuid.New(), Username: "User2", RoomID: roomID, send: make(chan []byte, 10)}
-	hub.Clients[client1] = true
-	hub.Clients[client2] = true
+	hub.trackClient(client1)
+	hub.trackClient(client2)
 	room.AddClient(client1)
 	room.AddClient(client2)
 
@@ -175,8 +175,8 @@ func TestWebRTCSignalingChallengeSessionAllowsOnlyPairedMembers(t *testing.T) {
 
 	client1 := &Client{Hub: hub, ID: uuid.New(), Username: "User1", RoomID: roomID, send: make(chan []byte, 10)}
 	client2 := &Client{Hub: hub, ID: uuid.New(), Username: "User2", RoomID: roomID, send: make(chan []byte, 10)}
-	hub.Clients[client1] = true
-	hub.Clients[client2] = true
+	hub.trackClient(client1)
+	hub.trackClient(client2)
 	room.AddClient(client1)
 	room.AddClient(client2)
 
