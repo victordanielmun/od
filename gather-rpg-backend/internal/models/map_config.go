@@ -38,4 +38,14 @@ type EnemySpawn struct {
 	Damage   int       `json:"damage"`
 	AttackRate int     `json:"attack_rate"`
 	Type     string    `json:"type"` // "melee" (default), "thrower", "fast", "boss"
+
+	// Thrower: sprite del proyectil (icon_key de item); vacío → círculo rojo.
+	ProjectileSprite string `json:"projectile_sprite"`
+
+	// Boss: maná (regen automático; el skill requiere maná), autoregen de HP y
+	// porcentaje de HP que recupera al fallar la card multijugador.
+	ManaMax         int `json:"mana_max"`
+	ManaRegen       int `json:"mana_regen"`        // maná por segundo
+	HPRegen         int `json:"hp_regen"`          // HP por segundo (autoregen)
+	CardFailHealPct int `json:"card_fail_heal_pct"` // % de HPMax al fallar la card (default 100)
 }

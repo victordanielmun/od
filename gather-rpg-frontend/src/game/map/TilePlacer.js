@@ -175,7 +175,8 @@ export class TilePlacer {
     sprite.setVisible(this.scene.editorMode);
     sprite.data = new Phaser.Data.DataManager(sprite);
     if (metadata) {
-      const keys = ['npcId', 'waveNum', 'hp', 'speed', 'damage', 'attackRate'];
+      const keys = ['npcId', 'waveNum', 'hp', 'speed', 'damage', 'attackRate',
+        'type', 'projectileSprite', 'manaMax', 'manaRegen', 'hpRegen', 'cardFailHealPct'];
       keys.forEach(k => { if (metadata[k] !== undefined) sprite.data.set(k, metadata[k]); });
     }
   }

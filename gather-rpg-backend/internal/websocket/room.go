@@ -160,6 +160,23 @@ func (r *Room) spawnWave(waveNum int) int {
 			hp = 300
 		}
 
+		// Defaults de boss para maná / regen / heal de card.
+		manaMax := e.ManaMax
+		manaRegen := e.ManaRegen
+		hpRegen := e.HPRegen
+		cardFailHealPct := e.CardFailHealPct
+		if enemyType == EnemyTypeBoss {
+			if manaMax <= 0 {
+				manaMax = 100
+			}
+			if manaRegen <= 0 {
+				manaRegen = 10
+			}
+			if cardFailHealPct <= 0 {
+				cardFailHealPct = 100
+			}
+		}
+
 		r.ActiveEnemies[instanceID] = &models.ActiveEnemy{
 			InstanceID: instanceID,
 			EnemyID:    enemyID,
@@ -175,6 +192,12 @@ func (r *Room) spawnWave(waveNum int) int {
 			Speed:      speed,
 			AttackRate: attackRate,
 			Type:       enemyType,
+			ProjectileSprite: e.ProjectileSprite,
+			ManaMax:          manaMax,
+			Mana:             manaMax, // empieza con maná lleno
+			ManaRegen:        manaRegen,
+			HPRegen:          hpRegen,
+			CardFailHealPct:  cardFailHealPct,
 		}
 		count++
 	}
@@ -278,13 +301,35 @@ func (r *Room) startAILoop() {
 func (r *Room) tickBossLocked(e *models.ActiveEnemy, dist, angle, speed float64) {
 	const bossMeleeRange = 120.0
 	const bossThrowRange = 420.0
-	const skillCooldown = 6 * time.Second
+	const chargeCooldown = 5 * time.Second
 	const skillTelegraph = 900 * time.Millisecond
+	const bossSkillManaCost = 30
 
 	const chargeDuration = 600 * time.Millisecond
 	const chargeSpeed = 45.0 // px/tick — embestida rápida
 
 	now := time.Now()
+
+	// Regeneración automática de maná/HP (cadencia de 1s). El maná habilita el
+	// skill; el autoregen de HP es para bosses avanzados.
+	if e.LastRegenAt.IsZero() {
+		e.LastRegenAt = now
+	}
+	if secs := int(now.Sub(e.LastRegenAt) / time.Second); secs > 0 {
+		if e.ManaRegen > 0 {
+			e.Mana += e.ManaRegen * secs
+			if e.Mana > e.ManaMax {
+				e.Mana = e.ManaMax
+			}
+		}
+		if e.HPRegen > 0 && e.HP < e.HPMax {
+			e.HP += e.HPRegen * secs
+			if e.HP > e.HPMax {
+				e.HP = e.HPMax
+			}
+		}
+		e.LastRegenAt = e.LastRegenAt.Add(time.Duration(secs) * time.Second)
+	}
 
 	// Si está ejecutando una acción en curso (skill o charge), mantenerla.
 	// Durante el charge sigue avanzando en la dirección fijada al iniciarlo.
@@ -303,19 +348,21 @@ func (r *Room) tickBossLocked(e *models.ActiveEnemy, dist, angle, speed float64)
 		return
 	}
 
-	// Habilidad especial periódica cuando está lista: lejos → tacleo (charge),
-	// cerca → AoE (skill).
-	if now.After(e.NextAbilityAt) {
-		if dist > bossMeleeRange {
-			e.FSMState = "charge"
-			e.ChargeVX = math.Cos(angle) * chargeSpeed
-			e.ChargeVY = math.Sin(angle) * chargeSpeed
-			e.BusyUntil = now.Add(chargeDuration)
-		} else {
-			e.FSMState = "skill"
-			e.BusyUntil = now.Add(skillTelegraph)
-		}
-		e.NextAbilityAt = now.Add(skillCooldown)
+	// Skill (AoE): gateado por MANÁ. Si no hay maná suficiente, no castea.
+	if dist <= bossMeleeRange && e.Mana >= bossSkillManaCost {
+		e.Mana -= bossSkillManaCost
+		e.FSMState = "skill"
+		e.BusyUntil = now.Add(skillTelegraph)
+		return
+	}
+
+	// Tacleo (charge): gateado por cooldown, cuando el jugador está a media/larga.
+	if dist > bossMeleeRange && now.After(e.NextAbilityAt) {
+		e.FSMState = "charge"
+		e.ChargeVX = math.Cos(angle) * chargeSpeed
+		e.ChargeVY = math.Sin(angle) * chargeSpeed
+		e.BusyUntil = now.Add(chargeDuration)
+		e.NextAbilityAt = now.Add(chargeCooldown)
 		return
 	}
 

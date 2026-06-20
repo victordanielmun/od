@@ -1576,6 +1576,23 @@ func (h *Hub) getChallengeForClient(client *Client) *models.LearningChallenge {
 	return challenge
 }
 
+// bossCardFailHP calcula el HP al que se recupera el boss cuando falla la card
+// multijugador, según su CardFailHealPct (% de HPMax; default 100, mín 1).
+func bossCardFailHP(enemy *models.ActiveEnemy) int {
+	pct := enemy.CardFailHealPct
+	if pct <= 0 {
+		pct = 100
+	}
+	hp := enemy.HPMax * pct / 100
+	if hp < 1 {
+		hp = 1
+	}
+	if hp > enemy.HPMax {
+		hp = enemy.HPMax
+	}
+	return hp
+}
+
 // broadcastBossCardResult notifica a toda la sala el desenlace de la card del boss.
 func (h *Hub) broadcastBossCardResult(room *Room, success bool) {
 	effect := "enemy_heals"
@@ -1638,7 +1655,7 @@ func (h *Hub) handleBossCardAnswerLocked(client *Client, room *Room, enemy *mode
 		enemy.FSMState = "dead"
 		enemyTemplateID = enemy.EnemyID
 	} else {
-		enemy.HP = enemy.HPMax
+		enemy.HP = bossCardFailHP(enemy)
 		enemy.FSMState = "chase"
 	}
 	enemy.BossCardRequired = nil
@@ -1674,7 +1691,7 @@ func (h *Hub) resolveBossCardTimeout(room *Room, instanceUUID uuid.UUID) {
 		room.mu.Unlock()
 		return
 	}
-	enemy.HP = enemy.HPMax
+	enemy.HP = bossCardFailHP(enemy)
 	enemy.FSMState = "chase"
 	enemy.BossCardRequired = nil
 	enemy.BossCardResults = nil

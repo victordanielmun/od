@@ -150,6 +150,11 @@ export class MapSerializer {
         damage:     getData(t.data, 'damage'),
         attackRate: getData(t.data, 'attackRate'),
         type:       getData(t.data, 'type', 'melee'),
+        projectileSprite: getData(t.data, 'projectileSprite', ''),
+        manaMax:         getData(t.data, 'manaMax', 0),
+        manaRegen:       getData(t.data, 'manaRegen', 0),
+        hpRegen:         getData(t.data, 'hpRegen', 0),
+        cardFailHealPct: getData(t.data, 'cardFailHealPct', 0),
       })),
     };
 
@@ -269,6 +274,11 @@ export class MapSerializer {
         attackRate: t.attackRate,
         damage:     t.damage,
         type:       t.type || 'melee',
+        projectileSprite: t.projectileSprite || '',
+        manaMax:         t.manaMax || 0,
+        manaRegen:       t.manaRegen || 0,
+        hpRegen:         t.hpRegen || 0,
+        cardFailHealPct: t.cardFailHealPct || 0,
       }));
 
       console.log('[MapSerializer] Map imported successfully');

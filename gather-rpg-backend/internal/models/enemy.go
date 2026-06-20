@@ -91,6 +91,17 @@ type ActiveEnemy struct {
 	// del room recibe una card; el boss muere solo si TODOS aciertan.
 	BossCardRequired map[string]bool `json:"-"` // playerIDs que deben responder
 	BossCardResults  map[string]bool `json:"-"` // playerID -> acertó (presencia = ya respondió)
+
+	// Thrower: sprite del proyectil (icon_key); el cliente lo usa en _doThrow.
+	ProjectileSprite string `json:"projectile_sprite"`
+
+	// Boss: maná y regeneración (server-internal).
+	ManaMax         int       `json:"-"`
+	Mana            int       `json:"-"`
+	ManaRegen       int       `json:"-"`
+	HPRegen         int       `json:"-"`
+	CardFailHealPct int       `json:"-"`
+	LastRegenAt     time.Time `json:"-"`
 }
 
 type EnemyUpdateBroadcast struct {

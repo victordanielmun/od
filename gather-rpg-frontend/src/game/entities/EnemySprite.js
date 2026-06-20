@@ -539,7 +539,7 @@ export default class EnemySprite extends NPCSprite {
 
     const scene = this.scene;
 
-    // Textura de proyectil enemigo (círculo rojo) generada una vez.
+    // Textura de proyectil enemigo (círculo rojo) — fallback siempre disponible.
     if (!scene.textures.exists('enemy-projectile')) {
       const g = scene.make.graphics({ x: 0, y: 0, add: false });
       g.fillStyle(0xff3344, 1);
@@ -550,9 +550,29 @@ export default class EnemySprite extends NPCSprite {
       g.destroy();
     }
 
-    const proj = scene.physics.add.sprite(this.x, this.y - 10, 'enemy-projectile');
+    // Si el thrower tiene un sprite de proyectil asignado (icon_key), úsalo; si no
+    // está cargado, se carga on-demand y se reemplaza en vuelo. Fallback: círculo.
+    const iconKey = this.config?.projectile_sprite;
+    const spriteKey = iconKey ? `item-sprite-${iconKey}` : null;
+    const hasSprite = spriteKey && scene.textures.exists(spriteKey);
+    const initialKey = hasSprite ? spriteKey : 'enemy-projectile';
+
+    const proj = scene.physics.add.sprite(this.x, this.y - 10, initialKey);
+    if (hasSprite) proj.setDisplaySize(24, 24);
     proj.setDepth(this.depth + 5);
     proj.body.setAllowGravity(false);
+
+    if (spriteKey && !hasSprite && !scene.load.isLoading()) {
+      const url = iconKey.endsWith('.png') ? `/Items/sprites/${iconKey}` : `/Items/sprites/${iconKey}.png`;
+      scene.load.image(spriteKey, url);
+      scene.load.once(`filecomplete-image-${spriteKey}`, () => {
+        if (proj.active && scene.textures.exists(spriteKey)) {
+          proj.setTexture(spriteKey);
+          proj.setDisplaySize(24, 24);
+        }
+      });
+      scene.load.start();
+    }
 
     // Dirigir hacia la posición actual del jugador.
     const speed = 320;

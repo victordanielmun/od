@@ -141,7 +141,7 @@ export const MapEditorUI = ({ gameRef }) => {
   const [activeTexture, setActiveTexture] = useState('sprite1');
   const [buildMeta, setBuildMeta] = useState({ portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '' });
   const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [], state: 'idle', facing: 'right' });
-  const [enemyMeta, setEnemyMeta] = useState({ npcId: '', waveNum: 1, hp: 50, speed: 120, damage: 10, attackRate: 1000 });
+  const [enemyMeta, setEnemyMeta] = useState({ npcId: '', waveNum: 1, hp: 50, speed: 120, damage: 10, attackRate: 1000, type: 'melee', projectileSprite: '', manaMax: 100, manaRegen: 10, hpRegen: 0, cardFailHealPct: 100 });
   const [buildScale, setBuildScale] = useState(2.5);
   const [availableMaps, setAvailableMaps] = useState([]);
   const [npcDefinitions, setNpcDefinitions] = useState([]);
@@ -249,7 +249,13 @@ export const MapEditorUI = ({ gameRef }) => {
           hp: metadata.hp || 50,
           attackRate: metadata.attackRate || 1000,
           speed: metadata.speed || 120,
-          damage: metadata.damage || 10
+          damage: metadata.damage || 10,
+          type: metadata.type || 'melee',
+          projectileSprite: metadata.projectileSprite || '',
+          manaMax: metadata.manaMax || 100,
+          manaRegen: metadata.manaRegen || 10,
+          hpRegen: metadata.hpRegen || 0,
+          cardFailHealPct: metadata.cardFailHealPct || 100,
         });
       }
 
@@ -877,7 +883,17 @@ export const MapEditorUI = ({ gameRef }) => {
 
                 <div className="space-y-2">
                   <div>
-                    <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.enemy_type') || 'Tipo de Enemigo'}</label>
+                    <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.enemy_archetype') || 'Comportamiento'}</label>
+                    <select value={enemyMeta.type} onChange={e => setEnemyMeta(p => ({ ...p, type: e.target.value }))}
+                      className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50 transition-colors">
+                      <option value="melee">Normal (melee)</option>
+                      <option value="fast">Rápido</option>
+                      <option value="thrower">Lanzador</option>
+                      <option value="boss">Boss</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.enemy_sprite') || 'Sprite'}</label>
                     <select value={enemyMeta.npcId} onChange={e => setEnemyMeta(p => ({ ...p, npcId: e.target.value }))}
                       className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50 transition-colors">
                       <option value="">{t('lobby.editor.none')}...</option>
@@ -921,6 +937,49 @@ export const MapEditorUI = ({ gameRef }) => {
                         className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50" />
                     </div>
                   </div>
+
+                  {/* Lanzador: sprite del proyectil (icon_key); vacío → círculo rojo */}
+                  {enemyMeta.type === 'thrower' && (
+                    <div>
+                      <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.projectile_sprite') || 'Proyectil (icon_key)'}</label>
+                      <input type="text" placeholder="ej: dagger (vacío = círculo)" value={enemyMeta.projectileSprite}
+                        onChange={e => setEnemyMeta(p => ({ ...p, projectileSprite: e.target.value }))}
+                        className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50" />
+                    </div>
+                  )}
+
+                  {/* Boss: maná (regen + gate de skill), autoregen de HP, % heal al fallar la card */}
+                  {enemyMeta.type === 'boss' && (
+                    <div className="mt-1 p-2 bg-amber-900/10 border border-amber-500/20 rounded space-y-2">
+                      <div className="text-[9px] font-bold uppercase text-amber-400/80">Boss</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[9px] text-gray-500 mb-0.5">Maná Máx</label>
+                          <input type="number" min="0" value={enemyMeta.manaMax}
+                            onChange={e => setEnemyMeta(p => ({ ...p, manaMax: parseInt(e.target.value) || 0 }))}
+                            className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-amber-500/50" />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] text-gray-500 mb-0.5">Maná/seg</label>
+                          <input type="number" min="0" value={enemyMeta.manaRegen}
+                            onChange={e => setEnemyMeta(p => ({ ...p, manaRegen: parseInt(e.target.value) || 0 }))}
+                            className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-amber-500/50" />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] text-gray-500 mb-0.5">HP/seg (autoregen)</label>
+                          <input type="number" min="0" value={enemyMeta.hpRegen}
+                            onChange={e => setEnemyMeta(p => ({ ...p, hpRegen: parseInt(e.target.value) || 0 }))}
+                            className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-amber-500/50" />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] text-gray-500 mb-0.5">% Heal (card fail)</label>
+                          <input type="number" min="1" max="100" value={enemyMeta.cardFailHealPct}
+                            onChange={e => setEnemyMeta(p => ({ ...p, cardFailHealPct: parseInt(e.target.value) || 100 }))}
+                            className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-amber-500/50" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <p className="text-[8px] text-red-400/60 italic mt-2 text-center">
