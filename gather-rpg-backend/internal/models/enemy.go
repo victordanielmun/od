@@ -86,6 +86,11 @@ type ActiveEnemy struct {
 	BusyUntil     time.Time `json:"-"` // mientras now < BusyUntil mantiene la acción en curso (telegraph/dash)
 	ChargeVX      float64   `json:"-"` // velocidad de embestida (px/tick) fijada al iniciar el charge
 	ChargeVY      float64   `json:"-"`
+
+	// Boss ninja card multijugador (solo type=boss): al golpe mortal, cada jugador
+	// del room recibe una card; el boss muere solo si TODOS aciertan.
+	BossCardRequired map[string]bool `json:"-"` // playerIDs que deben responder
+	BossCardResults  map[string]bool `json:"-"` // playerID -> acertó (presencia = ya respondió)
 }
 
 type EnemyUpdateBroadcast struct {

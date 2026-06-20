@@ -1337,6 +1337,53 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 		room.mu.Lock()
 	}
 
+	// Boss: el golpe mortal dispara una card multijugador (una por jugador vivo).
+	// El boss muere solo si TODOS aciertan; si alguno falla/expira, se cura y sigue.
+	if enemy.HP-dmg <= 0 && enemy.Type == EnemyTypeBoss {
+		enemy.FSMState = "ninja_card"
+		enemy.BossCardRequired = make(map[string]bool)
+		enemy.BossCardResults = make(map[string]bool)
+		required := make([]*Client, 0, len(room.Clients))
+		for c := range room.Clients {
+			if c.IsDead {
+				continue
+			}
+			enemy.BossCardRequired[c.ID.String()] = true
+			required = append(required, c)
+		}
+		room.mu.Unlock()
+
+		if len(required) == 0 {
+			room.mu.Lock()
+			enemy.FSMState = "chase"
+			enemy.BossCardRequired = nil
+			enemy.BossCardResults = nil
+			room.mu.Unlock()
+			return
+		}
+
+		log.Printf("[BossCard] Boss %s lethal blow → card to %d players", instanceUUID, len(required))
+		for _, c := range required {
+			challenge := h.getChallengeForClient(c)
+			if challenge != nil {
+				c.SendJSON(&models.WSMessage{
+					Type: MsgNinjaCardTriggered,
+					Payload: map[string]interface{}{
+						"target_instance_id": instanceUUID,
+						"challenge":          challenge,
+					},
+				})
+			}
+		}
+
+		// Safety timeout: si no todos responden, resolver como fallo (boss se cura).
+		go func() {
+			time.Sleep(ninjaCardTimeout)
+			h.resolveBossCardTimeout(room, instanceUUID)
+		}()
+		return
+	}
+
 	enemy.HP -= dmg
 	log.Printf("[Combat] Enemy %s took %d damage (%s) from %s. HP: %d", instanceUUID, dmg, p.AttackType, client.ID, enemy.HP)
 
@@ -1403,6 +1450,13 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 	enemy, exists := room.ActiveEnemies[instanceUUID]
 	if !exists || enemy.FSMState == "dead" {
 		room.mu.Unlock()
+		return
+	}
+
+	// Boss: card multijugador. Cada jugador responde; se resuelve cuando todos lo
+	// hacen (todos aciertan → muere; alguno falla → se cura). Mantiene el lock.
+	if enemy.Type == EnemyTypeBoss && enemy.BossCardResults != nil {
+		h.handleBossCardAnswerLocked(client, room, enemy, instanceUUID, roomID, p.ChallengeID, p.SelectedOption)
 		return
 	}
 
@@ -1500,6 +1554,134 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 			},
 		})
 	}
+}
+
+// getChallengeForClient obtiene un reto acorde al nivel de inglés del jugador,
+// con fallbacks. Usado por la card de un jugador y por la del boss.
+func (h *Hub) getChallengeForClient(client *Client) *models.LearningChallenge {
+	var profile models.UserLearningProfile
+	level := models.DifficultyBeginner
+	if database.DB != nil {
+		if dbErr := database.DB.Where("user_id = ?", client.ID).First(&profile).Error; dbErr == nil {
+			level = profile.EnglishLevel
+		}
+	}
+	challenge, err := h.LearningService.GetRandomChallenge("vocabulary", string(level))
+	if err != nil || challenge == nil {
+		challenge, err = h.LearningService.GetRandomChallenge("", string(level))
+	}
+	if err != nil || challenge == nil {
+		challenge, _ = h.LearningService.GetRandomChallenge("", "")
+	}
+	return challenge
+}
+
+// broadcastBossCardResult notifica a toda la sala el desenlace de la card del boss.
+func (h *Hub) broadcastBossCardResult(room *Room, success bool) {
+	effect := "enemy_heals"
+	if success {
+		effect = "enemy_eliminated"
+	}
+	room.broadcastToAll(&models.WSMessage{
+		Type: MsgNinjaCardResult,
+		Payload: map[string]interface{}{
+			"correct": success,
+			"effect":  effect,
+		},
+	})
+}
+
+// handleBossCardAnswerLocked procesa la respuesta de UN jugador a la card del boss.
+// Se entra con room.mu BLOQUEADO y esta función libera el lock.
+// Cuando todos los requeridos respondieron: todos aciertan → boss muere;
+// alguno falla → el boss se cura y sigue.
+func (h *Hub) handleBossCardAnswerLocked(client *Client, room *Room, enemy *models.ActiveEnemy, instanceUUID uuid.UUID, roomID, challengeID string, selectedOption int) {
+	cid := client.ID.String()
+	if enemy.BossCardRequired == nil || !enemy.BossCardRequired[cid] {
+		room.mu.Unlock()
+		return
+	}
+	if _, answered := enemy.BossCardResults[cid]; answered {
+		room.mu.Unlock()
+		return
+	}
+
+	challengeUUID, _ := uuid.Parse(challengeID)
+	var chal models.LearningChallenge
+	database.DB.First(&chal, "id = ?", challengeUUID)
+	isCorrect := chal.CorrectOption == selectedOption
+	enemy.BossCardResults[cid] = isCorrect
+	log.Printf("[BossCard] %s answered boss %s: correct=%v (%d/%d answered)", cid, instanceUUID, isCorrect, len(enemy.BossCardResults), len(enemy.BossCardRequired))
+
+	answeredAll := true
+	allCorrect := true
+	for pid := range enemy.BossCardRequired {
+		res, ok := enemy.BossCardResults[pid]
+		if !ok {
+			answeredAll = false
+			break
+		}
+		if !res {
+			allCorrect = false
+		}
+	}
+
+	if !answeredAll {
+		room.mu.Unlock()
+		h.LearningService.RecordAttempt(client.ID, challengeUUID, isCorrect, selectedOption, "")
+		return // el modal del jugador espera a los demás
+	}
+
+	var enemyTemplateID uuid.UUID
+	if allCorrect {
+		enemy.HP = 0
+		enemy.FSMState = "dead"
+		enemyTemplateID = enemy.EnemyID
+	} else {
+		enemy.HP = enemy.HPMax
+		enemy.FSMState = "chase"
+	}
+	enemy.BossCardRequired = nil
+	enemy.BossCardResults = nil
+	room.mu.Unlock()
+
+	h.LearningService.RecordAttempt(client.ID, challengeUUID, isCorrect, selectedOption, "")
+
+	if allCorrect {
+		log.Printf("[BossCard] Boss %s defeated — all players correct", instanceUUID)
+		h.broadcastBossCardResult(room, true)
+		room.broadcastToAll(&models.WSMessage{
+			Type: MsgEnemyDied,
+			Payload: models.EnemyDiedBroadcast{
+				InstanceID: instanceUUID,
+				RoomID:     roomID,
+				KilledBy:   cid,
+			},
+		})
+		go h.processEnemyKill(client.ID, enemyTemplateID, room, roomID)
+	} else {
+		log.Printf("[BossCard] Boss %s recovered — at least one player failed", instanceUUID)
+		h.broadcastBossCardResult(room, false)
+	}
+}
+
+// resolveBossCardTimeout libera la card del boss si no todos respondieron a tiempo
+// (p. ej. una desconexión). Trata lo no respondido como fallo: el boss se cura.
+func (h *Hub) resolveBossCardTimeout(room *Room, instanceUUID uuid.UUID) {
+	room.mu.Lock()
+	enemy, ok := room.ActiveEnemies[instanceUUID]
+	if !ok || enemy.Type != EnemyTypeBoss || enemy.BossCardResults == nil || enemy.FSMState != "ninja_card" {
+		room.mu.Unlock()
+		return
+	}
+	enemy.HP = enemy.HPMax
+	enemy.FSMState = "chase"
+	enemy.BossCardRequired = nil
+	enemy.BossCardResults = nil
+	room.mu.Unlock()
+
+	log.Printf("[BossCard] Timeout — boss %s recovered (not all answered)", instanceUUID)
+	h.broadcastBossCardResult(room, false)
 }
 
 func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {

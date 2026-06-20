@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useGameStore } from '../../store/gameStore';
 
+const COUNTDOWN_START = 5; // segundos de presión para responder
+
 export const NinjaCardHUD = () => {
   const ninjaCardData = useGameStore(state => state.ninjaCardData);
   const sendNinjaCardAnswer = useGameStore(state => state.sendNinjaCardAnswer);
@@ -9,7 +11,12 @@ export const NinjaCardHUD = () => {
   const [resultEffect, setResultEffect] = useState(null);
   const [isCorrect, setIsCorrect] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(COUNTDOWN_START);
 
+  const targetId = ninjaCardData?.target_instance_id;
+  const challenge = ninjaCardData?.challenge;
+
+  // Resultado del servidor → mostrar y limpiar tras 1s.
   useEffect(() => {
     const handleResult = (e) => {
       const data = e.detail;
@@ -18,7 +25,6 @@ export const NinjaCardHUD = () => {
       setIsCorrect(data.correct);
       setIsSubmitting(false);
 
-      // Clear HUD after showing result for 1 second
       setTimeout(() => {
         setResultEffect(null);
         setIsCorrect(null);
@@ -26,22 +32,44 @@ export const NinjaCardHUD = () => {
         clearNinjaCardData();
       }, 1000);
     };
-
     window.addEventListener('ninja-card-result', handleResult);
     return () => window.removeEventListener('ninja-card-result', handleResult);
   }, [clearNinjaCardData]);
 
-  if (!ninjaCardData) return null;
+  // Reiniciar el contador cuando aparece una nueva card.
+  useEffect(() => {
+    if (targetId) setTimeLeft(COUNTDOWN_START);
+  }, [targetId]);
 
-  const challenge = ninjaCardData.challenge;
-  if (!challenge) return null;
+  // Tick del contador (1s) mientras la card está activa y sin responder.
+  useEffect(() => {
+    if (!ninjaCardData || resultEffect || isSubmitting || timeLeft <= 0) return;
+    const t = setTimeout(() => setTimeLeft(v => v - 1), 1000);
+    return () => clearTimeout(t);
+  }, [ninjaCardData, resultEffect, isSubmitting, timeLeft]);
+
+  // Tiempo agotado → enviar respuesta de timeout (opción 0 = incorrecta).
+  useEffect(() => {
+    if (!ninjaCardData || resultEffect || isSubmitting) return;
+    if (timeLeft <= 0) {
+      setIsSubmitting(true);
+      console.log('[NinjaCard] Time expired → enviando timeout (incorrecto)');
+      sendNinjaCardAnswer(targetId, challenge?.id, 0);
+    }
+  }, [timeLeft, ninjaCardData, resultEffect, isSubmitting, targetId, challenge, sendNinjaCardAnswer]);
+
+  if (!ninjaCardData || !challenge) return null;
 
   const handleOptionClick = (optionId) => {
     if (resultEffect || isSubmitting) return;
     setIsSubmitting(true);
     console.log('[NinjaCard] Option selected:', optionId);
-    sendNinjaCardAnswer(ninjaCardData.target_instance_id, challenge.id, optionId);
+    sendNinjaCardAnswer(targetId, challenge.id, optionId);
   };
+
+  const timerColor = timeLeft <= 2 ? 'bg-red-600 border-red-300 animate-pulse'
+                   : timeLeft <= 3 ? 'bg-amber-600 border-amber-300'
+                   : 'bg-emerald-600 border-emerald-300';
 
   return (
     <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/60 pointer-events-auto">
@@ -56,11 +84,20 @@ export const NinjaCardHUD = () => {
             <p className="text-xl text-white text-center px-4">
               {isCorrect ? 'Enemigo eliminado' :
                resultEffect === 'enemy_heals' ? 'El enemigo se ha curado completamente.' :
-               resultEffect === 'player_takes_damage' ? '¡Respuesta incorrecta! Has recibido 30 de daño.' :
-               resultEffect === 'player_is_stunned' ? '¡Respuesta incorrecta! Estás aturdido por 3 segundos.' :
+               resultEffect === 'player_takes_damage' ? '¡Respuesta incorrecta! Has recibido daño.' :
+               resultEffect === 'player_is_stunned' ? '¡Respuesta incorrecta! Estás aturdido.' :
                resultEffect === 'expired' ? '¡Se acabó el tiempo! El enemigo se ha recuperado.' :
                'El enemigo se ha recuperado.'}
             </p>
+          </div>
+        )}
+
+        {/* Countdown */}
+        {!resultEffect && (
+          <div className="absolute top-4 right-4 z-20">
+            <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center text-2xl font-extrabold text-white shadow-lg ${timerColor}`}>
+              {Math.max(0, timeLeft)}
+            </div>
           </div>
         )}
 

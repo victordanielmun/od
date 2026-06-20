@@ -590,6 +590,13 @@ func (r *Room) ReleaseNinjaCardsForPlayer(playerID string) {
 			log.Printf("[NinjaCard] Releasing enemy %s locked by departed player %s", enemy.InstanceID, playerID)
 			r.releaseNinjaCardEnemy(enemy)
 		}
+		// Boss card: quitar al jugador que se fue de los requeridos para que las
+		// respuestas de los presentes puedan completar la card (si no, el backstop
+		// de timeout la resuelve).
+		if enemy.Type == EnemyTypeBoss && enemy.BossCardRequired != nil {
+			delete(enemy.BossCardRequired, playerID)
+			delete(enemy.BossCardResults, playerID)
+		}
 	}
 }
 
