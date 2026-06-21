@@ -1,6 +1,7 @@
 import * as Phaser from 'phaser';
 import { NPCSprite } from './NPCSprite';
 import { ENEMY_CONFIG } from '../config/EnemyConfig';
+import { BOSS_STATE_TO_ANIM, getBossScale } from '../config/BossConfig';
 
 // Estados posibles de la FSM
 const STATES = {
@@ -71,7 +72,7 @@ export default class EnemySprite extends NPCSprite {
     }
 
     this.sprite.on('animationcomplete', (anim) => {
-      const attackAnim = `enemy-${this.npcId}-${this._resolveAnim(STATES.ATTACK)}`;
+      const attackAnim = `${this._animPrefix()}-${this._resolveAnim(STATES.ATTACK)}`;
       if (anim.key === attackAnim) {
         this._attackHitDealt = false;
       }
@@ -85,6 +86,7 @@ export default class EnemySprite extends NPCSprite {
   syncFromServer(data) {
     if (this.fsm === STATES.DEAD) return;
     this.enemyType = data.type || 'melee';
+    if (this.enemyType === 'boss') this._setupBoss();
     const oldX = this.x;
     // Actualizar posición (suavizado o directo)
     this.setPosition(data.x, data.y);
@@ -213,7 +215,7 @@ export default class EnemySprite extends NPCSprite {
     // Solo proteger la transición attack→chase/idle (no interrumpir el swing)
     if (!isInterrupt && this.fsm === STATES.ATTACK &&
         (newState === STATES.CHASE || newState === STATES.IDLE)) {
-      const attackAnim = `enemy-${this.npcId}-${this._resolveAnim(STATES.ATTACK)}`;
+      const attackAnim = `${this._animPrefix()}-${this._resolveAnim(STATES.ATTACK)}`;
       if (this.sprite.anims.currentAnim?.key === attackAnim) return;
     }
 
@@ -221,7 +223,7 @@ export default class EnemySprite extends NPCSprite {
 
     // Mapeamos estado de combate → clave de animación que ya existe en NPCConfig
     const animKey = this._resolveAnim(newState);
-    const fullAnimKey = `enemy-${this.npcId}-${animKey}`;
+    const fullAnimKey = `${this._animPrefix()}-${animKey}`;
     
     if (this.scene.anims.exists(fullAnimKey)) {
         this.sprite.play(fullAnimKey, true);
@@ -236,9 +238,35 @@ export default class EnemySprite extends NPCSprite {
     }
   }
 
-  // Convierte estado FSM → nombre de animación base
+  // Convierte estado FSM → nombre de animación base (set de enemigo o de boss).
   _resolveAnim(state) {
+    if (this.enemyType === 'boss') {
+      return BOSS_STATE_TO_ANIM[state] || 'idle';
+    }
     return ENEMY_CONFIG.STATE_TO_ANIM[state] || 'idle';
+  }
+
+  // Prefijo de clave de animación: 'boss-<id>' para bosses, 'enemy-<id>' resto.
+  _animPrefix() {
+    if (this.enemyType === 'boss') {
+      if (!this.bossId) {
+        this.bossId = this.scene.textures.exists(`boss-${this.npcId}-base`) ? this.npcId : '1';
+      }
+      return `boss-${this.bossId}`;
+    }
+    return `enemy-${this.npcId}`;
+  }
+
+  // Cambia la textura/escala del sprite interno al set del boss (una vez).
+  _setupBoss() {
+    if (this._bossSetup) return;
+    this._bossSetup = true;
+    const prefix = this._animPrefix(); // resuelve this.bossId
+    const baseKey = `${prefix}-base`;
+    if (this.sprite && this.scene.textures.exists(baseKey)) {
+      this.sprite.setTexture(baseKey);
+      this.sprite.setScale(getBossScale(this.bossId));
+    }
   }
 
   // Cadencia de ataque en ms. El servidor manda attack_rate (snake_case); el modo
@@ -338,7 +366,7 @@ export default class EnemySprite extends NPCSprite {
         this.attackCooldown -= delta;
         if (this.attackCooldown <= 0) {
           const animKey = this._resolveAnim(STATES.ATTACK);
-          const fullAnimKey = `enemy-${this.npcId}-${animKey}`;
+          const fullAnimKey = `${this._animPrefix()}-${animKey}`;
           if (this.scene.anims.exists(fullAnimKey)) {
               this.sprite.play(fullAnimKey, true);
           } else {
@@ -389,7 +417,7 @@ export default class EnemySprite extends NPCSprite {
         this.attackCooldown -= delta;
         if (this.attackCooldown <= 0) {
           const animKey = this._resolveAnim(STATES.THROW);
-          const fullAnimKey = `enemy-${this.npcId}-${animKey}`;
+          const fullAnimKey = `${this._animPrefix()}-${animKey}`;
           if (this.scene.anims.exists(fullAnimKey)) {
             this.sprite.play(fullAnimKey, true);
           } else {
@@ -501,7 +529,7 @@ export default class EnemySprite extends NPCSprite {
   _doAttack() {
     // 1. Reproducir la animación de ataque para todos
     const animKey = this._resolveAnim(STATES.ATTACK);
-    const fullAnimKey = `enemy-${this.npcId}-${animKey}`;
+    const fullAnimKey = `${this._animPrefix()}-${animKey}`;
     if (this.sprite) {
       if (this.scene.anims.exists(fullAnimKey)) {
         this.sprite.play(fullAnimKey, true);

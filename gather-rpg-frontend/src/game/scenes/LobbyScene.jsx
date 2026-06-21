@@ -5,6 +5,7 @@ import { useAudioStore } from '../../store/audioStore';
 import { createCharacterAnimations } from '../config/CharacterConfig';
 import { createNPCAnimations } from '../config/NPCConfig';
 import { createEnemyAnimations } from '../config/EnemyConfig';
+import { createBossAnimations } from '../config/BossConfig';
 import api from '../../services/api';
 import { EnemySystem } from '../combat/EnemySystem';
 import { CombatSystem } from '../combat/CombatSystem';
@@ -211,6 +212,7 @@ export class LobbyScene extends Phaser.Scene {
     // 0. Animations
     this.createAnimations();
     createEnemyAnimations(this);
+    createBossAnimations(this);
 
     // 1. Map / Ground
     this.mapManager.createMap();

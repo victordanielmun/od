@@ -397,7 +397,7 @@ func (s *MissionService) activeMissionProgresses(playerID uuid.UUID, sceneKey st
 	return progresses
 }
 
-func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uuid.UUID, sceneKey string) ([]KillProgressResult, error) {
+func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uuid.UUID, sceneKey string, isBoss bool) ([]KillProgressResult, error) {
 	fmt.Printf("\n[KillProgress] ============ INICIO UpdateKillProgress ============\n")
 	fmt.Printf("[KillProgress] userID=%s | enemyTemplateID=%s | sceneKey=%s\n", userID, enemyTemplateID, sceneKey)
 
@@ -482,11 +482,25 @@ func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uu
 				continue
 			}
 
-			// ¿Coincide el enemigo?
-			if t.RequiredEnemy != "" && t.RequiredEnemy != enemyName {
-				fmt.Printf("[KillProgress]   Task %d: SKIP (required_enemy='%s' ≠ enemigo_muerto='%s')\n",
-					t.ID, t.RequiredEnemy, enemyName)
-				continue
+			// Separación por tipo de enemigo:
+			//  - kill_boss: cuenta SOLO si murió un boss (por arquetipo, ignora el nombre).
+			//  - defeat_enemy: cuenta SOLO mobs normales (no bosses) y, si hay
+			//    required_enemy, debe coincidir el nombre.
+			if t.Type == models.TaskTypeKillBoss {
+				if !isBoss {
+					fmt.Printf("[KillProgress]   Task %d: SKIP (kill_boss pero el muerto no es boss)\n", t.ID)
+					continue
+				}
+			} else { // defeat_enemy
+				if isBoss {
+					fmt.Printf("[KillProgress]   Task %d: SKIP (defeat_enemy no cuenta bosses)\n", t.ID)
+					continue
+				}
+				if t.RequiredEnemy != "" && t.RequiredEnemy != enemyName {
+					fmt.Printf("[KillProgress]   Task %d: SKIP (required_enemy='%s' ≠ enemigo_muerto='%s')\n",
+						t.ID, t.RequiredEnemy, enemyName)
+					continue
+				}
 			}
 
 			// ✅ Esta tarea aplica — incrementar kill count

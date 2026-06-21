@@ -1,6 +1,7 @@
 import { loadCharacterSprites } from '../config/CharacterConfig';
 import { loadNPCSprites } from '../config/NPCConfig';
 import { loadEnemySprites } from '../config/EnemyConfig';
+import { loadBossSprites } from '../config/BossConfig';
 
 // Editor tile marker textures generated at runtime (one per tile type).
 const TILE_TYPES = [
@@ -99,6 +100,7 @@ export function preloadLobbyAssets(scene) {
   loadCharacterSprites(scene);
   loadNPCSprites(scene);
   loadEnemySprites(scene);
+  loadBossSprites(scene);
 
   createTileTextures(scene);
 

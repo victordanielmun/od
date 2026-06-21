@@ -81,39 +81,52 @@ func (h *Hub) handleSelectClass(client *Client, payload interface{}) {
 // Es compartida por la muerte normal y por la Ninja Card para que ambos caminos
 // avancen el progreso de forma idéntica. Pensada para ejecutarse en su propio
 // goroutine; gestiona internamente los locks de la sala.
-func (h *Hub) processEnemyKill(killerUUID uuid.UUID, enemyTemplateID uuid.UUID, room *Room, roomID string) {
+func (h *Hub) processEnemyKill(killerUUID uuid.UUID, enemyTemplateID uuid.UUID, room *Room, roomID string, isBoss bool) {
 	killerID := killerUUID.String()
 	// El progreso de misión se scope por escena (no por la sala efímera).
 	sceneKey := room.SceneKey
-	log.Printf("[Combat] processEnemyKill | killer=%s | enemyTemplateID=%s | room=%s | scene=%s", killerID, enemyTemplateID, roomID, sceneKey)
+	log.Printf("[Combat] processEnemyKill | killer=%s | enemyTemplateID=%s | room=%s | scene=%s | boss=%v", killerID, enemyTemplateID, roomID, sceneKey, isBoss)
 
-	// 1. Kills individuales (defeat_enemy / kill_boss)
-	progressResults, err := h.MissionService.UpdateKillProgress(killerUUID, enemyTemplateID, sceneKey)
-	if err != nil {
-		log.Printf("[Combat] UpdateKillProgress ERROR for user %s: %v", killerID, err)
+	// 1. Kills individuales (defeat_enemy / kill_boss).
+	// Un boss es una pelea compartida: el crédito (kill_boss) va a TODOS los
+	// jugadores del room. Un mob normal solo acredita al que lo mató.
+	killCreditIDs := []uuid.UUID{killerUUID}
+	if isBoss {
+		room.mu.RLock()
+		killCreditIDs = make([]uuid.UUID, 0, len(room.Clients))
+		for c := range room.Clients {
+			killCreditIDs = append(killCreditIDs, c.ID)
+		}
+		room.mu.RUnlock()
 	}
-	for _, res := range progressResults {
-		if res.MissionDone {
-			if mission, dbErr := h.MissionService.Repo.GetMissionByID(res.MissionID); dbErr == nil {
-				h.SendToUser(killerID, &models.WSMessage{
-					Type: MsgMissionCompleted,
+	for _, cid := range killCreditIDs {
+		progressResults, err := h.MissionService.UpdateKillProgress(cid, enemyTemplateID, sceneKey, isBoss)
+		if err != nil {
+			log.Printf("[Combat] UpdateKillProgress ERROR for user %s: %v", cid, err)
+		}
+		for _, res := range progressResults {
+			if res.MissionDone {
+				if mission, dbErr := h.MissionService.Repo.GetMissionByID(res.MissionID); dbErr == nil {
+					h.SendToUser(cid.String(), &models.WSMessage{
+						Type: MsgMissionCompleted,
+						Payload: map[string]interface{}{
+							"mission_id": res.MissionID,
+							"title":      mission.Title,
+						},
+					})
+				}
+			} else {
+				h.SendToUser(cid.String(), &models.WSMessage{
+					Type: MsgEnemyKillProgress,
 					Payload: map[string]interface{}{
-						"mission_id": res.MissionID,
-						"title":      mission.Title,
+						"mission_id":     res.MissionID,
+						"task_id":        res.TaskID,
+						"kills_done":     res.KillsDone,
+						"required_kills": res.RequiredKills,
+						"task_completed": res.TaskCompleted,
 					},
 				})
 			}
-		} else {
-			h.SendToUser(killerID, &models.WSMessage{
-				Type: MsgEnemyKillProgress,
-				Payload: map[string]interface{}{
-					"mission_id":     res.MissionID,
-					"task_id":        res.TaskID,
-					"kills_done":     res.KillsDone,
-					"required_kills": res.RequiredKills,
-					"task_completed": res.TaskCompleted,
-				},
-			})
 		}
 	}
 
@@ -444,8 +457,8 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 		}
 		room.broadcastToAll(deathMsg)
 
-		// Update Mission Progress (kills individuales + kill_all)
-		go h.processEnemyKill(client.ID, enemyTemplateID, room, roomID)
+		// Update Mission Progress (kills individuales + kill_all). Muerte normal = no-boss.
+		go h.processEnemyKill(client.ID, enemyTemplateID, room, roomID, false)
 
 	} else {
 		// Stagger: el enemigo se traba brevemente al recibir el golpe. El tick de
@@ -538,8 +551,8 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 		}
 		room.broadcastToAll(deathMsg)
 
-		// Mismo progreso de misiones que la muerte normal (kills individuales + kill_all)
-		go h.processEnemyKill(client.ID, enemyTemplateID, room, roomID)
+		// Mismo progreso de misiones que la muerte normal (single ninja card = no-boss).
+		go h.processEnemyKill(client.ID, enemyTemplateID, room, roomID, false)
 	} else {
 		// Elegir efecto aleatorio entre 3 posibles efectos
 		// 0: enemy_heals, 1: player_takes_damage, 2: player_is_stunned
@@ -719,7 +732,8 @@ func (h *Hub) handleBossCardAnswerLocked(client *Client, room *Room, enemy *mode
 				KilledBy:   cid,
 			},
 		})
-		go h.processEnemyKill(client.ID, enemyTemplateID, room, roomID)
+		// Muerte del boss → isBoss=true (completa tareas kill_boss por tipo).
+		go h.processEnemyKill(client.ID, enemyTemplateID, room, roomID, true)
 	} else {
 		log.Printf("[BossCard] Boss %s recovered — at least one player failed", instanceUUID)
 		h.broadcastBossCardResult(room, false)
