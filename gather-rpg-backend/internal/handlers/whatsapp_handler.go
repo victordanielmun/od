@@ -493,9 +493,10 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 		if msgType == "audioMessage" || strings.Contains(strings.ToLower(msgType), "audio") {
 			log.Printf("[WhatsAppWebhook] Received audio note response from contact: %s", cleanNumber)
 
-			// Find last sent smart challenge reminder in the last 24h
+			// Find last unanswered smart challenge reminder in the last 24h. El filtro
+			// answered_at IS NULL evita re-calificar (y re-otorgar XP) un reto ya respondido.
 			var lastReminder models.WhatsAppReminder
-			err = database.DB.Where("user_id = ? AND reminder_type = ? AND sent = ? AND sent_at > ?",
+			err = database.DB.Where("user_id = ? AND reminder_type = ? AND sent = ? AND answered_at IS NULL AND sent_at > ?",
 				contact.UserID, models.WAReminderTypePracticeSuggestion, true, time.Now().Add(-24*time.Hour)).
 				Order("sent_at DESC").First(&lastReminder).Error
 
@@ -504,13 +505,13 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 				return c.SendStatus(fiber.StatusOK)
 			}
 
-			// Match challenge by finding the one containing the question substring inside message
-			var challenge models.LearningChallenge
-			err = database.DB.Where("? LIKE '%' || question || '%'", lastReminder.Message).First(&challenge).Error
-			if err != nil {
-				log.Printf("[WhatsAppWebhook] Failed to match learning challenge for audio note: %v", err)
+			// Resolve the challenge linked to this reminder (by id, with substring fallback)
+			challengePtr, matchErr := resolveChallengeForReminder(&lastReminder)
+			if matchErr != nil {
+				log.Printf("[WhatsAppWebhook] Failed to match learning challenge for audio note: %v", matchErr)
 				return c.SendStatus(fiber.StatusOK)
 			}
+			challenge := *challengePtr
 
 			// Clean target reference word to pronounce (e.g. from single or double quotes)
 			targetWord := challenge.Question
@@ -526,8 +527,15 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 				}
 			}
 
-			// Download audio file bytes from Evolution API
-			audioBytes, downloadErr := h.WhatsAppService.DownloadMedia(payload.Instance, payload.Data.Message["key"].(map[string]interface{}), payload.Data.Message)
+			// Download audio file bytes from Evolution API. La clave del mensaje vive en
+			// payload.Data.Key (no dentro del contenido Message); construir el mapa desde
+			// ahí evita el panic por type-assertion sobre una clave inexistente.
+			messageKey := map[string]interface{}{
+				"remoteJid": payload.Data.Key.RemoteJid,
+				"fromMe":    payload.Data.Key.FromMe,
+				"id":        payload.Data.Key.ID,
+			}
+			audioBytes, downloadErr := h.WhatsAppService.DownloadMedia(payload.Instance, messageKey, payload.Data.Message)
 			if downloadErr != nil {
 				log.Printf("[WhatsAppWebhook] Failed to download user voice note: %v", downloadErr)
 				return c.SendStatus(fiber.StatusOK)
@@ -554,6 +562,7 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 			isCorrect := score >= 75
 			attemptRepo := repository.NewLearningRepository()
 			_, _ = attemptRepo.RecordAttempt(contact.UserID, challenge.ID, isCorrect, 1, fmt.Sprintf("Pronunciation accuracy: %d%%", score))
+			markReminderAnswered(&lastReminder)
 
 			// Award RPG stats
 			xpGained := 5
@@ -607,9 +616,10 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 					return c.SendStatus(fiber.StatusOK)
 				}
 
-				// Find last sent smart challenge reminder in the last 24h
+				// Find last unanswered smart challenge reminder in the last 24h. El filtro
+				// answered_at IS NULL evita re-calificar (y re-otorgar XP) un reto ya respondido.
 				var lastReminder models.WhatsAppReminder
-				err = database.DB.Where("user_id = ? AND reminder_type = ? AND sent = ? AND sent_at > ?",
+				err = database.DB.Where("user_id = ? AND reminder_type = ? AND sent = ? AND answered_at IS NULL AND sent_at > ?",
 					contact.UserID, models.WAReminderTypePracticeSuggestion, true, time.Now().Add(-24*time.Hour)).
 					Order("sent_at DESC").First(&lastReminder).Error
 
@@ -618,13 +628,13 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 					return c.SendStatus(fiber.StatusOK)
 				}
 
-				// Match challenge by finding the one containing the question substring inside message
-				var challenge models.LearningChallenge
-				err = database.DB.Where("? LIKE '%' || question || '%'", lastReminder.Message).First(&challenge).Error
-				if err != nil {
-					log.Printf("[WhatsAppWebhook] Failed to match learning challenge for text answer: %v", err)
+				// Resolve the challenge linked to this reminder (by id, with substring fallback)
+				challengePtr, matchErr := resolveChallengeForReminder(&lastReminder)
+				if matchErr != nil {
+					log.Printf("[WhatsAppWebhook] Failed to match learning challenge for text answer: %v", matchErr)
 					return c.SendStatus(fiber.StatusOK)
 				}
+				challenge := *challengePtr
 
 				isCorrect := choice == challenge.CorrectOption
 
@@ -640,6 +650,7 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 				// Record attempt and award XP
 				attemptRepo := repository.NewLearningRepository()
 				_, _ = attemptRepo.RecordAttempt(contact.UserID, challenge.ID, isCorrect, choice, "")
+				markReminderAnswered(&lastReminder)
 
 				// Award RPG XP and Gold
 				xpGained := 5
@@ -689,6 +700,32 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusOK)
 }
 
+// resolveChallengeForReminder obtiene el reto de aprendizaje vinculado a un reminder.
+// Prefiere el challenge_id exacto (preciso); para reminders antiguos sin ese campo
+// cae al matching por substring de la pregunta (frágil, solo compatibilidad).
+func resolveChallengeForReminder(reminder *models.WhatsAppReminder) (*models.LearningChallenge, error) {
+	var challenge models.LearningChallenge
+	if reminder.ChallengeID != nil {
+		if err := database.DB.First(&challenge, "id = ?", *reminder.ChallengeID).Error; err == nil {
+			return &challenge, nil
+		}
+	}
+	if err := database.DB.Where("? LIKE '%' || question || '%'", reminder.Message).First(&challenge).Error; err != nil {
+		return nil, err
+	}
+	return &challenge, nil
+}
+
+// markReminderAnswered sella el reminder como ya respondido para que un mismo reto no
+// pueda calificarse (y otorgar XP) más de una vez.
+func markReminderAnswered(reminder *models.WhatsAppReminder) {
+	now := time.Now()
+	reminder.AnsweredAt = &now
+	if err := database.DB.Model(reminder).Update("answered_at", &now).Error; err != nil {
+		log.Printf("[WhatsAppWebhook] Warning: failed to mark reminder %s answered: %v", reminder.ID, err)
+	}
+}
+
 // extractMessageText extracts the message text from a flexible webhook message map
 func extractMessageText(messageMap map[string]interface{}) string {
 	if messageMap == nil {
@@ -727,14 +764,17 @@ func normalizeChoice(text string) int {
 		return 3
 	}
 
-	for _, char := range text {
-		if char == '1' || char == 'a' {
+	// Token-based: solo aceptar un token que SEA en sí mismo una opción (p. ej. "1",
+	// "b", "2)", "c."). Escanear carácter a carácter como antes hacía que texto libre
+	// ("buenos dias" → 'b', "creo que..." → 'c') se calificara como respuesta.
+	for _, tok := range strings.Fields(text) {
+		tok = strings.Trim(tok, ".)-:°º()[]\"'")
+		switch tok {
+		case "1", "a":
 			return 1
-		}
-		if char == '2' || char == 'b' {
+		case "2", "b":
 			return 2
-		}
-		if char == '3' || char == 'c' {
+		case "3", "c":
 			return 3
 		}
 	}

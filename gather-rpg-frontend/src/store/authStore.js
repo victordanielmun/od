@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import api from '../services/api';
+import i18n from '../i18n';
 import { CHARACTER_CONFIG } from '../game/config/CharacterConfig';
+
+// Current UI language as a bare ISO-639-1 code (e.g. "es-ES" -> "es"). This seeds the
+// player's learning native_language so helper translations resolve into it.
+const currentLang = () => (i18n.language || 'en').split('-')[0].toLowerCase();
 
 const getUserFromToken = (token) => {
   try {
@@ -67,7 +72,7 @@ export const useAuthStore = create((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const characterIds = CHARACTER_CONFIG.characters.map(c => c.id);
-      const response = await api.post('/auth/guest', { character_ids: characterIds });
+      const response = await api.post('/auth/guest', { character_ids: characterIds, native_language: currentLang() });
       const { token, user } = response.data;
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
@@ -85,7 +90,7 @@ export const useAuthStore = create((set, get) => ({
   register: async (username, email, password) => {
     set({ isLoading: true, error: null });
     try {
-      const response = await api.post('/auth/register', { username, email, password });
+      const response = await api.post('/auth/register', { username, email, password, native_language: currentLang() });
       const { token, user } = response.data;
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
@@ -97,6 +102,20 @@ export const useAuthStore = create((set, get) => ({
         isLoading: false
       });
       return false;
+    }
+  },
+
+  // Persist the player's native language (drives all helper translations). Safe to call
+  // for guests too. No-op on the server for unauthenticated users.
+  setNativeLanguage: async (lang) => {
+    const code = (lang || 'en').split('-')[0].toLowerCase();
+    get().updateUser({ native_language: code });
+    if (get().isAuthenticated) {
+      try {
+        await api.put('/auth/native-language', { native_language: code });
+      } catch (e) {
+        console.error('Failed to persist native language:', e);
+      }
     }
   },
 

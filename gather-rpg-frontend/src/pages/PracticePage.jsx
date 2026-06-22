@@ -15,6 +15,7 @@ import {
     getTTSAudioUrl,
     submitChallengeAttempt,
     fetchChallengeMetadata,
+    fetchLearningProfile,
 } from '../services/voiceApi';
 import OverlaidWaveform from '../components/voice/OverlaidWaveform';
 import Waveform from '../components/voice/Waveform';
@@ -41,6 +42,18 @@ export default function PracticePage() {
     const [difficulties, setDifficulties] = useState(['beginner']);
     const [categories, setCategories] = useState(['']);
 
+    // ── Prefijar la dificultad con el nivel del usuario ──────
+    // /learn sigue siendo práctica libre (el usuario puede cambiar dificultad y
+    // categoría), pero arranca en su nivel real en vez de siempre en 'beginner',
+    // para quedar coherente con Ninja Card y WhatsApp que ya son adaptativos.
+    useEffect(() => {
+        fetchLearningProfile().then((profile) => {
+            if (profile?.english_level) setDifficulty(profile.english_level);
+        }).catch((err) => {
+            console.warn('Could not load learning profile, keeping default difficulty:', err);
+        });
+    }, []);
+
     // ── Load dynamic metadata ────────────────────────────────
     useEffect(() => {
         fetchChallengeMetadata().then((data) => {
@@ -62,8 +75,8 @@ export default function PracticePage() {
         try {
             // Pronunciation tab -> pronunciation type
             // Challenges tab -> vocab or grammar (non-audio)
-            const typeParam = activeTab === 'pronunciation' ? 'pronunciation' : 'vocabulary'; 
-            const w = await fetchRandomWord(difficulty, typeParam);
+            const typeParam = activeTab === 'pronunciation' ? 'pronunciation' : 'vocabulary';
+            const w = await fetchRandomWord(difficulty, typeParam, category || undefined);
             setWord(w);
             if (w.text && w.text.trim()) {
                 try {

@@ -1,30 +1,54 @@
 package handlers
 
 import (
+	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
 
 type LearningHandler struct {
-	Service *services.LearningService
+	Service     *services.LearningService
+	Translation *services.TranslationService
 }
 
-func NewLearningHandler(service *services.LearningService) *LearningHandler {
-	return &LearningHandler{Service: service}
+func NewLearningHandler(service *services.LearningService, translation *services.TranslationService) *LearningHandler {
+	return &LearningHandler{Service: service, Translation: translation}
 }
 
 func (h *LearningHandler) GetRandomChallenge(c *fiber.Ctx) error {
 	// Parse optional query params
 	challengeType := c.Query("type")
 	difficulty := c.Query("difficulty")
+	tag := c.Query("tag")
 
-	challenge, err := h.Service.GetRandomChallenge(challengeType, difficulty)
+	challenge, err := h.Service.GetRandomChallenge(challengeType, difficulty, tag)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "No challenges found matching criteria"})
 	}
 
-	return c.JSON(challenge)
+	// Resolve the native helper language: an explicit ?lang= overrides the user's
+	// stored preference, which in turn defaults to "en" (immersion, no helper).
+	lang := c.Query("lang")
+	if lang == "" {
+		userIDStr, _ := c.Locals("user_id").(string)
+		lang = h.Translation.UserLang(userIDStr)
+	}
+	tr := h.Translation.GetChallengeTranslation(challenge, lang)
+
+	// Embed the challenge plus the language-agnostic native helper fields. The legacy
+	// question_es/explanation_es stay on the challenge for backward compatibility.
+	return c.JSON(struct {
+		*models.LearningChallenge
+		NativeLang        string `json:"native_lang"`
+		QuestionNative    string `json:"question_native"`
+		ExplanationNative string `json:"explanation_native"`
+	}{
+		LearningChallenge: challenge,
+		NativeLang:        tr.Lang,
+		QuestionNative:    tr.QuestionNative,
+		ExplanationNative: tr.ExplanationNative,
+	})
 }
 
 func (h *LearningHandler) GetChallengeMetadata(c *fiber.Ctx) error {

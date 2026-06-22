@@ -153,6 +153,12 @@ type WhatsAppReminder struct {
 	UserID       uuid.UUID            `gorm:"type:uuid;not null;index:idx_whatsapp_reminders_user_id" json:"user_id"`
 	ReminderType WAReminderType       `gorm:"type:reminder_type;not null;index:idx_whatsapp_reminders_type" json:"reminder_type"`
 	Message      string               `gorm:"type:text;not null" json:"message"`
+	// ChallengeID vincula el reminder con el reto de aprendizaje exacto que se envió,
+	// para calificar respuestas por ID en vez de adivinar el reto por coincidencia de texto.
+	ChallengeID  *uuid.UUID           `gorm:"type:uuid;index" json:"challenge_id,omitempty"`
+	// AnsweredAt marca cuándo se calificó la respuesta a este reto. Evita que un mismo
+	// reto se responda varias veces y otorgue XP repetida (farming).
+	AnsweredAt   *time.Time           `gorm:"type:timestamptz" json:"answered_at,omitempty"`
 	ScheduledAt  time.Time            `gorm:"type:timestamptz;not null;index:idx_whatsapp_reminders_scheduled,where:sent = false AND cancelled = false" json:"scheduled_at"`
 	Recurrence   WAReminderRecurrence `gorm:"type:reminder_recurrence;not null;default:'once'" json:"recurrence"`
 	Sent         bool                 `gorm:"not null;default:false" json:"sent"`

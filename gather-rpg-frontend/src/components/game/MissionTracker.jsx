@@ -55,8 +55,8 @@ const MissionTracker = ({ mission }) => {
       {!isCollapsed && (
         <div className="mt-3">
           <p className="text-gray-300 text-xs mb-4">
-            {i18n.language.startsWith('es') 
-              ? (mission.description || mission.description_en) 
+            {!i18n.language.startsWith('en')
+              ? (mission.description || mission.description_en)
               : (mission.description_en || mission.description)}
           </p>
           
@@ -72,7 +72,7 @@ const MissionTracker = ({ mission }) => {
                     <span className={`text-[11px] ${
                       isCompleted ? 'text-gray-500 line-through' : 'text-gray-200'
                     }`}>
-                      {(i18n.language.startsWith('es') ? task.description : task.description_en) || task.description}
+                      {(!i18n.language.startsWith('en') ? task.description : task.description_en) || task.description}
                     </span>
                     {task.required_kills > 0 && !isCompleted && (
                       <div className="mt-1.5 flex flex-col gap-1 w-full min-w-[160px] pointer-events-none">

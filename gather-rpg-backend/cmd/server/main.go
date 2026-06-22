@@ -45,6 +45,7 @@ func main() {
 		&models.MapConfig{},
 		// ── English Learning System ──────────────────────────────────────
 		&models.LearningChallenge{},
+		&models.ChallengeTranslation{},
 		&models.UserChallengeAttempt{},
 		&models.UserLearningProfile{},
 		// ── NPC AI & Mission System (v2) ──────────────────────────────────
@@ -53,7 +54,9 @@ func main() {
 		&models.NPCTemplate{},
 		&models.NPCDialogueCache{},
 		&models.Mission{},
+		&models.MissionTranslation{},
 		&models.MissionTask{},
+		&models.TaskTranslation{},
 		&models.NPCMissionRole{},
 		&models.NPCRoomInstance{},
 		&models.Conversation{},
@@ -123,6 +126,7 @@ func main() {
 	}
 	
 	dialogueService := services.NewDialogueService(npcRepo, missionRepo, missionService, llmClient)
+	translationService := services.NewTranslationService(llmClient)
 
 	// TTS Service & Handler
 	ttsService := services.NewTTSService(cfg.PiperExePath, cfg.PiperModelsDir, cfg.PiperCacheDir)
@@ -138,9 +142,9 @@ func main() {
 	roomHandler := handlers.NewRoomHandler(roomService)
 	adminHandler := handlers.NewAdminHandler(npcService)
 	friendHandler := handlers.NewFriendHandler(friendService, hub)
-	learningHandler := handlers.NewLearningHandler(learningService)
+	learningHandler := handlers.NewLearningHandler(learningService, translationService)
 	dialogueHandler := handlers.NewDialogueHandler(dialogueService, hub)
-	missionHandler := handlers.NewMissionHandler(missionService)
+	missionHandler := handlers.NewMissionHandler(missionService, translationService)
 	npcHandler := handlers.NewNPCHandler(npcService, llmClient)
 	missionAdminHandler := handlers.NewMissionAdminHandler(missionService)
 	inventoryService := services.NewInventoryService(inventoryRepo)
@@ -179,6 +183,7 @@ func main() {
 	auth.Post("/companion", middleware.Protected(cfg), authHandler.SetCompanion)
 	auth.Post("/terms", middleware.Protected(cfg), authHandler.AcceptTerms)
 	auth.Put("/sprite", middleware.Protected(cfg), authHandler.SetSprite)
+	auth.Put("/native-language", middleware.Protected(cfg), authHandler.SetNativeLanguage)
 
 	// Room Routes
 	rooms := app.Group("/rooms", middleware.Protected(cfg))

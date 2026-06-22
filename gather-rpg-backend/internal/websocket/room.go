@@ -620,6 +620,7 @@ func (r *Room) GetClientsCount() int {
 func (r *Room) releaseNinjaCardEnemy(enemy *models.ActiveEnemy) {
 	enemy.FSMState = "idle"
 	enemy.PendingNinjaCard = ""
+	enemy.NinjaCardChallengeID = ""
 	enemy.TargetID = ""
 	if enemy.HP <= 0 {
 		enemy.HP = 1

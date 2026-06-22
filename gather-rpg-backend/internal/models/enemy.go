@@ -73,6 +73,10 @@ type ActiveEnemy struct {
 	TargetID   string    `json:"target_id"` // UserID of the targeted player
 	HurtUntil  time.Time `json:"-"`         // mientras now < HurtUntil el enemigo está aturdido (no se mueve ni ataca)
 	PendingNinjaCard string `json:"pending_ninja_card,omitempty"` // Player ID that triggered the ninja card
+	// NinjaCardChallengeID es el reto que el servidor emitió para esta card (single player).
+	// La respuesta se evalúa SIEMPRE contra este reto, nunca contra el challenge_id que
+	// manda el cliente, para que no pueda sustituirlo por uno cuya respuesta ya conoce.
+	NinjaCardChallengeID string `json:"-"`
 	WaveNum    int       `json:"wave_num"`
 	NPCID      string    `json:"npc_id"`    // From template config
 	SpriteID   string    `json:"sprite_id"` // Asset ID ('1', '2', etc.)
@@ -91,6 +95,9 @@ type ActiveEnemy struct {
 	// del room recibe una card; el boss muere solo si TODOS aciertan.
 	BossCardRequired map[string]bool `json:"-"` // playerIDs que deben responder
 	BossCardResults  map[string]bool `json:"-"` // playerID -> acertó (presencia = ya respondió)
+	// BossCardChallenge mapea playerID -> challengeID emitido, para evaluar cada respuesta
+	// contra el reto que el servidor envió a ese jugador (no contra el challenge_id del cliente).
+	BossCardChallenge map[string]string `json:"-"`
 
 	// Thrower: sprite del proyectil (icon_key); el cliente lo usa en _doThrow.
 	ProjectileSprite string `json:"projectile_sprite"`

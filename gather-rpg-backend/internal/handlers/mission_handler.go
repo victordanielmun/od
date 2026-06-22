@@ -6,6 +6,7 @@ import (
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/services"
+	"gather-rpg-backend/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"strconv"
@@ -13,11 +14,12 @@ import (
 )
 
 type MissionHandler struct {
-	Service *services.MissionService
+	Service     *services.MissionService
+	Translation *services.TranslationService
 }
 
-func NewMissionHandler(service *services.MissionService) *MissionHandler {
-	return &MissionHandler{Service: service}
+func NewMissionHandler(service *services.MissionService, translation *services.TranslationService) *MissionHandler {
+	return &MissionHandler{Service: service, Translation: translation}
 }
 
 func levelToInt(l models.DifficultyLevel) int {
@@ -47,6 +49,9 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 	}
 	userID, _ := uuid.Parse(userIDStr)
 
+	// Native language for quest-log localization (helper text only; English stays canonical).
+	userLang := h.Translation.UserLang(userIDStr)
+
 	// Fetch player's english level
 	var profile models.UserLearningProfile
 	playerLevel := models.DifficultyBeginner
@@ -65,7 +70,8 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 
 	type TaskWithStatus struct {
 		ID            uint   `json:"id"`
-		Description   string `json:"description"`
+		Description   string `json:"description"`    // native-language helper (falls back to English)
+		DescriptionEn string `json:"description_en"` // English canonical, always
 		Type          string `json:"type"`
 		IsCompleted   bool   `json:"is_completed"`
 		KillsDone     int    `json:"kills_done"`
@@ -76,7 +82,8 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 	type MissionWithStatus struct {
 		ID            uint             `json:"id"`
 		Title         string           `json:"title"`
-		DescriptionEn string           `json:"description_en"`
+		Description   string           `json:"description"`    // native-language helper (falls back to English)
+		DescriptionEn string           `json:"description_en"` // English canonical, always
 		ObjectiveEn   string           `json:"objective_en"`
 		SceneKey      string           `json:"scene_key"`
 		Mode          string           `json:"mode"`
@@ -117,9 +124,16 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 				}
 			}
 
+			taskDesc := t.DescriptionEn
+			if !utils.IsEnglish(userLang) {
+				tcopy := t
+				taskDesc = h.Translation.GetTaskTranslation(&tcopy, userLang).Description
+			}
+
 			taskStatuses = append(taskStatuses, TaskWithStatus{
 				ID:            t.ID,
-				Description:   t.DescriptionEn,
+				Description:   taskDesc,        // native (or English when userLang == en)
+				DescriptionEn: t.DescriptionEn, // English canonical, never overwritten
 				Type:          string(t.Type),
 				IsCompleted:   completedMap[fmt.Sprint(t.ID)],
 				KillsDone:     killsDone,
@@ -134,10 +148,21 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 			overallStatus = string(progress.Status)
 		}
 
+		// Localize the mission's player-facing text (cached per language). English stays
+		// in *_en; the native translation goes in `description`. The client picks per its
+		// UI language toggle.
+		title, descrNative := m.Title, m.DescriptionEn
+		if !utils.IsEnglish(userLang) {
+			mcopy := m
+			mt := h.Translation.GetMissionTranslation(&mcopy, userLang)
+			title, descrNative = mt.Title, mt.Description
+		}
+
 		result = append(result, MissionWithStatus{
 			ID:            m.ID,
-			Title:         m.Title,
-			DescriptionEn: m.DescriptionEn,
+			Title:         title,
+			Description:   descrNative,    // native (or English when userLang == en)
+			DescriptionEn: m.DescriptionEn, // English canonical, never overwritten
 			ObjectiveEn:   m.ObjectiveEn,
 			SceneKey:      m.SceneKey,
 			Mode:          string(m.Mode),
@@ -184,6 +209,9 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 	}
 	userID, _ := uuid.Parse(userIDStr)
+
+	// Native language for localization (helper text only; English stays canonical).
+	userLang := h.Translation.UserLang(userIDStr)
 
 	// Fetch player's english level
 	var profile models.UserLearningProfile
@@ -303,14 +331,34 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 			summaryStatus = string(progress.Status)
 		}
 
+		// Localize mission text + the surfaced instruction (cached per language).
+		title, descr, objective := m.Title, m.DescriptionEn, m.ObjectiveEn
+		instruction := currentInstruction
+		if !utils.IsEnglish(userLang) {
+			mcopy := m
+			mt := h.Translation.GetMissionTranslation(&mcopy, userLang)
+			title, descr, objective = mt.Title, mt.Description, mt.Objective
+
+			// The instruction is usually a task description; translate it via its task.
+			// If it came from a role/mission fallback, use the translated description.
+			instruction = mt.Description
+			for _, t := range tasks {
+				if currentInstruction == t.DescriptionEn {
+					tcopy := t
+					instruction = h.Translation.GetTaskTranslation(&tcopy, userLang).Description
+					break
+				}
+			}
+		}
+
 		missionSummaries = append(missionSummaries, MissionSummary{
 			ID:                m.ID,
-			Title:             m.Title,
-			Description:       m.DescriptionEn,
-			Objective:         m.ObjectiveEn,
+			Title:             title,
+			Description:       descr,
+			Objective:         objective,
 			Status:            summaryStatus,
 			SceneKey:          m.SceneKey,
-			PlayerInstruction: currentInstruction,
+			PlayerInstruction: instruction,
 		})
 	}
 

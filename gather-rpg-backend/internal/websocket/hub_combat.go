@@ -360,6 +360,14 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 		challenge := h.getChallengeForClient(client)
 
 		if challenge != nil {
+			// Recordar el reto emitido en el enemigo (bajo lock) para evaluar la respuesta
+			// contra él y no contra el challenge_id que envíe el cliente.
+			room.mu.Lock()
+			if e, ok := room.ActiveEnemies[instanceUUID]; ok && e.FSMState == "ninja_card" && e.PendingNinjaCard == client.ID.String() {
+				e.NinjaCardChallengeID = challenge.ID.String()
+			}
+			room.mu.Unlock()
+
 			client.SendJSON(&models.WSMessage{
 				Type: MsgNinjaCardTriggered,
 				Payload: map[string]interface{}{
@@ -396,6 +404,7 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 		enemy.FSMState = "ninja_card"
 		enemy.BossCardRequired = make(map[string]bool)
 		enemy.BossCardResults = make(map[string]bool)
+		enemy.BossCardChallenge = make(map[string]string)
 		required := make([]*Client, 0, len(room.Clients))
 		for c := range room.Clients {
 			if c.IsDead {
@@ -411,14 +420,17 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 			enemy.FSMState = "chase"
 			enemy.BossCardRequired = nil
 			enemy.BossCardResults = nil
+			enemy.BossCardChallenge = nil
 			room.mu.Unlock()
 			return
 		}
 
 		log.Printf("[BossCard] Boss %s lethal blow → card to %d players", instanceUUID, len(required))
+		issued := make(map[string]string, len(required))
 		for _, c := range required {
 			challenge := h.getChallengeForClient(c)
 			if challenge != nil {
+				issued[c.ID.String()] = challenge.ID.String()
 				c.SendJSON(&models.WSMessage{
 					Type: MsgNinjaCardTriggered,
 					Payload: map[string]interface{}{
@@ -428,6 +440,16 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 				})
 			}
 		}
+
+		// Recordar (bajo lock) qué reto recibió cada jugador para evaluar su respuesta
+		// contra él y no contra el challenge_id que envíe el cliente.
+		room.mu.Lock()
+		if e, ok := room.ActiveEnemies[instanceUUID]; ok && e.FSMState == "ninja_card" && e.BossCardChallenge != nil {
+			for pid, chid := range issued {
+				e.BossCardChallenge[pid] = chid
+			}
+		}
+		room.mu.Unlock()
 
 		// Safety timeout: si no todos responden, resolver como fallo (boss se cura).
 		go func() {
@@ -516,7 +538,13 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 		return
 	}
 
-	challengeUUID, _ := uuid.Parse(p.ChallengeID)
+	// Evaluar SIEMPRE contra el reto emitido por el servidor. Solo si no se guardó
+	// (caso heredado/raro) se cae al challenge_id del cliente.
+	challengeIDStr := enemy.NinjaCardChallengeID
+	if challengeIDStr == "" {
+		challengeIDStr = p.ChallengeID
+	}
+	challengeUUID, _ := uuid.Parse(challengeIDStr)
 	var chal models.LearningChallenge
 	database.DB.First(&chal, "id = ?", challengeUUID)
 
@@ -589,6 +617,7 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 
 		enemy.FSMState = "chase"
 		enemy.PendingNinjaCard = ""
+		enemy.NinjaCardChallengeID = ""
 		room.mu.Unlock()
 
 		// El daño de la penalización se aplica server-side (sin i-frames).
@@ -619,12 +648,12 @@ func (h *Hub) getChallengeForClient(client *Client) *models.LearningChallenge {
 			level = profile.EnglishLevel
 		}
 	}
-	challenge, err := h.LearningService.GetRandomChallenge("vocabulary", string(level))
+	challenge, err := h.LearningService.GetRandomChallenge("vocabulary", string(level), "")
 	if err != nil || challenge == nil {
-		challenge, err = h.LearningService.GetRandomChallenge("", string(level))
+		challenge, err = h.LearningService.GetRandomChallenge("", string(level), "")
 	}
 	if err != nil || challenge == nil {
-		challenge, _ = h.LearningService.GetRandomChallenge("", "")
+		challenge, _ = h.LearningService.GetRandomChallenge("", "", "")
 	}
 	return challenge
 }
@@ -676,7 +705,15 @@ func (h *Hub) handleBossCardAnswerLocked(client *Client, room *Room, enemy *mode
 		return
 	}
 
-	challengeUUID, _ := uuid.Parse(challengeID)
+	// Evaluar contra el reto que el servidor emitió a este jugador, no el del cliente.
+	challengeIDStr := ""
+	if enemy.BossCardChallenge != nil {
+		challengeIDStr = enemy.BossCardChallenge[cid]
+	}
+	if challengeIDStr == "" {
+		challengeIDStr = challengeID
+	}
+	challengeUUID, _ := uuid.Parse(challengeIDStr)
 	var chal models.LearningChallenge
 	database.DB.First(&chal, "id = ?", challengeUUID)
 	isCorrect := chal.CorrectOption == selectedOption
@@ -715,6 +752,7 @@ func (h *Hub) handleBossCardAnswerLocked(client *Client, room *Room, enemy *mode
 	}
 	enemy.BossCardRequired = nil
 	enemy.BossCardResults = nil
+	enemy.BossCardChallenge = nil
 	room.mu.Unlock()
 
 	if _, err := h.LearningService.RecordAttempt(client.ID, challengeUUID, isCorrect, selectedOption, ""); err != nil {
@@ -753,6 +791,7 @@ func (h *Hub) resolveBossCardTimeout(room *Room, instanceUUID uuid.UUID) {
 	enemy.FSMState = "chase"
 	enemy.BossCardRequired = nil
 	enemy.BossCardResults = nil
+	enemy.BossCardChallenge = nil
 	room.mu.Unlock()
 
 	log.Printf("[BossCard] Timeout — boss %s recovered (not all answered)", instanceUUID)

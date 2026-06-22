@@ -45,12 +45,13 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 
 func (h *AuthHandler) GuestLogin(c *fiber.Ctx) error {
 	var req struct {
-		CharacterIDs []string `json:"character_ids"`
+		CharacterIDs   []string `json:"character_ids"`
+		NativeLanguage string   `json:"native_language"`
 	}
-	// Parse optionally provided character_ids from the body
+	// Parse optionally provided character_ids and native_language from the body
 	_ = c.BodyParser(&req)
 
-	res, err := h.Service.LoginGuest(req.CharacterIDs)
+	res, err := h.Service.LoginGuest(req.CharacterIDs, req.NativeLanguage)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -115,6 +116,32 @@ func (h *AuthHandler) AcceptTerms(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "Terms accepted successfully"})
+}
+
+// SetNativeLanguage saves the player's native language (ISO-639-1) for the current user.
+// This is what makes all helper translations resolve into that language.
+func (h *AuthHandler) SetNativeLanguage(c *fiber.Ctx) error {
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	var req struct {
+		NativeLanguage string `json:"native_language"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.NativeLanguage == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "native_language is required"})
+	}
+
+	if err := h.Service.UpdateNativeLanguage(userIDStr, req.NativeLanguage); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "Native language updated successfully"})
 }
 
 // SetSprite allows the user to choose their character sprite once

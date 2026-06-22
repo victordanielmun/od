@@ -25,7 +25,7 @@ func NewAuthService(repo *repository.UserRepository) *AuthService {
 	return &AuthService{Repo: repo}
 }
 
-func (s *AuthService) LoginGuest(characterIDs []string) (*models.AuthResponse, error) {
+func (s *AuthService) LoginGuest(characterIDs []string, nativeLang string) (*models.AuthResponse, error) {
 	guestID := uuid.New().String()
 	username := fmt.Sprintf("Guest_%s", guestID[:8])
 	email := fmt.Sprintf("%s@guest.local", guestID)
@@ -46,11 +46,12 @@ func (s *AuthService) LoginGuest(characterIDs []string) (*models.AuthResponse, e
 	}
 
 	user := &models.User{
-		Username:    username,
-		Email:       email,
-		Password:    string(hashedPassword),
-		IsGuest:     true,
-		CharacterID: randomCharID,
+		Username:       username,
+		Email:          email,
+		Password:       string(hashedPassword),
+		IsGuest:        true,
+		CharacterID:    randomCharID,
+		NativeLanguage: utils.NormalizeLang(nativeLang),
 	}
 
 	// Use a transaction to create both user and player stats
@@ -95,10 +96,11 @@ func (s *AuthService) Register(req models.RegisterRequest) (*models.AuthResponse
 	}
 
 	user := &models.User{
-		Username: req.Username,
-		Email:    req.Email,
-		Password: string(hashedPassword),
-		IsGuest:  false,
+		Username:       req.Username,
+		Email:          req.Email,
+		Password:       string(hashedPassword),
+		IsGuest:        false,
+		NativeLanguage: utils.NormalizeLang(req.NativeLanguage),
 	}
 
 	// Use a transaction to create both user and player stats
@@ -195,6 +197,16 @@ func (s *AuthService) AcceptTerms(userIDStr string) error {
 	}
 
 	return database.DB.Model(&models.User{}).Where("id = ?", userID).Update("terms_accepted", true).Error
+}
+
+// UpdateNativeLanguage saves the player's native language (ISO-639-1). This drives all
+// helper-text translation (challenges, missions, NPC replies) into that language.
+func (s *AuthService) UpdateNativeLanguage(userIDStr string, lang string) error {
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return errors.New("invalid user ID format")
+	}
+	return database.DB.Model(&models.User{}).Where("id = ?", userID).Update("native_language", utils.NormalizeLang(lang)).Error
 }
 
 // UpdateSprite saves the selected sprite

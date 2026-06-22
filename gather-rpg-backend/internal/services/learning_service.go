@@ -15,8 +15,8 @@ func NewLearningService(repo *repository.LearningRepository) *LearningService {
 	return &LearningService{Repo: repo}
 }
 
-func (s *LearningService) GetRandomChallenge(challengeType string, difficulty string) (*models.LearningChallenge, error) {
-	return s.Repo.GetRandomChallenge(challengeType, difficulty)
+func (s *LearningService) GetRandomChallenge(challengeType string, difficulty string, tag string) (*models.LearningChallenge, error) {
+	return s.Repo.GetRandomChallenge(challengeType, difficulty, tag)
 }
 
 // RecordAttempt passes the attempt data to the repository to process and update XP.

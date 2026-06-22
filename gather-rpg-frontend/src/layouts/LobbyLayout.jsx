@@ -429,7 +429,7 @@ export const LobbyLayout = () => {
             </h1>
             <div className="h-0.5 w-32 bg-gradient-to-r from-transparent via-yellow-500 to-transparent"></div>
             <div className="mt-4 text-yellow-200/70 font-serif italic text-lg tracking-wide text-center max-w-md">
-              {(i18n.language.startsWith('es') ? (activeMission.description || activeMission.description_en) : (activeMission.description_en || activeMission.description)) || activeMission.scene_key || t('lobby.mission.mysterious_adventure')}
+              {(!i18n.language.startsWith('en') ? (activeMission.description || activeMission.description_en) : (activeMission.description_en || activeMission.description)) || activeMission.scene_key || t('lobby.mission.mysterious_adventure')}
             </div>
           </div>
         </div>

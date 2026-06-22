@@ -15,9 +15,9 @@ func NewLearningRepository() *LearningRepository {
 }
 
 // GetRandomChallenge fetching a random challenge matching criteria
-func (r *LearningRepository) GetRandomChallenge(challengeType string, difficulty string) (*models.LearningChallenge, error) {
+func (r *LearningRepository) GetRandomChallenge(challengeType string, difficulty string, tag string) (*models.LearningChallenge, error) {
 	var challenge models.LearningChallenge
-	
+
 	query := database.DB.Model(&models.LearningChallenge{})
 
 	if challengeType != "" {
@@ -25,6 +25,9 @@ func (r *LearningRepository) GetRandomChallenge(challengeType string, difficulty
 	}
 	if difficulty != "" {
 		query = query.Where("difficulty = ?", difficulty)
+	}
+	if tag != "" {
+		query = query.Where("? = ANY(tags)", tag)
 	}
 
 	// PostgreSQL random order

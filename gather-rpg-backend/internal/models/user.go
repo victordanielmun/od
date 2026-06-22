@@ -13,6 +13,10 @@ type User struct {
 	Email       string         `gorm:"unique;not null" json:"email"`
 	Password    string         `json:"-"`
 	Role        string         `gorm:"not null;default:'user'" json:"role"` // "admin", "user"
+	// NativeLanguage is the player's first language as an ISO-639-1 code (e.g. "es", "pt", "fr").
+	// English ("en") is always the language being learned. Helper text (challenge explanations,
+	// NPC translations) is produced in this language. Defaults to "en" (immersion / no helper).
+	NativeLanguage string         `gorm:"type:varchar(10);not null;default:'en'" json:"native_language"`
 	IsGuest        bool           `gorm:"not null;default:false" json:"is_guest"`
 	CharacterID    string         `gorm:"not null;default:'1'" json:"character_id"`
 	HasChosenSprite bool          `gorm:"not null;default:false" json:"has_chosen_sprite"`
@@ -29,9 +33,10 @@ type LoginRequest struct {
 }
 
 type RegisterRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Username       string `json:"username"`
+	Email          string `json:"email"`
+	Password       string `json:"password"`
+	NativeLanguage string `json:"native_language"`
 }
 
 type AuthResponse struct {

@@ -438,7 +438,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             setMessages(prev => [...prev, {
                 sender: 'npc',
                 text: data.npc_response,
-                translation: data.npc_response_es,
+                translation: data.npc_response_native ?? data.npc_response_es,
                 timestamp: new Date(),
                 eval: data.pronunciation_eval,
                 taskCompleted: data.task_completed && !data.mission_newly_completed

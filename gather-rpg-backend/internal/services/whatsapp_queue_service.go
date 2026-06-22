@@ -80,7 +80,12 @@ func (q *WhatsAppQueueService) workerLoop() {
 	}
 }
 
-func randomRange(min, max int) int {
+func init() {
+	// Sembrar una sola vez al cargar el paquete. Sembrar en cada randomRange (como antes)
+	// es un anti-patrón: dos llamadas en el mismo nanosegundo devuelven el mismo valor.
 	rand.Seed(time.Now().UnixNano())
+}
+
+func randomRange(min, max int) int {
 	return rand.Intn(max-min+1) + min
 }

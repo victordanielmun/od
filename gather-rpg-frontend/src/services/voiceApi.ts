@@ -42,16 +42,22 @@ export interface LearningChallenge {
     option_3: string;
     correct_option: number;
     explanation_es?: string;
+    // Language-agnostic native helper text, resolved by the user's native language.
+    // Prefer these over the legacy *_es fields; they fall back to Spanish for compat.
+    native_lang?: string;
+    question_native?: string;
+    explanation_native?: string;
     difficulty: 'beginner' | 'intermediate' | 'advanced' | null;
     tags: string[];
     phonetic: string | null;
     audio_url: string | null;
 }
 
-export async function fetchRandomWord(difficulty?: string, type: string = 'pronunciation'): Promise<any> {
+export async function fetchRandomWord(difficulty?: string, type: string = 'pronunciation', tag?: string): Promise<any> {
     const params: Record<string, any> = { type, t: Date.now() };
     if (difficulty) params.difficulty = difficulty;
-    
+    if (tag) params.tag = tag;
+
     // Redirected to Go Backend (gatherApi) mapped to the new schema
     const { data } = await gatherApi.get<LearningChallenge>('/learning/challenges/random', { params });
     
@@ -162,6 +168,22 @@ export async function submitChallengeAttempt(
         feedback_ai: feedbackAi,
         selected_option: selectedOption
     });
+    return data;
+}
+
+/* ─── Learning Profile (Go Backend) ───────────────────── */
+export interface LearningProfile {
+    english_level: 'beginner' | 'intermediate' | 'advanced';
+    total_xp: number;
+    current_level_xp: number;
+    weekly_score: number;
+    weekly_attempts: number;
+    weekly_correct: number;
+}
+
+// Fetches the user's learning profile (holds the adaptive english_level).
+export async function fetchLearningProfile(): Promise<LearningProfile> {
+    const { data } = await gatherApi.get<LearningProfile>('/learning/profile');
     return data;
 }
 

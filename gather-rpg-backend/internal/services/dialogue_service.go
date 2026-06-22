@@ -6,6 +6,7 @@ import (
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/repository"
+	"gather-rpg-backend/internal/utils"
 	"regexp"
 	"strings"
 	"time"
@@ -47,7 +48,7 @@ type DialogueRequest struct {
 
 type DialogueResponse struct {
 	NPCResponse           string                   `json:"npc_response"`
-	NPCResponseES         string                   `json:"npc_response_es"`
+	NPCResponseNative     string                   `json:"npc_response_native"`
 	NPCState              models.NPCState          `json:"npc_state"`
 	PronunciationEval     models.PronunciationEval `json:"pronunciation_eval"`
 	PronunciationMessage  string                   `json:"pronunciation_message"`
@@ -74,6 +75,15 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 		return nil, fmt.Errorf("Player stats not found for user %s: %w", req.PlayerID, err)
 	}
 	actualPlayerID := stats.ID
+
+	// Resolve the player's native language so the NPC's helper translation and the
+	// dialogue cache are scoped per language (a Spanish-cached reply must not be served
+	// to a Portuguese learner).
+	nativeLang := "en"
+	var langUser models.User
+	if err := database.DB.Select("native_language").First(&langUser, "id = ?", req.PlayerID).Error; err == nil {
+		nativeLang = utils.NormalizeLang(langUser.NativeLanguage)
+	}
 
 	// 2. Get NPC and Room Context
 	instance, err := s.NPCRepo.GetRoomInstance(req.RoomID, req.NPCTemplateID)
@@ -185,13 +195,16 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 	var fromCache bool
 
 	normalizedInput := normalizeInput(req.PlayerInput)
+	// Scope the cache key by native language so the cached npc_response_native is never
+	// served to a learner who speaks a different language.
+	cacheInput := nativeLang + "|" + normalizedInput
 	var taskID *uint
 	if currentTask != nil {
 		taskID = &currentTask.ID
 	}
 
 	if req.PronunciationScore >= 80 {
-		cached, err := s.NPCRepo.GetCachedDialogue(req.NPCTemplateID, req.MissionID, taskID, normalizedInput, conditionMet)
+		cached, err := s.NPCRepo.GetCachedDialogue(req.NPCTemplateID, req.MissionID, taskID, cacheInput, conditionMet)
 		if err == nil && cached != nil {
 			fmt.Printf("[DialogueService] Cache Hit! Skipping AI call for '%s'\n", normalizedInput)
 			aiRespRaw = cached.ResponseJSON
@@ -201,7 +214,7 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 
 	// 5. AIService Call (if Cache Miss)
 	if !fromCache {
-		systemPrompt := s.buildSystemPrompt(npcDef, instance.NPCTemplate, missionRole, currentTask, conditionMet, conditionMsg, req.PronunciationMetadata)
+		systemPrompt := s.buildSystemPrompt(npcDef, instance.NPCTemplate, missionRole, currentTask, conditionMet, conditionMsg, req.PronunciationMetadata, nativeLang)
 
 		historyPrompt := ""
 		for i := len(history) - 1; i >= 0; i-- {
@@ -285,7 +298,9 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 				} else {
 					// Overwrite NPC response conversational message to state not enough gold
 					aiResp.NPCResponse = fmt.Sprintf("Sorry, you need %d gold to buy %d %s, but you only have %d gold.", totalCost, qty, item.Name, stats.Gold)
-					aiResp.NPCResponseES = fmt.Sprintf("Lo siento, necesitas %d monedas de oro para comprar %d %s, pero solo tienes %d.", totalCost, qty, item.Name, stats.Gold)
+					// Native helper omitted here: this is a fixed system message and the
+					// English line above already conveys it without a per-language translation.
+					aiResp.NPCResponseNative = ""
 					aiResp.ItemGift = nil
 					aiResp.GiftQuantity = 0
 				}
@@ -305,7 +320,7 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 			NPCTemplateID:   req.NPCTemplateID,
 			MissionID:       req.MissionID,
 			TaskID:          taskID,
-			NormalizedInput: normalizedInput,
+			NormalizedInput: cacheInput,
 			ConditionMet:    conditionMet,
 			ResponseJSON:    string(cleanJSON),
 		}
@@ -400,7 +415,7 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 		PlayerInput:        req.PlayerInput,
 		PronunciationScore: req.PronunciationScore,
 		NPCResponse:        aiResp.NPCResponse,
-		NPCResponseES:      aiResp.NPCResponseES,
+		NPCResponseES:      aiResp.NPCResponseNative, // column kept for compat; now holds native-language text
 		NPCState:           aiResp.NPCState,
 		PronunciationEval:  aiResp.PronunciationEval,
 		PronunciationMsg:   aiResp.PronunciationMessage,
@@ -424,7 +439,11 @@ func (s *DialogueService) buildSystemPrompt(
 	conditionMet bool,
 	conditionMsg string,
 	pronMetadata map[string]interface{},
+	nativeLang string,
 ) string {
+	// The language the player understands; English is always the language being learned.
+	nativeLangName := utils.LanguageName(nativeLang)
+	englishOnly := utils.IsEnglish(nativeLang)
 	missionCtx := "No active mission context of the current selected mission."
 	npcTask := "Engage in friendly conversation."
 	knowledge := "General world knowledge."
@@ -471,7 +490,7 @@ func (s *DialogueService) buildSystemPrompt(
 3. DO NOT set "buy_item_id" or "buy_quantity" yet in this stage. Keep them null or empty.
 4. If the user confirms (e.g. "Yes", "I confirm", "Yes please"), respond amigablemente and set "buy_item_id" to the corresponding item's ID string and "buy_quantity" to the quantity (default to 1) in your JSON output.
 5. If the user asks for something you do not sell, politely decline.
-6. The user has to speak/write in English. If they speak Spanish, politely remind them they need to ask in English.
+6. The user has to speak/write in English. If they speak another language, politely remind them they need to ask in English.
 `
 	}
 
@@ -494,8 +513,17 @@ func (s *DialogueService) buildSystemPrompt(
 		}
 	}
 
+	// Native-language helper instruction + JSON field, parameterized by the player's
+	// language. When the player's native language IS English we skip the translation.
+	rule1Text := fmt.Sprintf("Use English only for the 'npc_response' field, but ALWAYS provide a %s translation in the 'npc_response_native' field.", nativeLangName)
+	jsonNativeLine := fmt.Sprintf(`"npc_response_native": "string translation in %s",`, nativeLangName)
+	if englishOnly {
+		rule1Text = "Use English only for the 'npc_response' field. Leave 'npc_response_native' as an empty string."
+		jsonNativeLine = `"npc_response_native": "",`
+	}
+
 	prompt := fmt.Sprintf(`You are %s, a character in an English learning RPG.
- 
+
 CONTEXT:
 %s
 - Current Mission Knowledge: %s
@@ -504,13 +532,13 @@ CONTEXT:
 - Additional Knowledge / Your Personality: %s
 - Mission Condition Met? (Items/Enemies/Talk): %t
 - Condition Info: %s (Note: For 'talk_to_npc' tasks, this is true if you are talking, but you must judge if the conversation was sufficient based on your Instructions).
-- PRONUNCIATION ANALYSIS: 
+- PRONUNCIATION ANALYSIS:
 %s
 - SUCCESS MESSAGE (Use this ONLY if task_completed becomes true): %s
 
 BEHAVIOR RULES:
-1. Stay in character. Use English only for the 'npc_response' field, but ALWAYS provide a Spanish translation in the 'npc_response_es' field.
-2. The player is learning English. To fulfill any task (like a greeting or a specific phrase), they MUST provide it in English. If they respond in Spanish, acknowledge it but do NOT mark the task as completed.
+1. Stay in character. %s
+2. The player is learning English. To fulfill any task (like a greeting or a specific phrase), they MUST provide it in English. If they respond in another language, acknowledge it but do NOT mark the task as completed.
 3. CRITICAL: Only set "task_completed": true if the player has explicitly and correctly fulfilled the requirements described in your "Instructions" or "Active Task". Do NOT complete it just for a general greeting or greeting in the wrong language.
 4. If "task_completed" is true, congratulate the player and you may incorporate the "SUCCESS MESSAGE" naturally into your response.
 5. If Condition Met is true AND the task requires an item or enemy kill, acknowledge it and complete the task.
@@ -521,7 +549,7 @@ BEHAVIOR RULES:
 JSON FORMAT:
 {
   "npc_response": "string in English",
-  "npc_response_es": "string translation in Spanish",
+  %s
   "npc_state": "idle|talking|happy|angry|sad|surprised|thinking|grateful|waiting",
   "pronunciation_eval": "excellent|good|needs_work|bad",
   "pronunciation_message": "string",
@@ -530,7 +558,7 @@ JSON FORMAT:
   "task_progress": "string",
   "buy_item_id": "string (UUID) or null",
   "buy_quantity": number
-}`, npc.Name, extraInfo, missionCtx, npcTask, taskCtx, knowledge, conditionMet, conditionMsg, errorList, tmpl.SuccessMessage)
+}`, npc.Name, extraInfo, missionCtx, npcTask, taskCtx, knowledge, conditionMet, conditionMsg, errorList, tmpl.SuccessMessage, rule1Text, jsonNativeLine)
 
 	return prompt
 }

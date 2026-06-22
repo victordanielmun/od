@@ -81,6 +81,7 @@ func (s *WhatsAppSchedulerService) RunScheduler() {
 
 		var messageText string
 		var reminderType models.WAReminderType
+		var challengeID *uuid.UUID
 
 		if isActive {
 			// Fetch player's english level
@@ -109,6 +110,8 @@ func (s *WhatsAppSchedulerService) RunScheduler() {
 
 			messageText = fmt.Sprintf("📚 *¡Desafío de Inglés de Hoy!*\n\n%s\n\n1️⃣ %s\n2️⃣ %s\n3️⃣ %s\n\n💡 *Responde con el número de la opción correcta (1, 2 o 3) para ganar XP!*", challenge.Question, challenge.Option1, challenge.Option2, challenge.Option3)
 			reminderType = models.WAReminderTypePracticeSuggestion
+			cid := challenge.ID
+			challengeID = &cid
 		} else {
 			// Case B: Inactive User -> Fetch random active Motivation message
 			var motivation models.Motivation
@@ -128,6 +131,7 @@ func (s *WhatsAppSchedulerService) RunScheduler() {
 			UserID:       contact.UserID,
 			ReminderType: reminderType,
 			Message:      messageText,
+			ChallengeID:  challengeID,
 			ScheduledAt:  now,
 			Sent:         true,
 			SentAt:       &now,
