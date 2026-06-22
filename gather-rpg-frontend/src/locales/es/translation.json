@@ -738,6 +738,8 @@
       "error_all_fields": "Por favor, completa todos los campos.",
       "error_mismatch": "Las contraseñas no coinciden.",
       "error_generic": "Error al registrar la cuenta. Inténtalo de nuevo.",
+      "language": "Tu Idioma Nativo",
+      "language_help": "El idioma que mejor entiendes. Siempre te enseñaremos inglés, pero la ayuda dentro del juego se traduce a este idioma.",
       "username": "Nombre de Héroe (Username)",
       "username_placeholder": "Ej. EldarGamer",
       "email": "Correo Electrónico",

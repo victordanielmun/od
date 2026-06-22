@@ -71,6 +71,7 @@ func main() {
 		&models.WhatsAppConversation{},
 		&models.WhatsAppMessage{},
 		&models.WhatsAppReminder{},
+		&models.WAConversationPhrase{},
 		&models.Motivation{},
 		&models.UserMotivationHistory{},
 	); err != nil {
@@ -105,7 +106,7 @@ func main() {
 	missionRepo := repository.NewMissionRepository()
 	npcService := services.NewNPCService(npcRepo, missionRepo)
 	missionService := services.NewMissionService(missionRepo, inventoryRepo)
-	
+
 	// AI Factory
 	var aiApiKey, aiModel string
 	switch cfg.AIProvider {
@@ -119,12 +120,12 @@ func main() {
 		aiApiKey = cfg.DeepSeekAPIKey
 		aiModel = cfg.DeepSeekModel
 	}
-	
+
 	llmClient, err := services.NewLLMClient(cfg.AIProvider, aiApiKey, aiModel)
 	if err != nil {
 		log.Fatalf("Failed to initialize AI Client: %v", err)
 	}
-	
+
 	dialogueService := services.NewDialogueService(npcRepo, missionRepo, missionService, llmClient)
 	translationService := services.NewTranslationService(llmClient)
 
@@ -152,12 +153,13 @@ func main() {
 	shopHandler := handlers.NewShopHandler(inventoryService)
 	pickupHandler := handlers.NewMapPickupHandler(inventoryService)
 	whatsAppService := services.NewWhatsAppService(cfg)
+	whatsAppPhraseService := services.NewWAPhraseService(llmClient)
 	whatsAppQueueService := services.NewWhatsAppQueueService(whatsAppService)
 	whatsAppQueueService.StartWorker()
-	whatsAppSchedulerService := services.NewWhatsAppSchedulerService(whatsAppQueueService)
+	whatsAppSchedulerService := services.NewWhatsAppSchedulerService(whatsAppQueueService, whatsAppPhraseService)
 	whatsAppSchedulerService.Start()
-	
-	whatsAppHandler := handlers.NewWhatsAppHandler(whatsAppService)
+
+	whatsAppHandler := handlers.NewWhatsAppHandler(whatsAppService, whatsAppPhraseService, translationService)
 	// App with customized config (50MB body limit for large map JSONs)
 	app := fiber.New(fiber.Config{
 		BodyLimit: 50 * 1024 * 1024,
@@ -224,14 +226,14 @@ func main() {
 	admin.Delete("/npc-definitions/:id", npcHandler.DeleteNPCDefinition)
 	admin.Post("/ai-test", npcHandler.TestAI)
 	admin.Get("/voices", ttsHandler.ListVoices)
-	
+
 	// Challenge Admin Routes
 	admin.Get("/challenges", adminHandler.ListChallenges)
 	admin.Post("/challenges", adminHandler.CreateChallenge)
 	admin.Put("/challenges/:id", adminHandler.UpdateChallenge)
 	admin.Delete("/challenges/:id", adminHandler.DeleteChallenge)
 	admin.Post("/challenges/import", adminHandler.ImportChallenges)
-	
+
 	// Item & Shop Admin Routes
 	admin.Get("/items", adminHandler.ListItems)
 	admin.Get("/skills", adminHandler.ListSkills)
@@ -275,7 +277,7 @@ func main() {
 	learning := app.Group("/learning")
 	learning.Get("/challenges/random", learningHandler.GetRandomChallenge)
 	learning.Get("/challenges/metadata", learningHandler.GetChallengeMetadata)
-	
+
 	// Protected Learning Routes within the same group if possible, or just register individually
 	learning.Post("/attempts", middleware.Protected(cfg), learningHandler.RecordAttempt)
 	learning.Get("/profile", middleware.Protected(cfg), learningHandler.GetMyProfile)

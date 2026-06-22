@@ -47,9 +47,14 @@ func (q *WhatsAppQueueService) workerLoop() {
 		// 1. Simular Typing (Presencia Composing)
 		log.Printf("[WhatsAppQueueWorker] Activating composing presence for %s", job.Number)
 		_ = q.waService.SendPresence(job.InstanceName, job.Number, "composing")
-		
-		// 2. Delay escribiendo (2 a 5 segundos)
-		typingDelay := randomRange(2, 5)
+
+		// 2. Delay escribiendo: base aleatoria (2-5s) + tiempo proporcional al largo del
+		// mensaje (~1s por cada 25 caracteres, máx 12s). Un humano tarda más en escribir
+		// un texto largo; un delay fijo es justo el patrón que detectan los anti-spam.
+		typingDelay := randomRange(2, 5) + len(job.Message)/25
+		if typingDelay > 12 {
+			typingDelay = 12
+		}
 		time.Sleep(time.Duration(typingDelay) * time.Second)
 		
 		// 3. Enviar el mensaje

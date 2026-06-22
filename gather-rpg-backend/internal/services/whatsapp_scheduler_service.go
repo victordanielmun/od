@@ -3,19 +3,22 @@ package services
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"time"
 
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
+	"gather-rpg-backend/internal/utils"
 	"github.com/google/uuid"
 )
 
 type WhatsAppSchedulerService struct {
-	queueService *WhatsAppQueueService
+	queueService  *WhatsAppQueueService
+	phraseService *WAPhraseService
 }
 
-func NewWhatsAppSchedulerService(queueService *WhatsAppQueueService) *WhatsAppSchedulerService {
-	return &WhatsAppSchedulerService{queueService: queueService}
+func NewWhatsAppSchedulerService(queueService *WhatsAppQueueService, phraseService *WAPhraseService) *WhatsAppSchedulerService {
+	return &WhatsAppSchedulerService{queueService: queueService, phraseService: phraseService}
 }
 
 // Start starts the background scheduler goroutine loop that triggers every 1 hour
@@ -24,10 +27,10 @@ func (s *WhatsAppSchedulerService) Start() {
 		// Run every 1 hour
 		ticker := time.NewTicker(1 * time.Hour)
 		log.Println("[WhatsAppScheduler] Background scheduler loop started successfully.")
-		
+
 		// Initial execution
 		s.RunScheduler()
-		
+
 		for range ticker.C {
 			s.RunScheduler()
 		}
@@ -48,6 +51,12 @@ func (s *WhatsAppSchedulerService) RunScheduler() {
 
 	now := time.Now()
 
+	// Aleatorizar el orden de envío en cada corrida evita un patrón fijo y predecible
+	// (mismos números, misma secuencia cada hora), señal típica que dispara anti-spam.
+	rand.Shuffle(len(contacts), func(i, j int) {
+		contacts[i], contacts[j] = contacts[j], contacts[i]
+	})
+
 	for _, contact := range contacts {
 		// 1. Calculate local hour based on user's timezone
 		loc, err := time.LoadLocation(contact.Timezone)
@@ -65,6 +74,19 @@ func (s *WhatsAppSchedulerService) RunScheduler() {
 			continue
 		}
 
+		// 2b. Hora aleatoria dentro de la ventana: en vez de enviar siempre a la primera
+		// hora elegible, lanzamos con probabilidad 1/horas_restantes. Esto reparte el
+		// envío diario de forma uniforme y aleatoria por toda la franja del usuario; en la
+		// última hora disponible la probabilidad es 1, así que el mensaje del día no se
+		// pierde. Variar la hora cada día es clave para no parecer un bot.
+		remainingHours := int(contact.PreferredHourEnd - localHour)
+		if remainingHours < 1 {
+			remainingHours = 1
+		}
+		if rand.Intn(remainingHours) != 0 {
+			continue
+		}
+
 		// 3. Prevent duplicate notifications (18 hours cooldown)
 		var lastReminder models.WhatsAppReminder
 		err = database.DB.Where("user_id = ? AND sent = ? AND sent_at > ?", contact.UserID, true, now.Add(-18*time.Hour)).First(&lastReminder).Error
@@ -73,65 +95,35 @@ func (s *WhatsAppSchedulerService) RunScheduler() {
 			continue
 		}
 
-		// 4. Check user activity period (Active <= 24 hours, Inactive > 24 hours)
-		isActive := false
-		if contact.LastActiveAt != nil && now.Sub(*contact.LastActiveAt) <= 24*time.Hour {
-			isActive = true
+		// 4. Resolve user + guide for the NPC-styled invitation.
+		var user models.User
+		if err := database.DB.First(&user, "id = ?", contact.UserID).Error; err != nil {
+			log.Printf("[WhatsAppScheduler] Warning: failed to load user %s: %v", contact.UserID, err)
+			continue
+		}
+		guideName, _ := GuideInfo(user)
+		lang := utils.NormalizeLang(user.NativeLanguage)
+
+		displayName := contact.WhatsAppName
+		if displayName == "" {
+			displayName = user.Username
 		}
 
-		var messageText string
-		var reminderType models.WAReminderType
-		var challengeID *uuid.UUID
+		// 5. Build the localized greeting only (the conversation continues turn by turn:
+		// el siguiente mensaje del usuario dispara la motivación + invitación en el webhook).
+		greeting := s.phraseService.Phrase(PhraseGreeting, lang, displayName)
+		greetingText := fmt.Sprintf("*%s:* %s", guideName, greeting)
 
-		if isActive {
-			// Fetch player's english level
-			var profile models.UserLearningProfile
-			level := models.DifficultyBeginner
-			if err = database.DB.Where("user_id = ?", contact.UserID).First(&profile).Error; err == nil {
-				level = profile.EnglishLevel
-			}
+		// 6. Start/refresh the conversation in "awaiting greeting reply" state.
+		conv := StartConversation(contact.UserID, models.WAIntentAwaitingGreetingReply)
 
-			// Case A: Active User -> Fetch random Learning Challenge tagged with 'whatsapp' matching their level
-			var challenge models.LearningChallenge
-			err = database.DB.Where("? = ANY(tags) AND difficulty = ?", "whatsapp", level).Order("RANDOM()").First(&challenge).Error
-			if err != nil {
-				// Fallback 1: fetch any random learning challenge matching their level
-				err = database.DB.Where("difficulty = ?", level).Order("RANDOM()").First(&challenge).Error
-			}
-			if err != nil {
-				// Fallback 2: fetch any random learning challenge
-				err = database.DB.Order("RANDOM()").First(&challenge).Error
-			}
-
-			if err != nil {
-				log.Printf("[WhatsAppScheduler] Warning: Failed to fetch learning challenge for active user %s: %v", contact.UserID, err)
-				continue
-			}
-
-			messageText = fmt.Sprintf("📚 *¡Desafío de Inglés de Hoy!*\n\n%s\n\n1️⃣ %s\n2️⃣ %s\n3️⃣ %s\n\n💡 *Responde con el número de la opción correcta (1, 2 o 3) para ganar XP!*", challenge.Question, challenge.Option1, challenge.Option2, challenge.Option3)
-			reminderType = models.WAReminderTypePracticeSuggestion
-			cid := challenge.ID
-			challengeID = &cid
-		} else {
-			// Case B: Inactive User -> Fetch random active Motivation message
-			var motivation models.Motivation
-			err = database.DB.Where("is_active = ?", true).Order("RANDOM()").First(&motivation).Error
-			if err != nil {
-				log.Printf("[WhatsAppScheduler] Warning: Failed to fetch active motivation for user %s: %v", contact.UserID, err)
-				continue
-			}
-
-			messageText = fmt.Sprintf("💪 *¡Momento de Motivación!*\n\n%s", motivation.MessageES)
-			reminderType = models.WAReminderTypeInactive1Day
-		}
-
-		// 5. Log the sent reminder in the database
+		// 7. Log the sent reminder (acts as the 18h cooldown marker). Type custom so it is
+		// NOT picked up by the answer grader (que solo mira practice_suggestion).
 		reminder := models.WhatsAppReminder{
 			ID:           uuid.New(),
 			UserID:       contact.UserID,
-			ReminderType: reminderType,
-			Message:      messageText,
-			ChallengeID:  challengeID,
+			ReminderType: models.WAReminderTypeCustom,
+			Message:      greetingText,
 			ScheduledAt:  now,
 			Sent:         true,
 			SentAt:       &now,
@@ -141,8 +133,12 @@ func (s *WhatsAppSchedulerService) RunScheduler() {
 			continue
 		}
 
-		// 6. Enqueue the reminder into the secure anti-ban message queue worker
-		s.queueService.Enqueue("admin_global", contact.PhoneNumber, messageText)
-		log.Printf("[WhatsAppScheduler] Successfully enqueued dynamic WhatsApp notification for User %s (Type: %s)", contact.UserID, reminderType)
+		if conv != nil {
+			SaveConversationMessage(conv.ID, models.WAMessageRoleAssistant, models.WAMessageTypeOnboarding, greetingText)
+		}
+
+		// 8. Enqueue into the secure anti-ban message queue worker.
+		s.queueService.Enqueue("admin_global", contact.PhoneNumber, greetingText)
+		log.Printf("[WhatsAppScheduler] Enqueued greeting for User %s", contact.UserID)
 	}
 }

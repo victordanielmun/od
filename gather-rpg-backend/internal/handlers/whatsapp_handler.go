@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"mime/multipart"
 	"net/http"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/repository"
 	"gather-rpg-backend/internal/services"
+	"gather-rpg-backend/internal/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -24,10 +26,16 @@ import (
 
 type WhatsAppHandler struct {
 	WhatsAppService *services.WhatsAppService
+	Phrases         *services.WAPhraseService
+	Translations    *services.TranslationService
 }
 
-func NewWhatsAppHandler(whatsAppService *services.WhatsAppService) *WhatsAppHandler {
-	return &WhatsAppHandler{WhatsAppService: whatsAppService}
+func NewWhatsAppHandler(whatsAppService *services.WhatsAppService, phrases *services.WAPhraseService, translations *services.TranslationService) *WhatsAppHandler {
+	return &WhatsAppHandler{
+		WhatsAppService: whatsAppService,
+		Phrases:         phrases,
+		Translations:    translations,
+	}
 }
 
 // GetQR ensures the WhatsApp instance is created and retrieves the connection QR code/status
@@ -255,10 +263,15 @@ func (h *WhatsAppHandler) CreateOrUpdateContact(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Phone number is required"})
 	}
 
+	// Normalizar el número a formato JID (sin '+') para que coincida con el número que
+	// reporta el webhook entrante (JID viene como "573001234567@s.whatsapp.net", sin '+').
+	// Sin esto el contacto nunca se encuentra al recibir mensajes y la activación nunca ocurre.
+	req.PhoneNumber = normalizePhone(req.PhoneNumber)
+
 	// Fetch existing contact or create a new one
 	var contact models.WhatsAppContact
 	err = database.DB.Where("user_id = ?", userID).First(&contact).Error
-	
+
 	// If it's a new contact, or the phone number has changed, require activation
 	isNewOrChanged := err != nil || contact.PhoneNumber != req.PhoneNumber
 
@@ -277,7 +290,7 @@ func (h *WhatsAppHandler) CreateOrUpdateContact(c *fiber.Ctx) error {
 	if req.WhatsAppName != "" {
 		contact.WhatsAppName = req.WhatsAppName
 	}
-	
+
 	if isNewOrChanged {
 		// New or changed phone numbers must scan the activation QR to set this to true
 		contact.NotificationsEnabled = false
@@ -433,10 +446,12 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 			break
 		}
 	}
+	cleanNumber = normalizePhone(cleanNumber)
 
-	// Search for registered contact in database
+	// Search for registered contact in database. Toleramos filas antiguas que pudieron
+	// guardarse con '+' antes de normalizar el almacenamiento.
 	var contact models.WhatsAppContact
-	err := database.DB.Where("phone_number = ?", cleanNumber).First(&contact).Error
+	err := database.DB.Where("phone_number = ? OR phone_number = ?", cleanNumber, "+"+cleanNumber).First(&contact).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Printf("[WhatsAppWebhook] Received message from unregistered number: %s", cleanNumber)
@@ -486,11 +501,113 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 			log.Printf("[WhatsAppWebhook] Warning: Failed to send activation confirmation to %s: %v", cleanNumber, sendErr)
 		}
 	} else {
-		// Contact has notifications enabled already, process their reply
+		// Contact has notifications enabled already, process their reply within the
+		// localized multi-turn NPC conversation flow (guía = NPC compañero del usuario).
 		msgType := payload.Data.MessageType
+		isAudio := msgType == "audioMessage" || strings.Contains(strings.ToLower(msgType), "audio")
+		incomingText := extractMessageText(payload.Data.Message)
 
+		guideName, _ := services.GuideInfo(user)
+		lang := utils.NormalizeLang(user.NativeLanguage)
+		displayName := contact.WhatsAppName
+		if displayName == "" {
+			displayName = user.Username
+		}
+
+		// Load the open conversation (state machine) for this user and store the inbound
+		// message in the history.
+		conv := services.GetOpenConversation(contact.UserID)
+		if conv != nil {
+			content := incomingText
+			if isAudio {
+				content = "[nota de voz]"
+			}
+			services.SaveConversationMessage(conv.ID, models.WAMessageRoleUser, models.WAMessageTypeText, content)
+		}
+
+		// STEP 0: el guía saludó y espera respuesta -> enviar motivación + invitación.
+		if conv != nil && conv.Intent == models.WAIntentAwaitingGreetingReply {
+			motivation := h.Phrases.Phrase(services.PhraseMotivation, lang, displayName)
+			invite := h.Phrases.Phrase(services.PhraseInvite, lang, displayName)
+			msg := fmt.Sprintf("*%s:* %s\n\n%s", guideName, motivation, invite)
+			_, _ = h.WhatsAppService.SendText(payload.Instance, cleanNumber, msg)
+			services.SaveConversationMessage(conv.ID, models.WAMessageRoleAssistant, models.WAMessageTypeMotivation, msg)
+			services.SetConversationIntent(conv, models.WAIntentAwaitingPracticeConfirm)
+			return c.SendStatus(fiber.StatusOK)
+		}
+
+		// STEP 1: el guía invitó a practicar y espera SÍ / NO.
+		if conv != nil && conv.Intent == models.WAIntentAwaitingPracticeConfirm && !isAudio {
+			switch normalizeYesNo(incomingText) {
+			case "no":
+				// El usuario declina: el guía le recuerda la constancia (idioma nativo) y se
+				// despide (en inglés, para cerrar con inmersión).
+				constancy := h.Phrases.Phrase(services.PhraseConstancy, lang, displayName)
+				goodbye := h.Phrases.Phrase(services.PhraseGoodbye, "en", displayName)
+				msg := fmt.Sprintf("*%s:* %s\n\n%s", guideName, constancy, goodbye)
+				_, _ = h.WhatsAppService.SendText(payload.Instance, cleanNumber, msg)
+				services.SaveConversationMessage(conv.ID, models.WAMessageRoleAssistant, models.WAMessageTypeMotivation, msg)
+				services.CloseConversation(conv)
+				return c.SendStatus(fiber.StatusOK)
+			case "yes":
+				// El usuario acepta: elegimos un reto y se lo enviamos (inglés + ayuda nativa).
+				challengePtr, pickErr := services.PickChallengeForUser(contact.UserID)
+				if pickErr != nil {
+					log.Printf("[WhatsAppWebhook] No challenge available for user %s: %v", contact.UserID, pickErr)
+					sorry := fmt.Sprintf("*%s:* %s", guideName, h.Phrases.Phrase(services.PhraseNoChallenge, lang, displayName))
+					_, _ = h.WhatsAppService.SendText(payload.Instance, cleanNumber, sorry)
+					services.CloseConversation(conv)
+					return c.SendStatus(fiber.StatusOK)
+				}
+				challenge := *challengePtr
+
+				// Registramos el reto como reminder practice_suggestion: es el que el
+				// calificador buscará al recibir la respuesta del usuario.
+				now := time.Now()
+				cid := challenge.ID
+				reminder := models.WhatsAppReminder{
+					ID:           uuid.New(),
+					UserID:       contact.UserID,
+					ReminderType: models.WAReminderTypePracticeSuggestion,
+					Message:      challenge.Question,
+					ChallengeID:  &cid,
+					ScheduledAt:  now,
+					Sent:         true,
+					SentAt:       &now,
+				}
+				if err := database.DB.Create(&reminder).Error; err != nil {
+					log.Printf("[WhatsAppWebhook] Failed to create challenge reminder for user %s: %v", contact.UserID, err)
+					return c.SendStatus(fiber.StatusOK)
+				}
+
+				// Ayuda nativa del reto (cacheada/LLM) + instrucciones localizadas.
+				nativeQ := ""
+				if h.Translations != nil {
+					if tr := h.Translations.GetChallengeTranslation(&challenge, lang); tr != nil {
+						nativeQ = tr.QuestionNative
+					}
+				}
+				askChoice := h.Phrases.Phrase(services.PhraseAskChoice, lang, displayName)
+				askAudio := h.Phrases.Phrase(services.PhraseAskAudio, lang, displayName)
+				cardNinja := rand.Intn(2) == 0
+				challengeMsg := services.AssembleChallenge(guideName, challenge, nativeQ, askChoice, askAudio, cardNinja)
+
+				_, _ = h.WhatsAppService.SendText(payload.Instance, cleanNumber, challengeMsg)
+				services.SaveConversationMessage(conv.ID, models.WAMessageRoleAssistant, models.WAMessageTypePracticePrompt, challengeMsg)
+				services.SetConversationIntent(conv, models.WAIntentAwaitingAnswer)
+				return c.SendStatus(fiber.StatusOK)
+			default:
+				// No se entendió: reformular la pregunta sí/no (localizada).
+				reask := fmt.Sprintf("*%s:* %s", guideName, h.Phrases.Phrase(services.PhraseReask, lang, displayName))
+				_, _ = h.WhatsAppService.SendText(payload.Instance, cleanNumber, reask)
+				services.SaveConversationMessage(conv.ID, models.WAMessageRoleAssistant, models.WAMessageTypeText, reask)
+				return c.SendStatus(fiber.StatusOK)
+			}
+		}
+
+		// STEP 2: hay un reto pendiente -> calificar la respuesta (audio o texto).
 		// Check if it is a voice note/audio message
-		if msgType == "audioMessage" || strings.Contains(strings.ToLower(msgType), "audio") {
+		if isAudio {
 			log.Printf("[WhatsAppWebhook] Received audio note response from contact: %s", cleanNumber)
 
 			// Find last unanswered smart challenge reminder in the last 24h. El filtro
@@ -549,15 +666,6 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 				score = 82
 			}
 
-			// Selected Guide info
-			guideName := "Tu guía"
-			if user.CompanionNPCID != nil {
-				var guide models.NPCDefinition
-				if err := database.DB.First(&guide, *user.CompanionNPCID).Error; err == nil {
-					guideName = guide.Name
-				}
-			}
-
 			// Record attempt and award RPG stats
 			isCorrect := score >= 75
 			attemptRepo := repository.NewLearningRepository()
@@ -576,7 +684,7 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 			if err := database.DB.Where("user_id = ?", contact.UserID).First(&stats).Error; err == nil {
 				stats.Experience += xpGained
 				stats.Gold += goldGained
-				
+
 				// Level up check
 				nextLevelXP := stats.Level * 100
 				if stats.Experience >= nextLevelXP {
@@ -588,14 +696,23 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 				database.DB.Save(&stats)
 			}
 
+			// Feedback localizado + recordatorio de constancia (nativo) + despedida (inglés).
+			constancy := h.Phrases.Phrase(services.PhraseConstancy, lang, displayName)
+			goodbye := h.Phrases.Phrase(services.PhraseGoodbye, "en", displayName)
 			var feedbackMsg string
 			if isCorrect {
-				feedbackMsg = fmt.Sprintf("🗣️ *%s dice:*\n\"¡Impresionante pronunciación! Has alcanzado un *%d%%* de precisión fonética con la palabra *'%s'*.\"\n\n⭐ *Has ganado +15 XP y +10 de Oro en Odisea!*", guideName, score, targetWord)
+				headline := h.Phrases.Phrase(services.PhraseCorrect, lang, displayName)
+				feedbackMsg = fmt.Sprintf("*%s:* %s\n🎯 %d%% · *%s*\n⭐ +%d XP · +%d 🪙\n\n%s\n%s", guideName, headline, score, targetWord, xpGained, goldGained, constancy, goodbye)
 			} else {
-				feedbackMsg = fmt.Sprintf("🗣️ *%s dice:*\n\"Buen esfuerzo, tu precisión fue del *%d%%* para la palabra *'%s'*.\"\n\n💡 *Consejo:* Intenta pronunciar más suavemente y vocalizar bien cada fonema. ¡Sigue practicando para mejorar tu racha!\n\n⭐ *Has ganado +5 XP de esfuerzo.*", guideName, score, targetWord)
+				headline := h.Phrases.Phrase(services.PhraseIncorrect, lang, displayName)
+				feedbackMsg = fmt.Sprintf("*%s:* %s\n🎯 %d%% · *%s*\n⭐ +%d XP\n\n%s\n%s", guideName, headline, score, targetWord, xpGained, constancy, goodbye)
 			}
 
 			_, _ = h.WhatsAppService.SendText(payload.Instance, cleanNumber, feedbackMsg)
+			if conv != nil {
+				services.SaveConversationMessage(conv.ID, models.WAMessageRoleAssistant, models.WAMessageTypeFeedback, feedbackMsg)
+				services.CloseConversation(conv)
+			}
 
 		} else {
 			// Process as a text response
@@ -603,15 +720,8 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 			if messageText != "" {
 				choice := normalizeChoice(messageText)
 				if choice == 0 {
-					// Input does not resemble a choice, send a supportive guide hint instead of marking incorrect
-					guideName := "Tu guía"
-					if user.CompanionNPCID != nil {
-						var guide models.NPCDefinition
-						if err := database.DB.First(&guide, *user.CompanionNPCID).Error; err == nil {
-							guideName = guide.Name
-						}
-					}
-					reminderMsg := fmt.Sprintf("🗣️ *%s dice:*\n\"Hola. Recuerda responder con el número de la opción (1, 2 o 3) o la letra correspondiente (A, B o C) para evaluar tu desafío de hoy. ¡Espero tu respuesta!\" 🚀", guideName)
+					// La respuesta no parece una opción: enviar pista localizada sin calificar.
+					reminderMsg := fmt.Sprintf("*%s:* %s", guideName, h.Phrases.Phrase(services.PhraseAskChoice, lang, displayName))
 					_, _ = h.WhatsAppService.SendText(payload.Instance, cleanNumber, reminderMsg)
 					return c.SendStatus(fiber.StatusOK)
 				}
@@ -638,15 +748,6 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 
 				isCorrect := choice == challenge.CorrectOption
 
-				// Fetch Guide NPC
-				guideName := "Tu guía"
-				if user.CompanionNPCID != nil {
-					var guide models.NPCDefinition
-					if err := database.DB.First(&guide, *user.CompanionNPCID).Error; err == nil {
-						guideName = guide.Name
-					}
-				}
-
 				// Record attempt and award XP
 				attemptRepo := repository.NewLearningRepository()
 				_, _ = attemptRepo.RecordAttempt(contact.UserID, challenge.ID, isCorrect, choice, "")
@@ -664,7 +765,7 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 				if err := database.DB.Where("user_id = ?", contact.UserID).First(&stats).Error; err == nil {
 					stats.Experience += xpGained
 					stats.Gold += goldGained
-					
+
 					// Level up check
 					nextLevelXP := stats.Level * 100
 					if stats.Experience >= nextLevelXP {
@@ -676,23 +777,40 @@ func (h *WhatsAppHandler) ReceiveWebhook(c *fiber.Ctx) error {
 					database.DB.Save(&stats)
 				}
 
+				// Explicación en idioma nativo (cacheada/LLM) con fallback a la columna ES.
+				explanation := challenge.ExplanationES
+				if h.Translations != nil {
+					if tr := h.Translations.GetChallengeTranslation(&challenge, lang); tr != nil && tr.ExplanationNative != "" {
+						explanation = tr.ExplanationNative
+					}
+				}
+
+				constancy := h.Phrases.Phrase(services.PhraseConstancy, lang, displayName)
+				goodbye := h.Phrases.Phrase(services.PhraseGoodbye, "en", displayName)
+
 				var feedbackMsg string
 				if isCorrect {
-					feedbackMsg = fmt.Sprintf("✨ *¡Excelente trabajo, %s!* 🥳\n\n🗣️ *%s dice:*\n\"¡Increíble! Tu respuesta es correcta y has demostrado un gran dominio.\"\n\n📝 *Explicación:*\n%s\n\n⭐ *Has ganado +15 XP y +10 de Oro en Odisea!*", user.Username, guideName, challenge.ExplanationES)
+					headline := h.Phrases.Phrase(services.PhraseCorrect, lang, displayName)
+					feedbackMsg = fmt.Sprintf("*%s:* %s\n\n📝 %s\n⭐ +%d XP · +%d 🪙\n\n%s\n%s", guideName, headline, explanation, xpGained, goldGained, constancy, goodbye)
 				} else {
 					var correctOptionText string
 					switch challenge.CorrectOption {
 					case 1:
-						correctOptionText = fmt.Sprintf("1️⃣ (%s)", challenge.Option1)
+						correctOptionText = fmt.Sprintf("1️⃣ %s", challenge.Option1)
 					case 2:
-						correctOptionText = fmt.Sprintf("2️⃣ (%s)", challenge.Option2)
+						correctOptionText = fmt.Sprintf("2️⃣ %s", challenge.Option2)
 					case 3:
-						correctOptionText = fmt.Sprintf("3️⃣ (%s)", challenge.Option3)
+						correctOptionText = fmt.Sprintf("3️⃣ %s", challenge.Option3)
 					}
-					feedbackMsg = fmt.Sprintf("❌ *Buen intento, %s!*\n\n🗣️ *%s dice:*\n\"No te preocupes. El error es una gran oportunidad para aprender. La respuesta correcta era la opción *%s*.\"\n\n📝 *Explicación:*\n%s\n\n⭐ *Has ganado +5 XP de esfuerzo. ¡Sigue practicando en Odisea!*", user.Username, guideName, correctOptionText, challenge.ExplanationES)
+					headline := h.Phrases.Phrase(services.PhraseIncorrect, lang, displayName)
+					feedbackMsg = fmt.Sprintf("*%s:* %s\n✅ %s\n\n📝 %s\n⭐ +%d XP\n\n%s\n%s", guideName, headline, correctOptionText, explanation, xpGained, constancy, goodbye)
 				}
 
 				_, _ = h.WhatsAppService.SendText(payload.Instance, cleanNumber, feedbackMsg)
+				if conv != nil {
+					services.SaveConversationMessage(conv.ID, models.WAMessageRoleAssistant, models.WAMessageTypeFeedback, feedbackMsg)
+					services.CloseConversation(conv)
+				}
 			}
 		}
 	}
@@ -724,6 +842,19 @@ func markReminderAnswered(reminder *models.WhatsAppReminder) {
 	if err := database.DB.Model(reminder).Update("answered_at", &now).Error; err != nil {
 		log.Printf("[WhatsAppWebhook] Warning: failed to mark reminder %s answered: %v", reminder.ID, err)
 	}
+}
+
+// normalizePhone deja el número en el formato que usa el JID de WhatsApp: solo dígitos,
+// sin '+', espacios ni separadores. Así el número guardado al registrar coincide con el
+// que llega en el webhook entrante.
+func normalizePhone(number string) string {
+	var b strings.Builder
+	for _, r := range number {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // extractMessageText extracts the message text from a flexible webhook message map
@@ -780,6 +911,42 @@ func normalizeChoice(text string) int {
 	}
 
 	return 0
+}
+
+// normalizeYesNo interpreta una respuesta libre como "yes", "no" o "" (no entendida)
+// para el paso de confirmación de práctica del flujo conversacional.
+func normalizeYesNo(text string) string {
+	t := strings.ToLower(strings.TrimSpace(text))
+	t = strings.NewReplacer("á", "a", "é", "e", "í", "i", "ó", "o", "ú", "u").Replace(t)
+
+	noPhrases := []string{"ahora no", "hoy no", "mas tarde", "luego", "despues", "no puedo", "no gracias", "no quiero", "not now", "no thanks"}
+	for _, p := range noPhrases {
+		if strings.Contains(t, p) {
+			return "no"
+		}
+	}
+
+	yesPhrases := []string{"por supuesto", "de una", "claro que si", "obvio", "empecemos", "vamos alla"}
+	for _, p := range yesPhrases {
+		if strings.Contains(t, p) {
+			return "yes"
+		}
+	}
+
+	// Coincidencia por token: respuestas cortas y claras en varios idiomas.
+	for _, tok := range strings.Fields(t) {
+		tok = strings.Trim(tok, ".,!¡¿?()-:")
+		switch tok {
+		// es / en / pt / fr / it / de
+		case "no", "nop", "nel", "nope", "nao", "non", "nein":
+			return "no"
+		case "si", "sii", "siii", "sip", "claro", "dale", "ok", "okay", "va", "listo", "vamos",
+			"quiero", "yes", "sure", "yep", "yeah", "jugar", "practicar", "sim", "oui", "ja", "si!":
+			return "yes"
+		}
+	}
+
+	return ""
 }
 
 // analyzePronunciation calls the speech analysis API of the voice sub-service

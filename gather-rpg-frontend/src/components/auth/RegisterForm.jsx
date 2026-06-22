@@ -3,12 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import { 
-  User, Mail, Lock, Check, ArrowRight, ChevronRight, 
+import {
+  User, Mail, Lock, Check, ArrowRight, ChevronRight,
   Sparkles, Phone, Clock, Globe, AlertCircle, Loader2,
   BookOpen, Award, ShieldAlert, Compass, Eye, EyeOff, ChevronLeft,
-  QrCode
+  QrCode, Languages
 } from 'lucide-react';
+import { LANGUAGES } from '../common/LanguageSwitcher';
 import { NPC_CONFIG } from '../../game/config/NPCConfig';
 import { useRef } from 'react';
 
@@ -140,11 +141,13 @@ const COUNTRY_CODES = [
 ];
 
 export const RegisterForm = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   // Wizard steps
   const [step, setStep] = useState(1);
-  
+
   // Step 1: Credentials
+  // Native language seeds the i18n UI and the native_language sent on register.
+  const [nativeLang, setNativeLang] = useState((i18n.language || 'en').split('-')[0].toLowerCase());
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -549,6 +552,38 @@ export const RegisterForm = () => {
               )}
 
               <form onSubmit={handleStep1Submit} className="space-y-5">
+                <div>
+                  <label htmlFor="nativeLang" className="text-gray-400 text-[10px] font-extrabold uppercase tracking-widest block mb-2 flex items-center gap-1.5">
+                    <Languages className="w-3.5 h-3.5" />
+                    <span>{t('register.step1.language')}</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
+                      <Globe className="w-4.5 h-4.5" />
+                    </span>
+                    <select
+                      id="nativeLang"
+                      value={nativeLang}
+                      onChange={(e) => {
+                        const code = e.target.value;
+                        setNativeLang(code);
+                        // Drive the i18n UI now; register() reads this as native_language on submit.
+                        i18n.changeLanguage(code);
+                      }}
+                      className="w-full bg-gray-950/60 text-white border border-white/10 rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all font-sans text-sm cursor-pointer appearance-none"
+                    >
+                      {LANGUAGES.map((lang) => (
+                        <option key={lang.code} value={lang.code}>
+                          {lang.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <span className="text-[10px] text-gray-500 font-sans mt-1.5 block leading-normal">
+                    {t('register.step1.language_help')}
+                  </span>
+                </div>
+
                 <div>
                   <label htmlFor="username" className="text-gray-400 text-[10px] font-extrabold uppercase tracking-widest block mb-2">
                     {t('register.step1.username')}

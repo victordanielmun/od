@@ -699,6 +699,8 @@
       "error_all_fields": "Please complete all fields.",
       "error_mismatch": "Passwords do not match.",
       "error_generic": "Error registering account. Try again.",
+      "language": "Your Native Language",
+      "language_help": "The language you understand best. We'll always teach you English, but in-game help is translated into this language.",
       "username": "Hero Name (Username)",
       "username_placeholder": "e.g. EldarGamer",
       "email": "Email Address",

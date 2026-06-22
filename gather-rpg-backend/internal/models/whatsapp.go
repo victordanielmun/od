@@ -18,6 +18,32 @@ const (
 	WAConversationStatusPaused       WAConversationStatus = "paused"
 )
 
+// Intents de conversación: indican en qué paso del diálogo NPC está el usuario.
+const (
+	// WAIntentAwaitingGreetingReply: el guía saludó y espera cualquier respuesta para
+	// continuar con la motivación + invitación al reto.
+	WAIntentAwaitingGreetingReply = "awaiting_greeting_reply"
+	// WAIntentAwaitingPracticeConfirm: el guía invitó a practicar y espera sí/no.
+	WAIntentAwaitingPracticeConfirm = "awaiting_practice_confirm"
+	// WAIntentAwaitingAnswer: el usuario aceptó, se le envió un reto y se espera su respuesta.
+	WAIntentAwaitingAnswer = "awaiting_answer"
+)
+
+// WAConversationPhrase cachea las frases conversacionales del guía traducidas por idioma.
+// El texto canónico (inglés) vive en código; la primera vez que se necesita un idioma se
+// traduce con el LLM y se guarda aquí para reusarse gratis después.
+type WAConversationPhrase struct {
+	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	PhraseKey string    `gorm:"type:varchar(40);not null;uniqueIndex:idx_wa_phrase_key_lang,priority:1" json:"phrase_key"`
+	Lang      string    `gorm:"type:varchar(10);not null;uniqueIndex:idx_wa_phrase_key_lang,priority:2" json:"lang"`
+	Content   string    `gorm:"type:text;not null" json:"content"`
+	CreatedAt time.Time `gorm:"type:timestamptz;not null;default:now()" json:"created_at"`
+}
+
+func (WAConversationPhrase) TableName() string {
+	return "wa_conversation_phrases"
+}
+
 type WAMessageRole string
 
 const (
@@ -45,7 +71,7 @@ const (
 	WAReminderTypeInactive3Days      WAReminderType = "inactive_3days"
 	WAReminderTypeWeeklyGoal         WAReminderType = "weekly_goal"
 	WAReminderTypePracticeSuggestion WAReminderType = "practice_suggestion"
-	WAReminderTypeAchievementNearby   WAReminderType = "achievement_nearby"
+	WAReminderTypeAchievementNearby  WAReminderType = "achievement_nearby"
 	WAReminderTypeCustom             WAReminderType = "custom"
 )
 
@@ -130,14 +156,14 @@ func (WhatsAppConversation) TableName() string {
 
 // WhatsAppMessage represents a single message in a WhatsApp conversation (1:N with WhatsAppConversation)
 type WhatsAppMessage struct {
-	ID             uuid.UUID     `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	ConversationID uuid.UUID     `gorm:"type:uuid;not null;index:idx_whatsapp_messages_conversation_id" json:"conversation_id"`
-	Role           WAMessageRole `gorm:"type:wa_message_role;not null;default:'assistant';index:idx_whatsapp_messages_role" json:"role"`
-	MessageType    WAMessageType `gorm:"type:wa_message_type;not null;default:'text'" json:"message_type"`
-	Content        string        `gorm:"type:text;not null" json:"content"`
-	WAMessageID    string        `gorm:"type:varchar(100)" json:"wa_message_id,omitempty"`
+	ID             uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	ConversationID uuid.UUID       `gorm:"type:uuid;not null;index:idx_whatsapp_messages_conversation_id" json:"conversation_id"`
+	Role           WAMessageRole   `gorm:"type:wa_message_role;not null;default:'assistant';index:idx_whatsapp_messages_role" json:"role"`
+	MessageType    WAMessageType   `gorm:"type:wa_message_type;not null;default:'text'" json:"message_type"`
+	Content        string          `gorm:"type:text;not null" json:"content"`
+	WAMessageID    string          `gorm:"type:varchar(100)" json:"wa_message_id,omitempty"`
 	Metadata       json.RawMessage `gorm:"type:jsonb" json:"metadata,omitempty"`
-	SentAt         time.Time     `gorm:"type:timestamptz;not null;default:now();index:idx_whatsapp_messages_sent_at,sort:desc" json:"sent_at"`
+	SentAt         time.Time       `gorm:"type:timestamptz;not null;default:now();index:idx_whatsapp_messages_sent_at,sort:desc" json:"sent_at"`
 
 	// Associations
 	Conversation WhatsAppConversation `gorm:"foreignKey:ConversationID;constraint:OnDelete:CASCADE;" json:"-"`
@@ -149,22 +175,22 @@ func (WhatsAppMessage) TableName() string {
 
 // WhatsAppReminder represents a scheduled automated reminder (1:N with User)
 type WhatsAppReminder struct {
-	ID           uuid.UUID            `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	UserID       uuid.UUID            `gorm:"type:uuid;not null;index:idx_whatsapp_reminders_user_id" json:"user_id"`
-	ReminderType WAReminderType       `gorm:"type:reminder_type;not null;index:idx_whatsapp_reminders_type" json:"reminder_type"`
-	Message      string               `gorm:"type:text;not null" json:"message"`
+	ID           uuid.UUID      `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID       uuid.UUID      `gorm:"type:uuid;not null;index:idx_whatsapp_reminders_user_id" json:"user_id"`
+	ReminderType WAReminderType `gorm:"type:reminder_type;not null;index:idx_whatsapp_reminders_type" json:"reminder_type"`
+	Message      string         `gorm:"type:text;not null" json:"message"`
 	// ChallengeID vincula el reminder con el reto de aprendizaje exacto que se envió,
 	// para calificar respuestas por ID en vez de adivinar el reto por coincidencia de texto.
-	ChallengeID  *uuid.UUID           `gorm:"type:uuid;index" json:"challenge_id,omitempty"`
+	ChallengeID *uuid.UUID `gorm:"type:uuid;index" json:"challenge_id,omitempty"`
 	// AnsweredAt marca cuándo se calificó la respuesta a este reto. Evita que un mismo
 	// reto se responda varias veces y otorgue XP repetida (farming).
-	AnsweredAt   *time.Time           `gorm:"type:timestamptz" json:"answered_at,omitempty"`
-	ScheduledAt  time.Time            `gorm:"type:timestamptz;not null;index:idx_whatsapp_reminders_scheduled,where:sent = false AND cancelled = false" json:"scheduled_at"`
-	Recurrence   WAReminderRecurrence `gorm:"type:reminder_recurrence;not null;default:'once'" json:"recurrence"`
-	Sent         bool                 `gorm:"not null;default:false" json:"sent"`
-	SentAt       *time.Time           `gorm:"type:timestamptz" json:"sent_at,omitempty"`
-	Cancelled    bool                 `gorm:"not null;default:false" json:"cancelled"`
-	CreatedAt    time.Time            `gorm:"type:timestamptz;not null;default:now()" json:"created_at"`
+	AnsweredAt  *time.Time           `gorm:"type:timestamptz" json:"answered_at,omitempty"`
+	ScheduledAt time.Time            `gorm:"type:timestamptz;not null;index:idx_whatsapp_reminders_scheduled,where:sent = false AND cancelled = false" json:"scheduled_at"`
+	Recurrence  WAReminderRecurrence `gorm:"type:reminder_recurrence;not null;default:'once'" json:"recurrence"`
+	Sent        bool                 `gorm:"not null;default:false" json:"sent"`
+	SentAt      *time.Time           `gorm:"type:timestamptz" json:"sent_at,omitempty"`
+	Cancelled   bool                 `gorm:"not null;default:false" json:"cancelled"`
+	CreatedAt   time.Time            `gorm:"type:timestamptz;not null;default:now()" json:"created_at"`
 
 	// Associations
 	User User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE;" json:"-"`
