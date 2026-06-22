@@ -334,6 +334,50 @@ func (s *FriendService) RejectRequest(currentUserID string, requestID uuid.UUID)
 	return &req, nil
 }
 
+// AreFriends reports whether two users have an established friendship.
+func (s *FriendService) AreFriends(a, b uuid.UUID) bool {
+	user1, user2 := canonicalPair(a, b)
+	var friendship models.Friendship
+	err := database.DB.Where("user1_id = ? AND user2_id = ?", user1, user2).First(&friendship).Error
+	return err == nil
+}
+
+// GetConversation returns the message history between the current user and a
+// friend, oldest first, limited to the most recent `limit` messages.
+func (s *FriendService) GetConversation(currentUserID string, friendID uuid.UUID, limit int) ([]models.DirectMessage, error) {
+	if _, err := s.ensureNonGuest(currentUserID); err != nil {
+		return nil, err
+	}
+	currentUserUUID, err := uuid.Parse(currentUserID)
+	if err != nil {
+		return nil, err
+	}
+	if !s.AreFriends(currentUserUUID, friendID) {
+		return nil, errors.New("not friends")
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+
+	// Fetch the most recent `limit` messages, then return them oldest-first.
+	var rows []models.DirectMessage
+	if err := database.DB.
+		Where(
+			"(sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)",
+			currentUserUUID, friendID, friendID, currentUserUUID,
+		).
+		Order("created_at DESC").
+		Limit(limit).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+		rows[i], rows[j] = rows[j], rows[i]
+	}
+	return rows, nil
+}
+
 func (s *FriendService) RemoveFriend(currentUserID string, friendID uuid.UUID) error {
 	if _, err := s.ensureNonGuest(currentUserID); err != nil {
 		return err

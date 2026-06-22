@@ -105,6 +105,15 @@ func (h *Hub) checkUserProximity(roomID, userID string, x, y float64) {
 		return
 	}
 
+	// Cooperative rooms use a "meeting room" audio model: every participant is
+	// connected at full volume from the moment they join (see handleJoinRoom).
+	// They share the same session_id ("room:"+roomID), so running proximity here
+	// would attenuate volume by distance and tear down connections when players
+	// walk apart — breaking the full-room audio. Skip proximity for these rooms.
+	if room.Type == "cooperative" {
+		return
+	}
+
 	nearbyIDs := room.Grid.GetNearbyUsers(x, y)
 	inRangeUsers, err := h.PeerService.GetUsersInAudioRange(context.Background(), roomID, userID, x, y, nearbyIDs)
 	if err != nil {

@@ -5,6 +5,7 @@ import wsClient from '../services/websocket';
 import { useAuthStore } from './authStore';
 import { useNotificationStore } from './notificationStore';
 import { usePeerStore } from './peerStore';
+import i18n from '../i18n';
 
 export const useGameStore = create(subscribeWithSelector((set, get) => ({
     isConnected: false,
@@ -301,6 +302,27 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                         // Remove request from this user if it exists
                         chatRequests: state.chatRequests.filter(req => req.requester_id !== payload.partner_id)
                     }));
+
+                    // Load persisted message history with this partner.
+                    (async () => {
+                        try {
+                            const myId = String(useAuthStore.getState().user?.id ?? '');
+                            const { data } = await api.get(`/friends/${payload.partner_id}/messages`);
+                            const history = (data?.messages || []).map(m => ({
+                                sender: String(m.sender_id) === myId ? 'Me' : payload.partner_name,
+                                text: m.content
+                            }));
+                            // Only apply if this chat is still the active one.
+                            set(state => {
+                                if (!state.activeChat || String(state.activeChat.partner_id) !== String(payload.partner_id)) {
+                                    return {};
+                                }
+                                return { activeChat: { ...state.activeChat, messages: history } };
+                            });
+                        } catch (e) {
+                            // No history or fetch failed — start with an empty conversation.
+                        }
+                    })();
                 });
 
                 wsClient.on('chat_reject', (payload) => {
@@ -404,7 +426,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
 
                 wsClient.on('friend_request_received', (payload) => {
                     const { addNotification } = useNotificationStore.getState();
-                    addNotification('info', `New friend request from ${payload.requester_username}`);
+                    addNotification('info', i18n.t('lobby.menu.friend_request_received', { name: payload.requester_username }));
                     // We could also update a pendingRequests count in store to trigger UI refresh
                     // For now, Sidebar listens to local state but we might want to signal it
                     window.dispatchEvent(new CustomEvent('friend-request-update'));

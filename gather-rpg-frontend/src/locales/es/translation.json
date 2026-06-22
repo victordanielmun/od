@@ -394,6 +394,7 @@
       "config": "Configuración",
       "requests": "Solicitudes",
       "want_to_chat": "quiere chatear.",
+      "friend_request_received": "Nueva solicitud de amistad de {{name}}",
       "start_conversation": "Iniciar la conversación...",
       "type_message": "Escribe un mensaje...",
       "no_messages": "Sin Mensajes",

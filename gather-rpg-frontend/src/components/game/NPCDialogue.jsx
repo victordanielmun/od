@@ -534,7 +534,9 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
     const lastMessage = messages[messages.length - 1] || { text: '...', sender: 'npc' };
     const interactionMode = npcData.interactionMode || npcData.interaction_mode || definition?.interaction_mode || definition?.interactionMode || 'hybrid';
-    const isAudioOnly = interactionMode === 'audio_only';
+    // Merchants are always hybrid (voice OR text): forcing audio_only would block
+    // buying for players without a working mic. Any NPC with a shop allows typing.
+    const isAudioOnly = interactionMode === 'audio_only' && !hasShop;
 
     const handleClose = () => {
         if (hasPendingCompletion) {

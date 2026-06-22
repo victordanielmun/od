@@ -7,7 +7,33 @@ import { useMediaStore } from '../../store/mediaStore';
 export class PeerManager {
   constructor() {
     this.peers = new Map();
+    // Connections requested by the server while we had no localStream yet.
+    // key -> { userId, initiator, sessionId }
+    this.pendingConnections = new Map();
+    // Signals (offer/answer/ICE) that arrived before the peer could be created.
+    // key -> [signalData, ...]
+    this.pendingSignals = new Map();
     this.setupSignalListeners();
+  }
+
+  bufferSignal(key, data) {
+    const list = this.pendingSignals.get(key) || [];
+    list.push(data);
+    this.pendingSignals.set(key, list);
+  }
+
+  /**
+   * Re-attempt every connection that was deferred because the microphone was
+   * still off. Called after startMedia() so audio works even when the user
+   * enables their mic AFTER joining a room / mission / chess session.
+   */
+  flushPendingConnections() {
+    if (!useMediaStore.getState().localStream) return;
+    const pending = Array.from(this.pendingConnections.values());
+    this.pendingConnections.clear();
+    pending.forEach(({ userId, initiator, sessionId }) => {
+      this.createPeer(userId, initiator, sessionId);
+    });
   }
 
   peerKey(sessionId, userId) {
@@ -52,6 +78,8 @@ export class PeerManager {
 
     const localStream = useMediaStore.getState().localStream;
     if (!localStream) {
+        // Mic not enabled yet — defer until startMedia() runs flushPendingConnections().
+        this.pendingConnections.set(key, { userId, initiator, sessionId });
         return;
     }
 
@@ -91,6 +119,13 @@ export class PeerManager {
     });
 
     this.peers.set(key, peer);
+
+    // Replay any signals that arrived before this peer existed.
+    const buffered = this.pendingSignals.get(key);
+    if (buffered) {
+      buffered.forEach(sig => peer.signal(sig));
+      this.pendingSignals.delete(key);
+    }
   }
 
   handleOffer(userId, offer, sessionId) {
@@ -100,28 +135,40 @@ export class PeerManager {
     const peer = this.peers.get(key);
     if (peer) {
         peer.signal(offer);
+    } else {
+        // No localStream yet: keep the offer so it can be answered once the
+        // peer is created (after the mic is enabled).
+        this.bufferSignal(key, offer);
     }
   }
 
   handleAnswer(userId, answer, sessionId) {
     if (!sessionId) return;
-    const peer = this.peers.get(this.peerKey(sessionId, userId));
+    const key = this.peerKey(sessionId, userId);
+    const peer = this.peers.get(key);
     if (peer) {
       peer.signal(answer);
+    } else {
+      this.bufferSignal(key, answer);
     }
   }
 
   handleIceCandidate(userId, candidate, sessionId) {
     if (!sessionId) return;
-    const peer = this.peers.get(this.peerKey(sessionId, userId));
+    const key = this.peerKey(sessionId, userId);
+    const peer = this.peers.get(key);
     if (peer) {
       peer.signal(candidate);
+    } else {
+      this.bufferSignal(key, candidate);
     }
   }
 
   removePeer(userId, sessionId) {
     if (!sessionId) return;
     const key = this.peerKey(sessionId, userId);
+    this.pendingConnections.delete(key);
+    this.pendingSignals.delete(key);
     const peer = this.peers.get(key);
     if (peer) {
       peer.destroy();
@@ -133,6 +180,8 @@ export class PeerManager {
   destroy() {
     this.peers.forEach(peer => peer.destroy());
     this.peers.clear();
+    this.pendingConnections.clear();
+    this.pendingSignals.clear();
     usePeerStore.getState().clearPeers();
   }
 }

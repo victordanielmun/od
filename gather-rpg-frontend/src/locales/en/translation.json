@@ -387,6 +387,7 @@
       "config": "Settings",
       "requests": "Requests",
       "want_to_chat": "wants to chat.",
+      "friend_request_received": "New friend request from {{name}}",
       "start_conversation": "Start the conversation...",
       "type_message": "Type a message...",
       "no_messages": "No Messages",

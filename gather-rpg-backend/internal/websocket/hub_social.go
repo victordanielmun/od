@@ -4,6 +4,7 @@ import (
 	"errors"
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
+	"log"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -64,6 +65,18 @@ func canonicalPair(a, b uuid.UUID) (uuid.UUID, uuid.UUID) {
 		return a, b
 	}
 	return b, a
+}
+
+// areFriends reports whether two users have an established friendship.
+// In no-DB (dev) mode it returns true so local testing isn't blocked.
+func (h *Hub) areFriends(a, b uuid.UUID) bool {
+	if database.DB == nil {
+		return true
+	}
+	u1, u2 := canonicalPair(a, b)
+	var friendship models.Friendship
+	err := database.DB.Where("user1_id = ? AND user2_id = ?", u1, u2).First(&friendship).Error
+	return err == nil
 }
 
 func (h *Hub) handleChatRequest(client *Client, payload models.ChatRequestPayload) {
@@ -165,48 +178,36 @@ func (h *Hub) handleChatRequest(client *Client, payload models.ChatRequestPayloa
 		}
 	}
 
-	// 3. Check if A (client) already has a pending request to B (target)
+	// 3. No friendship and no pending request from target → create a pending
+	//    request and send ONE interactive prompt (the accept/reject popup).
+	//    If a pending request already exists, do nothing so re-clicking a player
+	//    doesn't spam them with popups; the request is still visible in their
+	//    friends panel.
 	var existingPending models.FriendRequest
 	err = database.DB.Where("requester_id = ? AND addressee_id = ? AND status = ?", client.ID, targetID, models.FriendRequestPending).First(&existingPending).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		// Create a pending request
 		req := &models.FriendRequest{
 			RequesterID: client.ID,
 			AddresseeID: targetID,
 			Status:      models.FriendRequestPending,
 		}
 		if err := database.DB.Create(req).Error; err == nil {
+			// Refresh both friends panels (this also dispatches the pending-request
+			// refresh on the client, so the request shows up even if the popup is missed).
 			h.NotifyFriendUpdate(targetID.String())
 			h.NotifyFriendUpdate(client.ID.String())
 
-			// Send friend_request_received WS event to target
-			targetClient := h.findClientByID(targetID.String())
-
-			if targetClient != nil {
+			// Single interactive prompt to the target.
+			if targetClient := h.findClientByID(targetID.String()); targetClient != nil {
 				targetClient.SendJSON(&models.WSMessage{
-					Type: "friend_request_received",
-					Payload: map[string]interface{}{
-						"request_id":         req.ID,
-						"requester_id":       client.ID,
-						"requester_username": client.Username,
-						"timestamp":          req.CreatedAt,
+					Type: MsgChatRequestBcast,
+					Payload: map[string]string{
+						"requester_id":   client.ID.String(),
+						"requester_name": client.Username,
 					},
 				})
 			}
 		}
-	}
-
-	// 4. Send chat request popup/prompt to target if online
-	targetClient := h.findClientByID(targetID.String())
-
-	if targetClient != nil {
-		targetClient.SendJSON(&models.WSMessage{
-			Type: MsgChatRequestBcast,
-			Payload: map[string]string{
-				"requester_id":   client.ID.String(),
-				"requester_name": client.Username,
-			},
-		})
 	}
 }
 
@@ -335,6 +336,30 @@ func (h *Hub) handlePrivateMessage(client *Client, payload models.PrivateMessage
 		return
 	}
 
+	if payload.Message == "" {
+		return
+	}
+
+	// Only allow private messages between friends.
+	if !h.areFriends(client.ID, targetID) {
+		client.SendError("Solo puedes enviar mensajes a tus amigos")
+		return
+	}
+
+	// Persist the message so it survives reconnects and is delivered as history
+	// even when the recipient is currently offline.
+	if database.DB != nil {
+		dm := &models.DirectMessage{
+			SenderID:    client.ID,
+			RecipientID: targetID,
+			Content:     payload.Message,
+		}
+		if err := database.DB.Create(dm).Error; err != nil {
+			// Log and continue: a failed persist shouldn't block live delivery.
+			log.Printf("[Social] Failed to persist private message: %v", err)
+		}
+	}
+
 	targetClient := h.findClientByID(targetID.String())
 
 	if targetClient != nil {
@@ -353,6 +378,11 @@ func (h *Hub) handleTeleportToFriend(client *Client, targetUserID string) {
 	targetUUID, err := uuid.Parse(targetUserID)
 	if err != nil {
 		client.SendError("Invalid target user ID")
+		return
+	}
+
+	if !h.areFriends(client.ID, targetUUID) {
+		client.SendError("Solo puedes teletransportarte hacia tus amigos")
 		return
 	}
 
@@ -409,6 +439,11 @@ func (h *Hub) handleSendRoomInvite(client *Client, targetUserID string) {
 
 	if !exists {
 		client.SendError("No se pudo localizar tu sala actual")
+		return
+	}
+
+	if !h.areFriends(client.ID, targetUUID) {
+		client.SendError("Solo puedes invitar a tus amigos")
 		return
 	}
 

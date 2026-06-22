@@ -193,6 +193,29 @@ func (h *FriendHandler) RejectRequest(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"status": "ok"})
 }
 
+// GetConversation returns the persisted private message history with a friend.
+func (h *FriendHandler) GetConversation(c *fiber.Ctx) error {
+	currentUserID := getCurrentUserID(c)
+	friendID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid friend id"})
+	}
+
+	messages, err := h.Service.GetConversation(currentUserID, friendID, c.QueryInt("limit", 100))
+	if err != nil {
+		switch err.Error() {
+		case "guest users cannot use friends":
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": err.Error()})
+		case "not friends":
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": err.Error()})
+		default:
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		}
+	}
+
+	return c.JSON(fiber.Map{"messages": messages})
+}
+
 func (h *FriendHandler) RemoveFriend(c *fiber.Ctx) error {
 	currentUserID := getCurrentUserID(c)
 	friendID, err := uuid.Parse(c.Params("id"))

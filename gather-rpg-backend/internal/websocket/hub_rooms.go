@@ -146,6 +146,11 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 	room.Grid.RemoveUser(client.ID.String())
 	room.Grid.AddUser(client.ID.String(), x, y)
 
+	// Track position on the client immediately (used by AI and teleport-to-friend).
+	// Without this, a friend who joined but hasn't moved would report (0,0).
+	client.X = x
+	client.Y = y
+
 	// Update Redis with current position
 	redisPos := models.RedisPosition{
 		X: x, Y: y, Direction: "down", IsMoving: false, Anim: "idle", Username: client.Username, CharacterID: client.CharacterID,

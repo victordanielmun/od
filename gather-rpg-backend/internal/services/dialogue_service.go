@@ -306,14 +306,32 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 				}
 			} else {
 				fmt.Printf("[DialogueService] Conversational Purchase error: Item ID %s not found\n", *aiResp.BuyItemID)
+				// Fallback: the player asked to buy but the item couldn't be
+				// resolved. Tell them clearly instead of failing silently.
+				aiResp.NPCResponse = "Hmm, I don't seem to carry that item. Check my wares and tell me the exact name of what you'd like, and I'll fetch it for you."
+				aiResp.NPCResponseNative = ""
+				aiResp.ItemGift = nil
+				aiResp.GiftQuantity = 0
 			}
 		} else {
 			fmt.Printf("[DialogueService] Conversational Purchase error parsing UUID %s: %v\n", *aiResp.BuyItemID, err)
+			// Same fallback for an unparseable item id from the model.
+			aiResp.NPCResponse = "Hmm, I'm not sure which item you mean. Open my shop to see what I sell, then tell me the exact name and how many you want."
+			aiResp.NPCResponseNative = ""
+			aiResp.ItemGift = nil
+			aiResp.GiftQuantity = 0
 		}
 	}
 
-	// Save to Cache if it was a Cache Miss and the score was good
-	if !fromCache && req.PronunciationScore >= 80 {
+	// Save to Cache if it was a Cache Miss and the score was good.
+	// Skip caching for transactional (purchase) turns: those responses depend on
+	// live per-player state (gold, inventory, item availability) that the cache key
+	// (the input phrase) doesn't capture, so a cached line can contradict the real
+	// outcome on replay (e.g. "you don't have enough gold" shown while the item is
+	// actually granted). Informational dialogue (greetings, lore, mission hints) is
+	// still cached normally.
+	isPurchaseTurn := aiResp.BuyItemID != nil && *aiResp.BuyItemID != ""
+	if !fromCache && req.PronunciationScore >= 80 && !isPurchaseTurn {
 		// Convert the clean response struct back to JSON to strip formatting issues
 		cleanJSON, _ := json.Marshal(aiResp)
 		newCache := &models.NPCDialogueCache{

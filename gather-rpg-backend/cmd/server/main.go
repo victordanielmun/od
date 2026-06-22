@@ -42,6 +42,7 @@ func main() {
 		&models.PlayerSkill{},
 		&models.FriendRequest{},
 		&models.Friendship{},
+		&models.DirectMessage{},
 		&models.MapConfig{},
 		// ── English Learning System ──────────────────────────────────────
 		&models.LearningChallenge{},
@@ -200,6 +201,7 @@ func main() {
 	// Friend Routes
 	friends := app.Group("/friends", middleware.Protected(cfg))
 	friends.Get("/", friendHandler.ListFriends)
+	friends.Get("/:id/messages", friendHandler.GetConversation)
 	friends.Delete("/:id", friendHandler.RemoveFriend)
 	friends.Get("/requests", friendHandler.ListRequests)
 	friends.Post("/requests", friendHandler.SendRequest)

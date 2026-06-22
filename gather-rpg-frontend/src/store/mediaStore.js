@@ -11,12 +11,16 @@ export const useMediaStore = create((set, get) => ({
   startMedia: async () => {
     try {
       const stream = await streamManager.initializeMedia();
-      set({ 
-        localStream: stream, 
-        isVideoEnabled: true, 
+      set({
+        localStream: stream,
+        isVideoEnabled: true,
         isAudioEnabled: true,
-        error: null 
+        error: null
       });
+      // Establish any peer connections that the server requested while the mic
+      // was still off (joining a mission/chess room before enabling audio).
+      const { peerManager } = await import('../services/webrtc/PeerManager');
+      peerManager.flushPendingConnections();
       return stream;
     } catch (error) {
       set({ error: 'Could not access camera/microphone' });
