@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"math/rand"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
@@ -16,6 +18,24 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
+
+const (
+	usernameMinLen = 3
+	usernameMaxLen = 20
+)
+
+// validateUsername enforces the same 3–20 character bound the client applies,
+// so a direct API call can't bypass the input's maxLength.
+func validateUsername(username string) error {
+	n := utf8.RuneCountInString(username)
+	if n < usernameMinLen {
+		return errors.New("username must be at least 3 characters")
+	}
+	if n > usernameMaxLen {
+		return errors.New("username must be at most 20 characters")
+	}
+	return nil
+}
 
 type AuthService struct {
 	Repo *repository.UserRepository
@@ -85,6 +105,12 @@ func (s *AuthService) LoginGuest(characterIDs []string, nativeLang string) (*mod
 }
 
 func (s *AuthService) Register(req models.RegisterRequest) (*models.AuthResponse, error) {
+	// Normalize and validate the username before anything else.
+	req.Username = strings.TrimSpace(req.Username)
+	if err := validateUsername(req.Username); err != nil {
+		return nil, err
+	}
+
 	// Check if user exists
 	if _, err := s.Repo.FindByEmail(req.Email); err == nil {
 		return nil, errors.New("email already registered")

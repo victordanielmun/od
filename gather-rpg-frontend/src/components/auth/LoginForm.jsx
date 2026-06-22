@@ -9,16 +9,8 @@ export const LoginForm = () => {
   const [rememberMe, setRememberMe] = useState(localStorage.getItem('rememberMe') === 'true');
   const [showPassword, setShowPassword] = useState(false);
   const login = useAuthStore(state => state.login);
-  const loginGuest = useAuthStore(state => state.loginGuest);
   const error = useAuthStore(state => state.error);
   const navigate = useNavigate();
-
-  const handleGuestLogin = async () => {
-    const success = await loginGuest();
-    if (success) {
-      navigate('/dashboard');
-    }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -101,22 +93,6 @@ export const LoginForm = () => {
           Sign In
         </button>
       </form>
-
-      <div className="relative my-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-white/10"></div>
-        </div>
-        <div className="relative flex justify-center text-xs uppercase tracking-widest">
-          <span className="px-3 bg-[#0d0a2d] text-gray-400">Or continue with</span>
-        </div>
-      </div>
-
-      <button
-        onClick={handleGuestLogin}
-        className="w-full bg-indigo-600/15 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/20 py-3 rounded-xl transition-all font-medieval uppercase tracking-widest cursor-pointer"
-      >
-        Play as Guest
-      </button>
 
       <div className="mt-6 text-center text-xs tracking-wide">
         <span className="text-gray-400">Don&apos;t have an account? </span>

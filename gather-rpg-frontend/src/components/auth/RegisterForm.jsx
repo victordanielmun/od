@@ -599,6 +599,8 @@ export const RegisterForm = () => {
                       onChange={(e) => setUsername(e.target.value)}
                       className="w-full bg-gray-950/60 text-white border border-white/10 rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all font-sans placeholder-gray-600 text-sm"
                       placeholder={t('register.step1.username_placeholder')}
+                      minLength={3}
+                      maxLength={20}
                       required
                     />
                   </div>
