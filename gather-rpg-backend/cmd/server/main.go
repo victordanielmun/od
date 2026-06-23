@@ -79,12 +79,8 @@ func main() {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
-	// Seed static data
-	database.SeedAdminUser()
-	database.SeedLearningChallenges()
-	database.SeedMotivations()
-	database.SeedGuides()
-	database.SeedSkillsAndItems()
+	// Los seeds estáticos ya NO corren en el arranque. Ejecútalos a mano una vez
+	// con `go run ./cmd/seed` (admin, retos, motivaciones, skills/items, etc.).
 
 	// Repositories & Services
 	userRepo := repository.NewUserRepository()
