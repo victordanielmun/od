@@ -57,8 +57,6 @@ export class MapManager {
   // ─── Ciclo de vida ────────────────────────────────────────────────────────
 
   createMap() {
-    const G = this.scene.GRID_SIZE;
-
     this.backgroundRect = this.scene.add.rectangle(
       this.mapWidth / 2, this.mapHeight / 2,
       this.mapWidth, this.mapHeight, 0x2a2a2a
@@ -95,10 +93,10 @@ export class MapManager {
     this._registry = new TileRegistry(this);
     this._placer   = new TilePlacer(this.scene, this._registry);
 
-    // Muros de ejemplo para el primer cargado
-    for (let x = 200; x < 600; x += G) {
-      this.walls.create(x, 400, 'tile-wall').refreshBody();
-    }
+    // No placeholder/demo tiles: the real map is loaded right after via
+    // loadServerMapConfig. Seeding example walls here caused a flash of stray
+    // blocks on the default background if the loading overlay hid before the
+    // server map resolved.
   }
 
   clearMap() {
@@ -138,6 +136,7 @@ export class MapManager {
 
             if (md?.furniture) config.furniture = md.furniture;
             if (md?.furniture2) config.furniture2 = md.furniture2;
+            if (md?.furniture3) config.furniture3 = md.furniture3;
             if (md?.enemySpawns) config.enemySpawns = md.enemySpawns;
 
             if (md?.bgmTrack && md.bgmTrack !== 'none') {

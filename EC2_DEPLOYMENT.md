@@ -9,11 +9,11 @@ Dado que **no se utiliza Ollama local** (se usa la API de OpenAI), la carga de m
 ## ⚡ REGLA DE ORO PARA INSTANCIAS MICRO (1 GB RAM)
 > [!IMPORTANT]
 > Es **obligatorio** configurar al menos **4 GB de memoria Swap**. 
-> Sin esto, el instalador de dependencias de Python (`pip`), el compilador de Go, o el modelo local de Whisper para la transcripción de voz excederán el límite de 1 GB físico y el sistema operativo forzará el cierre de los servicios (OOM Killer).
+> Sin esto, el instalador de dependencias de Python (`pip`), el compilador de Go, o el modelo local de faster-whisper para la transcripción de voz excederán el límite de 1 GB físico y el sistema operativo forzará el cierre de los servicios (OOM Killer).
 >
 > Como Amazon Linux 2023 utiliza el sistema de archivos **XFS**, el comando estándar `fallocate` para crear el swap fallará o dará problemas. Por ende, **se debe usar `dd`** para reservar el espacio físicamente.
 >
-> **Nota sobre el espacio en disco:** Si usas un volumen EBS estándar de **8 GB** en AWS (el tamaño por defecto en t2.micro/t3.micro), reservar 4 GB para Swap dejará muy poco espacio para el sistema. Se recomienda **ampliar el volumen de tu EC2 a 15 GB o 20 GB** en la consola de AWS (es totalmente gratis dentro de la capa gratuita de hasta 30 GB). Adicionalmente, la instalación del backend de voz está optimizada para instalar **PyTorch versión CPU-only** y no guardar caché de `pip` en disco, ahorrando más de 2.5 GB.
+> **Nota sobre el espacio en disco:** Si usas un volumen EBS estándar de **8 GB** en AWS (el tamaño por defecto en t2.micro/t3.micro), reservar 4 GB para Swap dejará muy poco espacio para el sistema. Se recomienda **ampliar el volumen de tu EC2 a 15 GB o 20 GB** en la consola de AWS (es totalmente gratis dentro de la capa gratuita de hasta 30 GB). Adicionalmente, el backend de voz usa **faster-whisper (CTranslate2)** para la transcripción, que **NO requiere PyTorch ni CUDA** y corre en CPU con cuantización `int8`: la instalación pesa unos cientos de MB (frente a >2.5 GB que requería el antiguo `openai-whisper` + PyTorch) y consume mucha menos RAM en ejecución.
 
 ---
 
@@ -297,16 +297,16 @@ El backend de Go utiliza **Piper** para generar los audios de los diálogos de l
    # Limpiar caché previo de pip para liberar espacio en disco
    rm -rf ~/.cache/pip
    
-   # Instalar PyTorch CPU-only (pesa ~150MB en vez de ~780MB y no instala CUDA/GPU)
-   pip install torch==2.3.1 --index-url https://download.pytorch.org/whl/cpu --no-cache-dir
-   
-   # Instalar setuptools e instalar whisper sin aislamiento de compilación
-   pip install "setuptools<70" wheel --no-cache-dir
-   pip install openai-whisper==20231117 --no-build-isolation --no-cache-dir
-   
-   # Instalar el resto de dependencias sin guardar en caché
+   # Instalar todas las dependencias sin guardar caché en disco.
+   # Nota: faster-whisper (CTranslate2) reemplaza a openai-whisper y NO requiere
+   # PyTorch ni CUDA; el modelo 'base' se descarga solo en el primer arranque.
    pip install -r requirements.txt --no-cache-dir
    ```
+   > [!NOTE]
+   > Si estás **actualizando un despliegue antiguo** que ya tenía instalado `openai-whisper` + PyTorch, desinstálalos para recuperar más de 2.5 GB de disco:
+   > ```bash
+   > pip uninstall -y openai-whisper torch
+   > ```
 3. Crea y configura su respectivo archivo `.env`:
    ```bash
    nano .env

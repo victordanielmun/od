@@ -147,3 +147,14 @@ func (h *LearningHandler) SetEnglishLevel(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "English level updated successfully"})
 }
 
+// GetLeaderboard returns the top players ranked by accumulated XP. Optional ?limit=
+// (defaults to 50, capped at 100). Public so it can be shown without auth.
+func (h *LearningHandler) GetLeaderboard(c *fiber.Ctx) error {
+	limit := c.QueryInt("limit", 50)
+	entries, err := h.Service.GetLeaderboard(limit)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to load leaderboard", "details": err.Error()})
+	}
+	return c.JSON(entries)
+}
+

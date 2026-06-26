@@ -1,5 +1,42 @@
 import { useGameStore } from '../../store/gameStore';
 import { useNotificationStore } from '../../store/notificationStore';
+import { spawnDamageNumber } from '../systems/floatingText';
+
+// Regen automático de maná del jugador (MP por segundo). En 0 para que el maná solo se
+// recupere con pociones — si no, la regeneración pasiva le quita valor a las pociones.
+const MP_REGEN_PER_SEC = 0;
+
+// Hit-stop arcade: al recibir un golpe el jugador queda aturdido (no se mueve ni ataca)
+// este tiempo y recibe un pequeño empuje. 350ms = igual que el hurt del enemigo.
+const HURT_STAGGER_MS = 350;
+const HURT_KNOCKBACK  = 140; // px/s del empuje al ser golpeado
+
+// Hitstop / freeze-frames: al conectar un golpe se congela un instante la animación de
+// atacante y golpeado, para dar sensación de impacto ("contundencia" arcade).
+const HITSTOP_MS = 70;
+// Parpadeo de invulnerabilidad tras recibir daño (debe cubrir playerAttackIFrames).
+const IFRAME_BLINK_MS = 800;
+
+// Perfiles de hechizo: cada Pergamino (item_type 'scroll') lanza uno de estos según su
+// nombre/icono. anim = animación del personaje; color = tinte/VFX; el daño lo aplica el
+// servidor (sendPlayerAttack 'spell'), aquí solo va el visual + detección de alcance.
+const SPELL_PROFILES = {
+  fire_rain: { anim: 'special',    mpCost: 30, cooldownMs: 4000, color: 0xff4400, flash: 0xff2200 },
+  wave:      { anim: 'projectile', mpCost: 25, cooldownMs: 3000, color: 0x44aaff, flash: 0x4488ff },
+  nova:      { anim: 'special',    mpCost: 40, cooldownMs: 5000, color: 0xaa44ff, flash: 0xaa44ff },
+};
+const DEFAULT_SPELL = 'nova';
+
+// Resuelve qué hechizo lanza un Pergamino. Preferimos el campo explícito `spell_type`
+// (configurable en el admin); si no está, lo adivinamos por el nombre/icono/descripción.
+function resolveSpellType(item) {
+  if (item?.spell_type && SPELL_PROFILES[item.spell_type]) return item.spell_type;
+  const hay = `${item?.name || ''} ${item?.icon_key || ''} ${item?.description || ''}`.toLowerCase();
+  if (/fuego|fire|flam|llama|meteor/.test(hay))     return 'fire_rain';
+  if (/onda|wave|ola|corte|slash|viento/.test(hay)) return 'wave';
+  if (/nova|explos|radial|burst|aoe|arcano/.test(hay)) return 'nova';
+  return DEFAULT_SPELL;
+}
 
 export class CombatSystem {
   constructor(scene, enemySystem) {
@@ -14,16 +51,23 @@ export class CombatSystem {
     this.playerAttackIFrames = 0;
     this.isDead = false;
     this.isStunned = false;
+    this.hurtStaggerUntil = 0; // hit-stop arcade: aturdimiento breve tras recibir un golpe
+    this._attackLockUntil = 0; // "un swing a la vez": bloquea nuevos ataques (J/K) hasta que termina la animación en curso
 
     // Attack timers & combos
-    this._lastAttackTime = 0;
-    this._lastComboTime = 0;
+    // Timestamps de cooldown inicializados "listos": al entrar al mapa el reloj de Phaser
+    // arranca cerca de 0, y con last=0 el check `now - last < cooldown` bloquearía el
+    // PRIMER uso durante los primeros segundos. Con un valor muy negativo, el primer
+    // hechizo/arrojadizo/poción se permite de inmediato.
+    const READY = -1e7;
+    this._lastAttackTime = READY;
+    this._lastComboTime = READY;
     this._comboStep = 0;
-    this._lastSpellTime = 0;
-    this._lastThrowTime = 0;
-    this._lastPotionTime = 0;
-    this._lastManaPotionTime = 0;
-    this._lastDashTime = 0;
+    this._lastSpellTime = READY;
+    this._lastThrowTime = READY;
+    this._lastPotionTime = READY;
+    this._lastManaPotionTime = READY;
+    this._lastDashTime = READY;
     this.dashVelocity = { x: 0, y: 0 };
     this.isDashing = false;
 
@@ -44,6 +88,16 @@ export class CombatSystem {
     this.onPlayerDiedServer = () => this.onPlayerDeath();
     window.addEventListener('player-died-server', this.onPlayerDiedServer);
 
+    // Maná autoritativo del servidor: el server es la fuente de verdad (persistente,
+    // compartida con el inventario/Sidebar). Reconciliamos el valor local al recibirlo.
+    this.onPlayerMP = (e) => {
+      const d = e.detail || {};
+      if (typeof d.mp === 'number') this.playerMp = d.mp;
+      if (typeof d.mp_max === 'number') this.playerMaxMp = d.mp_max;
+      this.updateHpBar();
+    };
+    window.addEventListener('player-mp-update', this.onPlayerMP);
+
     // Initial HP bar setup
     this.setupHUD();
 
@@ -54,6 +108,7 @@ export class CombatSystem {
 
   destroy() {
     window.removeEventListener('ninja-card-result', this.onNinjaCardResult);
+    window.removeEventListener('player-mp-update', this.onPlayerMP);
     window.removeEventListener('player-hp-update', this.onPlayerHP);
     window.removeEventListener('player-died-server', this.onPlayerDiedServer);
     this.scene.events.off('enemy-attack', this.onEnemyAttack);
@@ -77,11 +132,11 @@ export class CombatSystem {
       this.playerAttackIFrames -= delta;
     }
 
-    // Auto MP Regen (+5 MP per second)
-    if (this.playerMp < this.playerMaxMp && !this.isDead) {
+    // Auto MP Regen (MP_REGEN_PER_SEC por segundo; 0 = desactivado → solo pociones).
+    if (MP_REGEN_PER_SEC > 0 && this.playerMp < this.playerMaxMp && !this.isDead) {
       this._mpRegenTimer = (this._mpRegenTimer || 0) + delta;
       if (this._mpRegenTimer >= 1000) {
-        this.playerMp = Math.min(this.playerMaxMp, this.playerMp + 5);
+        this.playerMp = Math.min(this.playerMaxMp, this.playerMp + MP_REGEN_PER_SEC);
         this._mpRegenTimer = 0;
         this.updateHpBar();
       }
@@ -201,7 +256,61 @@ export class CombatSystem {
           this.scene.player.playAnimation('idle');
         }
       });
+
+      // Hit-stop arcade: aturde al jugador un instante (LobbyScene.update bloquea su input
+      // mientras isHurtStaggered()) y le da un pequeño empuje desde el enemigo que golpeó.
+      this.hurtStaggerUntil = this.scene.time.now + HURT_STAGGER_MS;
+      const body = this.scene.player.body;
+      const enemy = data?.enemy;
+      if (body) {
+        if (enemy) {
+          const dx = this.scene.player.x - enemy.x;
+          const dy = this.scene.player.y - enemy.y;
+          const len = Math.hypot(dx, dy) || 1;
+          body.setVelocity((dx / len) * HURT_KNOCKBACK, (dy / len) * HURT_KNOCKBACK);
+        } else {
+          body.setVelocity(0, 0);
+        }
+      }
+
+      // Freeze-frames de impacto (jugador + enemigo que golpeó).
+      this._hitstop([this.scene.player, enemy].filter(Boolean));
+
+      // Sacudida de cámara + número de daño rojo al recibir el golpe.
+      this.scene.cameras?.main?.shake(150, 0.01);
+      if (data?.damage > 0) {
+        spawnDamageNumber(this.scene, this.scene.player.x, this.scene.player.y - 40, data.damage, { color: '#ff5555', crit: true });
+      }
+
+      // Parpadeo de invulnerabilidad mientras corren los i-frames (playerAttackIFrames):
+      // comunica que el jugador no puede ser re-golpeado/encadenado un instante.
+      this.scene.tweens.add({
+        targets: this.scene.player,
+        alpha: 0.35,
+        duration: IFRAME_BLINK_MS / 8,
+        ease: 'Linear',
+        yoyo: true,
+        repeat: 3,
+        onComplete: () => this.scene.player?.setAlpha(1),
+      });
     }
+  }
+
+  // True mientras el jugador está en hit-stop (aturdimiento breve por un golpe).
+  isHurtStaggered() {
+    return this.scene.time.now < this.hurtStaggerUntil;
+  }
+
+  // Hitstop: congela las animaciones de los sprites dados un instante (freeze-frames de
+  // impacto). Recibe contenedores (PlayerSprite/EnemySprite) con un `.sprite` interno.
+  _hitstop(targets, ms = HITSTOP_MS) {
+    const anims = [];
+    targets.forEach(t => {
+      const a = t?.sprite?.anims;
+      if (a && a.isPlaying) { a.pause(); anims.push(a); }
+    });
+    if (anims.length === 0) return;
+    this.scene.time.delayedCall(ms, () => anims.forEach(a => a.resume()));
   }
 
   _handlePlayerHP(e) {
@@ -231,22 +340,27 @@ export class CombatSystem {
     this.isDead = false;
     this.isStunned = false;
     this.playerHp = 100;
-    this.playerMp = 100;
+    // El maná no se resetea localmente: es autoritativo del servidor (se reenvía en el
+    // respawn vía player_mp). Resetearlo a 100 aquí causaría un desync momentáneo.
     this.updateHpBar();
   }
 
   handlePlayerAttack() {
     if (!this.scene.player || this.scene.isTyping()) return;
-    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned) return;
+    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
+    // Un swing a la vez: ignorar la pulsación si aún corre la animación del ataque
+    // anterior. Así el daño se aplica UNA sola vez por golpe (no se spamea el collider).
     const now = this.scene.time.now;
-    if (now - (this._lastAttackTime || 0) < 500) return;
-    this._lastAttackTime = now;
+    if (now < this._attackLockUntil) return;
+    const ATTACK_LOCK = 400; // duración de la animación 'combo1'
+    this._attackLockUntil = now + ATTACK_LOCK;
 
     const charId = this.scene.player.characterId || '1';
-    const slashKey = `char-${charId}-slash`;
-    if (this.scene.anims.exists(slashKey)) {
-      this.scene.player.playAnimation('slash', 500);
+    // El ataque básico usa 'combo1' del sheet de combate. Antes pedía 'slash', que no
+    // existe en las animaciones del personaje, así que el ataque básico no animaba nada.
+    if (this.scene.anims.exists(`char-${charId}-combo1`)) {
+      this.scene.player.playAnimation('combo1', ATTACK_LOCK);
     }
 
     let nearestEnemy = null;
@@ -273,14 +387,21 @@ export class CombatSystem {
         });
       }
       this._spawnHitEffect(hitEnemy.x, hitEnemy.y);
+      // Freeze-frames de impacto en atacante y golpeado + sacudida sutil de cámara.
+      this._hitstop([this.scene.player, hitEnemy]);
+      this.scene.cameras?.main?.shake(50, 0.004);
     }
   }
 
   handlePlayerCombo() {
     if (!this.scene.player || this.scene.isTyping()) return;
-    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned) return;
+    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
     const now = this.scene.time.now;
+    // Un swing a la vez: si la animación del golpe anterior sigue, ignorar la pulsación.
+    // Esto evita que machacar K dispare varios golpes/colliders muy rápido.
+    if (now < this._attackLockUntil) return;
+
     if (now - (this._lastComboTime || 0) > 1000) {
       this._comboStep = 0;
     }
@@ -304,6 +425,7 @@ export class CombatSystem {
     }
 
     this._lastComboTime = now;
+    this._attackLockUntil = now + lockDuration; // bloquea hasta que acabe esta animación
 
     const animKeyFull = `char-${charId}-${animKey}`;
     if (this.scene.anims.exists(animKeyFull)) {
@@ -333,94 +455,203 @@ export class CombatSystem {
         });
       }
       this._spawnHitEffect(hitEnemy.x, hitEnemy.y);
+      // Freeze-frames de impacto en atacante y golpeado + sacudida sutil de cámara.
+      this._hitstop([this.scene.player, hitEnemy]);
+      this.scene.cameras?.main?.shake(50, 0.004);
     }
+  }
+
+  // Devuelve la entrada de inventario a usar para un tipo (scroll/throwable): el slot
+  // activo configurado si sigue disponible, o el primero del tipo como fallback.
+  _pickActiveItem(type) {
+    const state = useGameStore.getState();
+    const inventory = state.inventory || [];
+    const activeId = type === 'scroll' ? state.activeScrollId
+                   : type === 'throwable' ? state.activeThrowableId
+                   : null;
+    if (activeId) {
+      const active = inventory.find(inv => inv.id === activeId && inv.item?.item_type === type && inv.quantity > 0);
+      if (active) return active;
+    }
+    return inventory.find(inv => inv.item?.item_type === type && inv.quantity > 0);
   }
 
   handlePlayerSpell() {
     if (!this.scene.player || this.scene.isTyping()) return;
-    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned) return;
+    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
-    // Check inventory for a Scroll item
-    const inventory = useGameStore.getState().inventory || [];
-    const scrollEntry = inventory.find(inv => inv.item?.item_type === 'scroll' && inv.quantity > 0);
+    // Pergamino activo (configurable en inventario); si no, el primero disponible.
+    const scrollEntry = this._pickActiveItem('scroll');
     if (!scrollEntry) {
       useNotificationStore.getState().addNotification('warning', 'Necesitas un Pergamino de Habilidad en tu inventario para lanzar un hechizo.');
       return;
     }
 
-    // Check Mana cost (30 MP)
-    if (this.playerMp < 30) {
-      useNotificationStore.getState().addNotification('warning', 'No tienes suficiente Maná para lanzar un hechizo (requiere 30 MP).');
+    // El hechizo concreto lo determina el Pergamino que llevas (su nombre/icono).
+    const spellType = resolveSpellType(scrollEntry.item);
+    const profile = SPELL_PROFILES[spellType] || SPELL_PROFILES[DEFAULT_SPELL];
+
+    // Coste de maná según el hechizo
+    if (this.playerMp < profile.mpCost) {
+      useNotificationStore.getState().addNotification('warning', `No tienes suficiente Maná (requiere ${profile.mpCost} MP).`);
       return;
     }
 
     const now = this.scene.time.now;
-    if (now - (this._lastSpellTime || 0) < 4000) return;
+    if (now - (this._lastSpellTime || 0) < profile.cooldownMs) return;
     this._lastSpellTime = now;
 
-    // El pergamino es tu "libro de hechizos": basta con poseerlo. Lanzar cuesta
-    // MP, no consume el scroll (es un item grant_skill de un solo uso; gastarlo en
-    // cada cast provocaba un 500 al re-desbloquear la habilidad ya aprendida).
-    this.playerMp -= 30;
+    // El pergamino es tu "libro de hechizos": basta con poseerlo, no se consume.
+    // Descuento local optimista + gasto autoritativo en el servidor (persiste el maná).
+    this.playerMp = Math.max(0, this.playerMp - profile.mpCost);
     this.updateHpBar();
+    useGameStore.getState().sendSpendMana(profile.mpCost);
 
     const charId = this.scene.player.characterId || '1';
-    const animKey = `char-${charId}-special`;
-    if (this.scene.anims.exists(animKey)) {
-      this.scene.player.playAnimation('special', 800);
+    if (this.scene.anims.exists(`char-${charId}-${profile.anim}`)) {
+      this.scene.player.playAnimation(profile.anim, 800);
     }
 
-    this.scene.cameras.main.shake(400, 0.012);
+    // Lanzar el efecto correspondiente (~250ms tras el inicio, al "soltar" el cast).
+    this.scene.time.delayedCall(250, () => this._castSpell(spellType, profile));
+  }
 
-    const magicGfx = this.scene.add.graphics({ x: this.scene.player.x, y: this.scene.player.y });
-    magicGfx.setDepth(this.scene.player.depth - 1);
-    magicGfx.lineStyle(4, 0x9933ff, 0.9);
-    magicGfx.strokeCircle(0, 0, 100);
-    magicGfx.lineStyle(2, 0xcc99ff, 0.6);
-    magicGfx.strokeCircle(0, 0, 60);
-    magicGfx.strokeCircle(0, 0, 140);
-    
-    magicGfx.lineStyle(1.5, 0xcc99ff, 0.4);
-    for (let i = 0; i < 8; i++) {
-      const angle = (i * Math.PI) / 4;
-      magicGfx.lineBetween(0, 0, Math.cos(angle) * 140, Math.sin(angle) * 140);
+  // ── Hechizos (multijugador: daño server-autoritativo vía sendPlayerAttack) ──────
+
+  _castSpell(type, profile) {
+    switch (type) {
+      case 'fire_rain': this._castFireRain(profile, type); break;
+      case 'wave':      this._castWave(profile, type); break;
+      case 'nova':
+      default:          this._castNova(profile, type); break;
     }
-    
-    magicGfx.setScale(0.2);
-    magicGfx.setAlpha(0.8);
-    this.scene.tweens.add({
-      targets: magicGfx,
-      scale: 1.2,
-      alpha: 0,
-      duration: 600,
-      ease: 'Quad.easeOut',
-      onComplete: () => magicGfx.destroy()
-    });
+  }
 
-    const hitRange = 220;
-    this.enemySystem.activeEnemies.forEach((enemy, id) => {
-      if (!enemy.active || enemy.fsm === 'dead') return;
-      const dist = window.Phaser.Math.Distance.Between(this.scene.player.x, this.scene.player.y, enemy.x, enemy.y);
-      if (dist < hitRange) {
-        useGameStore.getState().sendPlayerAttack(id, 'spell');
-        if (enemy.sprite) {
-          enemy.sprite.setTint(0xcc33ff);
-          this.scene.time.delayedCall(300, () => {
-            if (enemy.active && enemy.sprite) enemy.sprite.clearTint();
-          });
-        }
-        this._spawnHitEffect(enemy.x, enemy.y);
-      }
+  // Aplica un golpe de hechizo a un enemigo: reporta al servidor (con el subtipo, para
+  // que aplique el daño autoritativo de ese hechizo) + feedback local.
+  _applySpellHit(id, enemy, color, attackType = 'spell') {
+    if (!enemy?.active || enemy.fsm === 'dead') return;
+    useGameStore.getState().sendPlayerAttack(id, attackType);
+    if (enemy.sprite) {
+      enemy.sprite.setTint(color);
+      this.scene.time.delayedCall(250, () => {
+        if (enemy.active && enemy.sprite) enemy.sprite.clearTint();
+      });
+    }
+    this._spawnHitEffect(enemy.x, enemy.y);
+  }
+
+  // Destello de pantalla fijado a la cámara.
+  _screenFlash(color, alpha, duration) {
+    const cam = this.scene.cameras?.main;
+    if (!cam) return;
+    const flash = this.scene.add.rectangle(0, 0, cam.width, cam.height, color, alpha)
+      .setOrigin(0).setScrollFactor(0).setDepth(9998);
+    this.scene.tweens.add({ targets: flash, alpha: 0, duration, onComplete: () => flash.destroy() });
+  }
+
+  // NOVA: explosión radial desde el jugador.
+  _castNova(profile, type = 'nova') {
+    const px = this.scene.player.x, py = this.scene.player.y;
+    const MAX_RAD = 170;
+    this._screenFlash(profile.flash, 0.4, 120);
+    this.scene.cameras?.main?.shake(300, 0.014);
+
+    const ring = this.scene.add.graphics().setDepth(this.scene.player.depth - 1);
+    let radius = 10;
+    const hit = new Set();
+    const timer = this.scene.time.addEvent({
+      delay: 16, repeat: 28,
+      callback: () => {
+        ring.clear();
+        radius += (MAX_RAD - 10) / 28;
+        ring.lineStyle(4, profile.color, Math.max(0, 1 - radius / MAX_RAD));
+        ring.strokeCircle(px, py, radius);
+        ring.fillStyle(profile.color, 0.06);
+        ring.fillCircle(px, py, radius);
+        this.enemySystem.activeEnemies.forEach((enemy, id) => {
+          if (hit.has(id)) return;
+          if (window.Phaser.Math.Distance.Between(px, py, enemy.x, enemy.y) <= radius) {
+            hit.add(id);
+            this._applySpellHit(id, enemy, profile.color, type);
+          }
+        });
+      },
     });
+    this.scene.time.delayedCall(520, () => { ring.destroy(); timer.remove(); });
+
+    for (let i = 0; i < 20; i++) {
+      const angle = (i / 20) * Math.PI * 2;
+      const spark = this.scene.add.circle(px, py, 5, profile.color, 0.9).setDepth(9000);
+      this.scene.tweens.add({
+        targets: spark, x: px + Math.cos(angle) * 110, y: py + Math.sin(angle) * 110,
+        alpha: 0, scale: 0.2, duration: 480, ease: 'Power2', onComplete: () => spark.destroy(),
+      });
+    }
+  }
+
+  // FIRE_RAIN: bombardeo de bolas de fuego alrededor del jugador.
+  _castFireRain(profile, type = 'fire_rain') {
+    const DROPS = 16;
+    const px = this.scene.player.x, py = this.scene.player.y;
+    this._screenFlash(profile.flash, 0.25, 180);
+    const hit = new Set();
+    this.scene.time.addEvent({
+      delay: 110, repeat: DROPS - 1,
+      callback: () => {
+        const x = px + window.Phaser.Math.Between(-260, 260);
+        const ball = this.scene.add.circle(x, py - 320, 9, profile.color, 0.95).setDepth(9000);
+        this.scene.tweens.add({
+          targets: ball, y: py + window.Phaser.Math.Between(-20, 30),
+          duration: 360, ease: 'Quad.easeIn',
+          onComplete: () => {
+            this._spawnHitEffect(ball.x, ball.y);
+            this.enemySystem.activeEnemies.forEach((enemy, id) => {
+              if (hit.has(id)) return;
+              if (Math.abs(enemy.x - ball.x) < 55 && Math.abs(enemy.y - ball.y) < 70) {
+                hit.add(id);
+                this._applySpellHit(id, enemy, profile.color, type);
+              }
+            });
+            ball.destroy();
+          },
+        });
+      },
+    });
+  }
+
+  // WAVE: onda que barre hacia delante en la dirección a la que mira el jugador.
+  _castWave(profile, type = 'wave') {
+    const facingRight = !this.scene.player.sprite?.flipX;
+    const dir = facingRight ? 1 : -1;
+    const py = this.scene.player.y - 10;
+    this._screenFlash(profile.flash, 0.2, 140);
+
+    const wave = this.scene.add.rectangle(this.scene.player.x + dir * 30, py, 70, 60, profile.color, 0.65).setDepth(9000);
+    wave.setStrokeStyle(3, 0x88ddff, 1);
+    const hit = new Set();
+    const timer = this.scene.time.addEvent({
+      delay: 16, repeat: 42,
+      callback: () => {
+        wave.x += dir * 14;
+        this.enemySystem.activeEnemies.forEach((enemy, id) => {
+          if (hit.has(id)) return;
+          if (Math.abs(enemy.x - wave.x) < 45 && Math.abs(enemy.y - py) < 60) {
+            hit.add(id);
+            this._applySpellHit(id, enemy, profile.color, type);
+          }
+        });
+      },
+    });
+    this.scene.time.delayedCall(720, () => { wave.destroy(); timer.remove(); });
   }
 
   handlePlayerThrow() {
     if (!this.scene.player || this.scene.isTyping()) return;
-    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned) return;
+    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
-    // Check inventory for a throwable item
-    const inventory = useGameStore.getState().inventory || [];
-    const itemEntry = inventory.find(inv => inv.item?.item_type === 'throwable' && inv.quantity > 0);
+    // Arrojadizo activo (configurable en inventario); si no, el primero disponible.
+    const itemEntry = this._pickActiveItem('throwable');
     if (!itemEntry) {
       useNotificationStore.getState().addNotification('warning', 'Necesitas un Arma Arrojable en tu inventario.');
       return;
@@ -436,9 +667,10 @@ export class CombatSystem {
     if (now - (this._lastThrowTime || 0) < 2000) return;
     this._lastThrowTime = now;
 
-    // Consume Mana & Item
-    this.playerMp -= 10;
+    // Consume Mana (autoritativo + persistido) & Item
+    this.playerMp = Math.max(0, this.playerMp - 10);
     this.updateHpBar();
+    useGameStore.getState().sendSpendMana(10);
     useGameStore.getState().useItem(itemEntry.id);
 
     const charId = this.scene.player.characterId || '1';
@@ -466,13 +698,23 @@ export class CombatSystem {
     const hasSprite = spriteKey && this.scene.textures.exists(spriteKey);
     const initialKey = hasSprite ? spriteKey : 'energy-ball';
 
+    // Fit the icon into a 28px box preserving aspect ratio. A forced square size
+    // (setDisplaySize(28,28)) squished non-square PNGs; this scales by the longest side.
+    const fitProjectile = (sprite) => {
+      const img = sprite.texture?.getSourceImage?.();
+      const w = img?.width || 28, h = img?.height || 28;
+      const s = 28 / Math.max(w, h);
+      sprite.setDisplaySize(w * s, h * s);
+    };
+
     const proj = this.scene.physics.add.sprite(this.scene.player.x, this.scene.player.y - 20, initialKey);
-    if (hasSprite) proj.setDisplaySize(28, 28);
+    if (hasSprite) fitProjectile(proj);
     proj.setDepth(this.scene.player.depth + 10);
     const direction = this.scene.player.sprite.flipX ? -1 : 1;
-    proj.setFlipX(direction < 0);
     proj.body.setVelocityX(direction * 400);
     proj.body.setAllowGravity(false);
+    // Spin the throwable as it travels (tumbling), in the throw direction.
+    proj.body.setAngularVelocity(direction * 540);
 
     // Carga diferida del sprite del item si aún no estaba en caché.
     if (spriteKey && !hasSprite && !this.scene.load.isLoading()) {
@@ -481,8 +723,7 @@ export class CombatSystem {
       this.scene.load.once(`filecomplete-image-${spriteKey}`, () => {
         if (proj.active && this.scene.textures.exists(spriteKey)) {
           proj.setTexture(spriteKey);
-          proj.setDisplaySize(28, 28);
-          proj.setFlipX(direction < 0);
+          fitProjectile(proj);
         }
       });
       this.scene.load.start();
@@ -495,7 +736,8 @@ export class CombatSystem {
     this.scene.physics.add.overlap(proj, this.scene.enemiesGroup, (projectile, enemy) => {
       if (enemy.active && enemy.fsm !== 'dead') {
         const instanceId = enemy.config?.instance_id || enemy.npcId;
-        useGameStore.getState().sendPlayerAttack(instanceId, 'throw');
+        // Pasamos el id del item arrojado para que el servidor use su effect_value como daño.
+        useGameStore.getState().sendPlayerAttack(instanceId, 'throw', itemEntry.item?.id);
         this._spawnHitEffect(enemy.x, enemy.y);
         if (enemy.sprite) {
           enemy.sprite.setTint(0x00ffff);
@@ -510,7 +752,7 @@ export class CombatSystem {
 
   handlePlayerPotion() {
     if (!this.scene.player || this.scene.isTyping()) return;
-    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned) return;
+    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
     // Check if health is already full
     if (this.playerHp >= this.playerMaxHp) {
@@ -562,7 +804,7 @@ export class CombatSystem {
 
   handlePlayerManaPotion() {
     if (!this.scene.player || this.scene.isTyping()) return;
-    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned) return;
+    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
     // Check if mana is already full
     if (this.playerMp >= this.playerMaxMp) {
@@ -591,7 +833,10 @@ export class CombatSystem {
       this.scene.player.playAnimation('potion', 600);
     }
 
-    this.playerMp = Math.min(this.playerMaxMp, this.playerMp + 40);
+    // Refill local optimista (feedback inmediato) por el EffectValue real de la poción;
+    // el servidor reconcilia el valor autoritativo vía refreshMana → player_mp.
+    const restore = itemEntry.item?.effect_value ?? 30;
+    this.playerMp = Math.min(this.playerMaxMp, this.playerMp + restore);
     this.updateHpBar();
 
     // Spawn blue sparkles for mana restoration
@@ -616,7 +861,7 @@ export class CombatSystem {
 
   handlePlayerDash() {
     if (!this.scene.player || this.scene.isTyping()) return;
-    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned) return;
+    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
     // Check Mana cost (15 MP)
     if (this.playerMp < 15) {

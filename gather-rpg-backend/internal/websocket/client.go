@@ -46,6 +46,12 @@ type Client struct {
 	IsDead       bool
 	LastDamageAt time.Time
 	LastHealAt   time.Time
+
+	// Maná persistente (server-authoritative). Se carga de PlayerStats al entrar a una
+	// sala y se persiste al gastarlo (hechizos/arrojadizos) — fuente única de verdad,
+	// compartida con el inventario (pociones de maná) y la barra del HUD/Sidebar.
+	MP    int
+	MPMax int
 }
 
 func NewClient(hub *Hub, conn *websocket.Conn, id uuid.UUID, username string) *Client {
@@ -58,6 +64,8 @@ func NewClient(hub *Hub, conn *websocket.Conn, id uuid.UUID, username string) *C
 		PosLimiter: rate.NewLimiter(rate.Limit(20), 20),
 		HP:         100,
 		HPMax:      100,
+		MP:         50,
+		MPMax:      50,
 	}
 }
 

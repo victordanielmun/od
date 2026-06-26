@@ -200,8 +200,8 @@ export const AdminShops = () => {
 
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                    <div className="bg-gray-900 border border-gray-700 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-zoomIn">
-                        <div className="flex flex-col p-8 border-b border-gray-800">
+                    <div className="bg-gray-900 border border-gray-700 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-zoomIn max-h-[90vh] flex flex-col">
+                        <div className="flex flex-col p-8 border-b border-gray-800 flex-shrink-0">
                             <div className="flex justify-between items-start mb-2">
                                 <h2 className="text-2xl font-bold text-white">
                                     {editingShop ? t('admin.shops.form.title_edit') : t('admin.shops.form.title_new')}
@@ -256,7 +256,7 @@ export const AdminShops = () => {
                                             </span>
                                         </label>
                                         <div className="flex-1 bg-gray-950/50 border border-gray-800 rounded-2xl overflow-hidden flex flex-col">
-                                            <div className="overflow-y-auto custom-scrollbar p-3 grid grid-cols-1 gap-2">
+                                            <div className="overflow-y-auto custom-scrollbar p-3 grid grid-cols-1 gap-2 max-h-[45vh]">
                                                 {allItems.map(item => (
                                                     <button
                                                         key={item.id}
@@ -289,7 +289,7 @@ export const AdminShops = () => {
                                 </div>
                             </div>
 
-                            <div className="p-8 border-t border-gray-800 bg-gray-900/50 flex gap-4">
+                            <div className="p-8 border-t border-gray-800 bg-gray-900/50 flex gap-4 flex-shrink-0">
                                 <button 
                                     type="button"
                                     onClick={() => setIsModalOpen(false)}

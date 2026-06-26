@@ -28,6 +28,14 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     // Ninja Cards
     ninjaCardData: null,
 
+    // Slot activo de combate: qué pergamino (Q) y qué arrojadizo (U) usar cuando tienes
+    // varios. Guardamos el id de la entrada de inventario; si no es válido, se usa el
+    // primero del tipo como fallback. Se configuran desde el inventario (SettingsMenu).
+    activeScrollId: null,
+    activeThrowableId: null,
+    setActiveScroll: (id) => set({ activeScrollId: id }),
+    setActiveThrowable: (id) => set({ activeThrowableId: id }),
+
     // Chat State
     chatRequests: [], // Array of { requester_id, requester_name }
     activeChat: null, // { partner_id, partner_name, messages: [] }
@@ -43,6 +51,9 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                 wsClient.on('ninja_card_triggered', (payload) => {
                     console.log('[NinjaCard] Triggered:', payload);
                     set({ ninjaCardData: payload });
+                    // Bloquear el input del canvas mientras la card está abierta (el jugador
+                    // responde en el overlay HTML). Se re-habilita en clearNinjaCardData.
+                    window.dispatchEvent(new CustomEvent('phaser-disable-input'));
                 });
 
                 wsClient.on('ninja_card_result', (payload) => {
@@ -507,6 +518,11 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                 wsClient.on('player_died', () => {
                     window.dispatchEvent(new CustomEvent('player-died-server'));
                 });
+                // Maná autoritativo del jugador (fuente de verdad persistente). Lo escuchan
+                // el HUD de combate (CombatSystem) y el Sidebar (LobbyLayout).
+                wsClient.on('player_mp', (payload) => {
+                    window.dispatchEvent(new CustomEvent('player-mp-update', { detail: payload }));
+                });
 
                 wsClient.on('enemy_died', (payload) => {
                     // Dispatch to Phaser scenes
@@ -737,8 +753,21 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
         if (!missionId) return;
         const roomId = get().currentRoomId;
         try {
-            await api.post(`/missions/${missionId}/accept${roomId ? `?room_id=${roomId}` : ''}`);
+            const response = await api.post(`/missions/${missionId}/accept${roomId ? `?room_id=${roomId}` : ''}`);
             console.log(`[gameStore] Mission ${missionId} accepted (room ${roomId || 'none'})`);
+
+            // If the mission paid an up-front gold advance, reflect the new gold in
+            // the HUD (authStore.user.stats) and tell the player about the stipend.
+            const advance = response?.data?.advance_gold || 0;
+            if (advance > 0) {
+                const { user } = useAuthStore.getState();
+                if (user && response.data.player_stats) {
+                    useAuthStore.setState({
+                        user: { ...user, stats: response.data.player_stats }
+                    });
+                }
+                useNotificationStore.getState().addNotification('success', `+${advance} de oro de anticipo para la misión`);
+            }
         } catch (err) {
             console.error('Failed to accept mission:', err);
         }
@@ -799,11 +828,29 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
         }
     },
 
+    // Gasto de maná autoritativo: el server valida, descuenta y persiste (PlayerStats),
+    // y responde con el maná real vía 'player_mp'. El cliente descuenta optimista aparte.
+    sendSpendMana: (amount) => {
+        if (!amount || amount <= 0) return;
+        wsClient.send('spend_mana', { amount });
+    },
+
+    // Pide al server recargar el maná desde BD (tras usar una poción de maná en el
+    // inventario por REST) para sincronizar el HUD de combate.
+    refreshMana: () => {
+        wsClient.send('refresh_mana', {});
+    },
+
     useItem: async (inventoryId) => {
         try {
             const response = await api.post(`/inventory/use/${inventoryId}`);
             if (response.data.status === 'success') {
                 get().fetchInventory();
+                // El maná/HP pudieron cambiar en BD (poción): sincroniza el maná de combate
+                // (refreshMana → player_mp) y refresca los stats del Sidebar por REST (no
+                // depende del WS, así funciona aunque el backend no esté reiniciado).
+                get().refreshMana();
+                window.dispatchEvent(new CustomEvent('refresh-player-stats'));
                 useNotificationStore.getState().addNotification('success', response.data.message || '¡Objeto usado!');
                 return true;
             }
@@ -829,16 +876,27 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
 
     clearNinjaCardData: () => {
         set({ ninjaCardData: null });
+        // Al cerrar la card devolvemos el foco/control del teclado al canvas. Si el jugador
+        // pulsó una opción (un <button>), el canvas perdió el foco y a veces dejaba de
+        // recibir el input al reanudar. Re-habilitamos y enfocamos explícitamente.
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('phaser-enable-input'));
+            const canvas = document.querySelector('canvas');
+            if (canvas) canvas.focus();
+        }
     },
 
-    sendPlayerAttack: (enemyInstanceId, attackType = 'basic') => {
+    sendPlayerAttack: (enemyInstanceId, attackType = 'basic', itemId = null) => {
         const roomId = get().currentRoomId;
         if (roomId && enemyInstanceId) {
             console.log(`[gameStore] Sending player_attack for enemy: ${enemyInstanceId} (${attackType})`);
             // El servidor decide el daño según attack_type; el cliente solo informa el tipo.
+            // Para arrojables se manda el item_id: el servidor lee su effect_value de la BD
+            // (daño definido por el admin), nunca un valor de daño enviado por el cliente.
             wsClient.send('player_attack', {
                 target_instance_id: enemyInstanceId,
                 attack_type: attackType,
+                ...(itemId ? { item_id: itemId } : {}),
                 room_id: roomId
             });
         }

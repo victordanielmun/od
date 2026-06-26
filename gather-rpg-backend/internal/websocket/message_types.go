@@ -69,6 +69,9 @@ const (
 	MsgPlayerDied       = "player_died"   // s→c: el jugador murió (HP a 0)
 	MsgPlayerRespawn    = "player_respawn" // c→s: el jugador solicita revivir (reset HP)
 	MsgPlayerHeal       = "player_heal"   // c→s: el jugador usó una poción de vida (cura server-side)
+	MsgPlayerMP         = "player_mp"     // s→c: maná autoritativo del jugador
+	MsgSpendMana        = "spend_mana"    // c→s: gastar maná (hechizo/arrojadizo); el server valida y persiste
+	MsgRefreshMana      = "refresh_mana"  // c→s: recargar maná desde BD (tras usar poción de maná en inventario)
 
 	// Ninja Cards
 	MsgNinjaCardTriggered = "ninja_card_triggered"

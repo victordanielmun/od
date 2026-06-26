@@ -26,6 +26,7 @@ const TEXTURE_MAP = {
   store:     'store-tiles',
   furniture: 'store-furniture',
   furniture2: 'store-furniture2',
+  furniture3: 'furniture',
   item:      'tile-item',
 };
 
@@ -66,7 +67,8 @@ export class TileRegistry {
       case 'collider':  return mm.colliders;
       case 'store':     return mm.storeTiles;
       case 'furniture':
-      case 'furniture2': return mm.storeFurniture;
+      case 'furniture2':
+      case 'furniture3': return mm.storeFurniture;
       case 'enemy':     return mm.enemySpawns;
       default:          return mm.walls;
     }
@@ -108,6 +110,8 @@ export class TileRegistry {
         let actualType = item.type;
         if (actualType === 'furniture' && found.texture.key === 'store-furniture2') {
           actualType = 'furniture2';
+        } else if (actualType === 'furniture' && found.texture.key === 'furniture') {
+          actualType = 'furniture3';
         }
         return { tile: found, type: actualType, group: item.group };
       }
@@ -148,6 +152,8 @@ export class TileRegistry {
         let actualType = type;
         if (actualType === 'furniture' && tile.texture.key === 'store-furniture2') {
           actualType = 'furniture2';
+        } else if (actualType === 'furniture' && tile.texture.key === 'furniture') {
+          actualType = 'furniture3';
         }
         result.push({ tile, type: actualType, group });
       }

@@ -28,23 +28,37 @@ export class PickupManager {
 
   async loadMapPickups() {
     const scene = this.scene;
-    try {
-      console.log(`[PickupManager] Fetching Map Pickups for scene: ${scene.currentMapKey}`);
-      const response = await api.get(`/inventory/pickups/${scene.currentMapKey}`);
+    const url = `/inventory/pickups/${scene.currentMapKey}`;
 
-      if (response.data) {
-        // Clear existing pickups if any (usually empty on start)
-        this.activePickups.forEach(p => p.destroy());
-        this.activePickups = [];
-
-        response.data.forEach(pickup => {
-          if (!pickup.is_picked_up) {
-            this.createMapPickupSprite(pickup);
-          }
-        });
+    // La BD puede ir lenta y devolver un 500/timeout puntual al cargar el mapa. Reintentamos
+    // con backoff antes de rendirnos para que un fallo transitorio no deje el mapa sin items.
+    const MAX_ATTEMPTS = 3;
+    let response = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        console.log(`[PickupManager] Fetching Map Pickups for scene: ${scene.currentMapKey} (intento ${attempt}/${MAX_ATTEMPTS})`);
+        response = await api.get(url);
+        break;
+      } catch (err) {
+        console.warn(`[PickupManager] Fallo al cargar pickups (intento ${attempt}/${MAX_ATTEMPTS}):`, err?.message || err);
+        if (attempt === MAX_ATTEMPTS) {
+          console.error('[PickupManager] Se agotaron los reintentos de carga de pickups.');
+          return;
+        }
+        await new Promise(r => setTimeout(r, 400 * attempt)); // 400ms, luego 800ms
       }
-    } catch (err) {
-      console.error('[PickupManager] Failed to load map pickups:', err);
+    }
+
+    if (response?.data) {
+      // Clear existing pickups if any (usually empty on start)
+      this.activePickups.forEach(p => p.destroy());
+      this.activePickups = [];
+
+      response.data.forEach(pickup => {
+        if (!pickup.is_picked_up) {
+          this.createMapPickupSprite(pickup);
+        }
+      });
     }
   }
 

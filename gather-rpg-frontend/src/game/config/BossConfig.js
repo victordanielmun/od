@@ -21,8 +21,9 @@ export const BOSS_STATE_TO_ANIM = {
 export const BOSS_CONFIG = {
   bosses: AVAILABLE_BOSSES.map(id => ({
     id,
-    // El jugador escala su sprite a 0.25 y usa frames del mismo tamaño (~207x304).
-    // Boss ≈ 1.5× el jugador → 0.25 * 1.5 = 0.375.
+    // Fallback de escala. En partida, EnemySprite normaliza el boss por el alto real
+    // de su frame a 1.25× el objetivo del personaje (ver BOSS_SIZE_FACTOR). Este valor
+    // solo se usa si no se puede leer el frame base.
     scale: 0.375,
     sheets: [
       { type: 'base',   path: `/boss/${id}b.png`, json: `/boss/${id}b.json` },

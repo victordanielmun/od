@@ -7,6 +7,7 @@ import (
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/services"
 	"gather-rpg-backend/internal/utils"
+	"gather-rpg-backend/internal/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"strconv"
@@ -16,23 +17,11 @@ import (
 type MissionHandler struct {
 	Service     *services.MissionService
 	Translation *services.TranslationService
+	Hub         *websocket.Hub
 }
 
-func NewMissionHandler(service *services.MissionService, translation *services.TranslationService) *MissionHandler {
-	return &MissionHandler{Service: service, Translation: translation}
-}
-
-func levelToInt(l models.DifficultyLevel) int {
-	switch l {
-	case models.DifficultyBeginner:
-		return 1
-	case models.DifficultyIntermediate:
-		return 2
-	case models.DifficultyAdvanced:
-		return 3
-	default:
-		return 1
-	}
+func NewMissionHandler(service *services.MissionService, translation *services.TranslationService, hub *websocket.Hub) *MissionHandler {
+	return &MissionHandler{Service: service, Translation: translation, Hub: hub}
 }
 
 func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
@@ -52,21 +41,10 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 	// Native language for quest-log localization (helper text only; English stays canonical).
 	userLang := h.Translation.UserLang(userIDStr)
 
-	// Fetch player's english level
-	var profile models.UserLearningProfile
-	playerLevel := models.DifficultyBeginner
-	if err := database.DB.Where("user_id = ?", userID).First(&profile).Error; err == nil {
-		playerLevel = profile.EnglishLevel
-	}
-
-	// Filter missions by player level
-	filteredMissions := make([]models.Mission, 0)
-	for _, m := range missions {
-		if levelToInt(m.Difficulty) <= levelToInt(playerLevel) {
-			filteredMissions = append(filteredMissions, m)
-		}
-	}
-	missions = filteredMissions
+	// NOTE: difficulty is informative only — we surface it as a label so players can
+	// explore and recognize which missions are more advanced. We intentionally do NOT
+	// filter/hide missions by the player's level: a level is a poor proxy for what
+	// someone can actually do, so all active missions stay visible.
 
 	type TaskWithStatus struct {
 		ID            uint   `json:"id"`
@@ -87,6 +65,7 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 		ObjectiveEn   string           `json:"objective_en"`
 		SceneKey      string           `json:"scene_key"`
 		Mode          string           `json:"mode"`
+		Difficulty    string           `json:"difficulty"` // informative label only (beginner/intermediate/advanced)
 		Tasks         []TaskWithStatus `json:"tasks"`
 		OverallStatus string           `json:"status"`
 	}
@@ -166,6 +145,7 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 			ObjectiveEn:   m.ObjectiveEn,
 			SceneKey:      m.SceneKey,
 			Mode:          string(m.Mode),
+			Difficulty:    string(m.Difficulty),
 			OverallStatus: overallStatus,
 			Tasks:         taskStatuses,
 		})
@@ -213,30 +193,23 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 	// Native language for localization (helper text only; English stays canonical).
 	userLang := h.Translation.UserLang(userIDStr)
 
-	// Fetch player's english level
-	var profile models.UserLearningProfile
-	playerLevel := models.DifficultyBeginner
-	if err := database.DB.Where("user_id = ?", userID).First(&profile).Error; err == nil {
-		playerLevel = profile.EnglishLevel
-	}
-
-	// Filter missions by player level
-	filteredMissions := make([]models.Mission, 0)
-	for _, m := range missions {
-		if levelToInt(m.Difficulty) <= levelToInt(playerLevel) {
-			filteredMissions = append(filteredMissions, m)
-		}
-	}
-	missions = filteredMissions
+	// NOTE: difficulty is informative only — surfaced as a label so players can explore
+	// and recognize which missions are more advanced. We intentionally do NOT filter/hide
+	// missions by the player's level (see GetMissionsByScene for the rationale).
 
 	type MissionSummary struct {
-		ID                uint   `json:"id"`
-		Title             string `json:"title"`
-		Description       string `json:"description"`
-		Objective         string `json:"objective"`
-		Status            string `json:"status"`
-		SceneKey          string `json:"scene_key"`
-		PlayerInstruction string `json:"player_instruction"`
+		ID                    uint            `json:"id"`
+		Title                 string          `json:"title"`
+		Description           string          `json:"description"`
+		Objective             string          `json:"objective"`
+		Status                string          `json:"status"`
+		SceneKey              string          `json:"scene_key"`
+		Difficulty            string          `json:"difficulty"` // informative label only
+		PlayerInstruction     string          `json:"player_instruction"`
+		CurrentTaskID         uint            `json:"current_task_id"`
+		CurrentTaskType       string          `json:"current_task_type"`
+		PronunciationMinScore int             `json:"pronunciation_min_score"`
+		KaraokeLines          json.RawMessage `json:"karaoke_lines,omitempty"`
 	}
 
 	type NPCMissionHub struct {
@@ -268,6 +241,9 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		}
 
 		currentInstruction := m.DescriptionEn
+		// currentTask mirrors the task whose instruction we surface, so the client can
+		// branch on its type (e.g. open the karaoke flow) and read its config.
+		var currentTask *models.MissionTask
 
 		// If NPC is not a master, prioritize finding a task or role SPECIFIC to this NPC
 		if tmpl.NPCDefinition.Type != models.NPCTypeMaster {
@@ -279,18 +255,19 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 
 			// 2. Try to find the most relevant task for this NPC (incomplete prioritized, then any)
 			var npcTasks []models.MissionTask
-			for _, t := range tasks {
-				if t.TargetNPCTemplateID != nil && *t.TargetNPCTemplateID == tmpl.ID {
-					npcTasks = append(npcTasks, t)
+			for i := range tasks {
+				if tasks[i].TargetNPCTemplateID != nil && *tasks[i].TargetNPCTemplateID == tmpl.ID {
+					npcTasks = append(npcTasks, tasks[i])
 				}
 			}
 
 			if len(npcTasks) > 0 {
 				// Use first incomplete task for this NPC, otherwise use the last task they had
 				foundIncomplete := false
-				for _, nt := range npcTasks {
-					if !completedMap[fmt.Sprint(nt.ID)] {
-						currentInstruction = nt.DescriptionEn
+				for i := range npcTasks {
+					if !completedMap[fmt.Sprint(npcTasks[i].ID)] {
+						currentInstruction = npcTasks[i].DescriptionEn
+						currentTask = &npcTasks[i]
 						foundIncomplete = true
 						break
 					}
@@ -302,25 +279,43 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 					// dialogue stays consistent with progress; only if everything is done keep
 					// this NPC's last task.
 					fellBack := false
-					for _, t := range tasks {
-						if !completedMap[fmt.Sprint(t.ID)] {
-							currentInstruction = t.DescriptionEn
+					for i := range tasks {
+						if !completedMap[fmt.Sprint(tasks[i].ID)] {
+							currentInstruction = tasks[i].DescriptionEn
+							currentTask = &tasks[i]
 							fellBack = true
 							break
 						}
 					}
 					if !fellBack {
 						currentInstruction = npcTasks[len(npcTasks)-1].DescriptionEn
+						currentTask = &npcTasks[len(npcTasks)-1]
 					}
 				}
 			}
 		} else {
 			// If NPC is a Quest Master, show the first GLOBAL incomplete task
-			for _, t := range tasks {
-				if !completedMap[fmt.Sprint(t.ID)] {
-					currentInstruction = t.DescriptionEn
+			for i := range tasks {
+				if !completedMap[fmt.Sprint(tasks[i].ID)] {
+					currentInstruction = tasks[i].DescriptionEn
+					currentTask = &tasks[i]
 					break
 				}
+			}
+		}
+
+		// Surface the current task's type/config so the client can route to the right
+		// interaction (karaoke lines are only attached for karaoke tasks).
+		var currentTaskID uint
+		var currentTaskType string
+		var currentMinScore int
+		var karaokeLines json.RawMessage
+		if currentTask != nil {
+			currentTaskID = currentTask.ID
+			currentTaskType = string(currentTask.Type)
+			currentMinScore = currentTask.PronunciationMinScore
+			if currentTask.Type == models.TaskTypeKaraoke {
+				karaokeLines = currentTask.KaraokeLines
 			}
 		}
 
@@ -352,13 +347,18 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		}
 
 		missionSummaries = append(missionSummaries, MissionSummary{
-			ID:                m.ID,
-			Title:             title,
-			Description:       descr,
-			Objective:         objective,
-			Status:            summaryStatus,
-			SceneKey:          m.SceneKey,
-			PlayerInstruction: instruction,
+			ID:                    m.ID,
+			Title:                 title,
+			Description:           descr,
+			Objective:             objective,
+			Status:                summaryStatus,
+			SceneKey:              m.SceneKey,
+			Difficulty:            string(m.Difficulty),
+			PlayerInstruction:     instruction,
+			CurrentTaskID:         currentTaskID,
+			CurrentTaskType:       currentTaskType,
+			PronunciationMinScore: currentMinScore,
+			KaraokeLines:          karaokeLines,
 		})
 	}
 
@@ -482,10 +482,78 @@ func (h *MissionHandler) AcceptMission(c *fiber.Ctx) error {
 		}
 	}
 
-	progress, err := h.Service.AcceptMission(userID, uint(mID), roomID)
+	progress, advanceGold, err := h.Service.AcceptMission(userID, uint(mID), roomID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	return c.JSON(fiber.Map{"status": "accepted", "progress": progress})
+	resp := fiber.Map{"status": "accepted", "progress": progress, "advance_gold": advanceGold}
+	// When an advance was just paid, return the player's refreshed stats so the
+	// client can update the gold HUD without a separate fetch.
+	if advanceGold > 0 && progress != nil {
+		var stats models.PlayerStats
+		if err := database.DB.First(&stats, "id = ?", progress.PlayerID).Error; err == nil {
+			resp["player_stats"] = stats
+		}
+	}
+
+	return c.JSON(resp)
+}
+
+// KaraokeCompleteRequest is the body for POST /missions/karaoke/complete. The
+// client performs the per-line pronunciation scoring (via the voice backend) and
+// submits the resulting average so the server can deterministically decide
+// completion against the task's minimum.
+type KaraokeCompleteRequest struct {
+	MissionID  uint       `json:"mission_id"`
+	TaskID     uint       `json:"task_id"`
+	RoomID     *uuid.UUID `json:"room_id"`
+	AvgScore   float32    `json:"avg_score"`
+	LineScores []float32  `json:"line_scores"`
+}
+
+// CompleteKaraoke deterministically completes a karaoke task when the player's
+// average score meets the task threshold. Mirrors DialogueHandler's WS broadcast
+// so other players in the room see the mission-completed overlay.
+func (h *MissionHandler) CompleteKaraoke(c *fiber.Ctx) error {
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid user ID"})
+	}
+
+	var req KaraokeCompleteRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	completed, newlyDone, mission, err := h.Service.CompleteKaraoke(userID, req.MissionID, req.TaskID, req.AvgScore)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	if newlyDone && h.Hub != nil && req.RoomID != nil {
+		payload := models.MissionCompletedBroadcast{
+			MissionID: req.MissionID,
+			RoomID:    req.RoomID.String(),
+		}
+		if mission != nil {
+			payload.Title = mission.Title
+			payload.DescriptionEn = mission.DescriptionEn
+			payload.RewardGold = mission.RewardGold
+		}
+		h.Hub.BroadcastToRoom(req.RoomID.String(), &models.WSMessage{
+			Type:    websocket.MsgMissionCompleted,
+			Payload: payload,
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"task_completed":          completed,
+		"mission_newly_completed": newlyDone,
+		"mission_details":         mission,
+	})
 }

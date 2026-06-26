@@ -38,3 +38,8 @@ func (s *LearningService) UpdateEnglishLevel(userID uuid.UUID, level string) err
 	return s.Repo.UpdateEnglishLevel(userID, level)
 }
 
+// GetLeaderboard returns the top players ranked by accumulated XP.
+func (s *LearningService) GetLeaderboard(limit int) ([]models.LeaderboardEntry, error) {
+	return s.Repo.GetLeaderboard(limit)
+}
+

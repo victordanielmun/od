@@ -4,6 +4,7 @@ import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronRight
 import api from '../../services/api';
 import { analyzeDialogueAudio, generateTTS, getTTSAudioUrl } from '../../services/voiceApi';
 import ShopModal from '../common/ShopModal';
+import { KaraokeOverlay } from './KaraokeOverlay';
 import { useAuthStore } from '../../store/authStore';
 import { useGameStore } from '../../store/gameStore';
 import { ItemIcon } from '../common/ItemIcon';
@@ -99,6 +100,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const [showTooltip, setShowTooltip] = useState(false);
     const [taskCompletedBanner, setTaskCompletedBanner] = useState(null);
     const [npcTaskDone, setNpcTaskDone] = useState(false); // this NPC's task already completed by the player
+    const [showKaraoke, setShowKaraoke] = useState(true); // karaoke overlay visible while its task is current
     const hasPlayedGreeting = useRef(false);
     const taskBannerTimeoutRef = useRef(null);
 
@@ -145,6 +147,29 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
     const selectedMission = availableMissions.find(m => m.id === selectedMissionId);
     const needsTeleport = selectedMission && selectedMission.scene_key && selectedMission.scene_key !== currentSceneKey;
+
+    // Karaoke task: when the current task for the selected mission is 'karaoke', we
+    // render the dedicated sing-the-lyrics overlay instead of the normal chat.
+    const isKaraokeTask = selectedMission?.current_task_type === 'karaoke'
+        && Array.isArray(selectedMission?.karaoke_lines)
+        && selectedMission.karaoke_lines.length > 0;
+    const npcVoice = definition.voice_type || definition.voiceType
+        || NPC_CONFIG.voices[npcData.characterId] || NPC_CONFIG.voices[npcData.templateId] || NPC_CONFIG.voices.default;
+
+    const handleKaraokeComplete = (res) => {
+        if (!res) return;
+        if (res.task_completed || res.mission_newly_completed) {
+            fetchActiveMission(currentSceneKey, true);
+        }
+        if (res.mission_newly_completed) {
+            setCompletedMissionData(res.mission_details);
+            setHasPendingCompletion(true);
+        } else if (res.task_completed) {
+            setTaskCompletedBanner({ progress: '' });
+            if (taskBannerTimeoutRef.current) clearTimeout(taskBannerTimeoutRef.current);
+            taskBannerTimeoutRef.current = setTimeout(() => setTaskCompletedBanner(null), 4500);
+        }
+    };
 
     useEffect(() => {
         console.log("[NPCDialogue] MOUNTED. Props npcData:", npcData);
@@ -561,6 +586,21 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
     return (
         <div className="fixed inset-0 z-50 flex flex-col justify-end items-center pb-20 pointer-events-none bg-black/20 backdrop-blur-sm">
+            {/* Karaoke Overlay — replaces the chat while a karaoke task is current */}
+            {isKaraokeTask && showKaraoke && !isMissionComplete && (
+                <KaraokeOverlay
+                    lines={selectedMission.karaoke_lines}
+                    missionId={selectedMissionId}
+                    taskId={selectedMission.current_task_id}
+                    roomId={npcData.roomId}
+                    minScore={selectedMission.pronunciation_min_score || 80}
+                    npcName={npcName}
+                    npcVoice={npcVoice}
+                    onComplete={handleKaraokeComplete}
+                    onClose={() => { setShowKaraoke(false); handleClose(); }}
+                />
+            )}
+
             {/* Mission Complete Overlay */}
             {isMissionComplete && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto p-4 animate-in fade-in duration-500">
@@ -759,6 +799,17 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                                                 {t('npc.dialogue.status_new')}
                                                             </span>
                                                         )}
+                                                        {m.difficulty && (
+                                                            <span className={`text-[10px] px-3 py-1 font-bold uppercase tracking-widest border rounded-sm ${
+                                                                m.difficulty === 'advanced'
+                                                                    ? 'bg-red-700 text-white border-red-500'
+                                                                    : m.difficulty === 'intermediate'
+                                                                        ? 'bg-amber-600 text-white border-amber-400'
+                                                                        : 'bg-emerald-700 text-white border-emerald-500'
+                                                            }`}>
+                                                                {t(`npc.dialogue.difficulty_${m.difficulty}`)}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <span className={`text-base font-serif leading-snug transition-colors ${
@@ -809,16 +860,27 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
                         {/* Current Message */}
                         <div className="flex-1 overflow-y-auto custom-scrollbar-light mb-6 flex flex-col gap-4 relative z-10">
-                            {/* Mission Objective Helper */}
+                            {/* Mission Objective Helper — green confirmation when done, orange task nudge otherwise */}
                             {selectedMission && (
-                                <div className="bg-orange-50/50 border-l-4 border-[var(--color-orange-vibrant)] p-3 mb-2 animate-in slide-in-from-top-2 duration-500">
-                                    <p className="text-[11px] font-serif uppercase tracking-wider text-[var(--color-orange-vibrant)] font-black mb-1 flex items-center gap-2">
-                                        <Compass size={12} /> {t('npc.dialogue.current_task')}
-                                    </p>
-                                    <p className="text-sm font-serif text-[var(--color-base-dark)] leading-tight italic">
-                                        "{selectedMission.current_task_instruction || selectedMission.player_instruction || selectedMission.description}"
-                                    </p>
-                                </div>
+                                selectedMission.status === 'completed' ? (
+                                    <div className="bg-green-50 border-l-4 border-green-700 p-3 mb-2 animate-in slide-in-from-top-2 duration-500">
+                                        <p className="text-[11px] font-serif uppercase tracking-wider text-green-700 font-black mb-1 flex items-center gap-2">
+                                            <CheckCircle size={12} /> {t('npc.dialogue.completed')}
+                                        </p>
+                                        <p className="text-sm font-serif text-[var(--color-base-dark)] leading-tight italic">
+                                            "{selectedMission.objective || selectedMission.description}"
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="bg-orange-50/50 border-l-4 border-[var(--color-orange-vibrant)] p-3 mb-2 animate-in slide-in-from-top-2 duration-500">
+                                        <p className="text-[11px] font-serif uppercase tracking-wider text-[var(--color-orange-vibrant)] font-black mb-1 flex items-center gap-2">
+                                            <Compass size={12} /> {t('npc.dialogue.current_task')}
+                                        </p>
+                                        <p className="text-sm font-serif text-[var(--color-base-dark)] leading-tight italic">
+                                            "{selectedMission.current_task_instruction || selectedMission.player_instruction || selectedMission.description}"
+                                        </p>
+                                    </div>
+                                )
                             )}
                             
                             <div className="flex items-start justify-between gap-6">
@@ -948,19 +1010,54 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                         )}
                     </div>
 
-                        {/* Input Area (Centered within bubble) */}
+                        {/* Input Area — replaced by a completion panel when the mission/task is
+                            already done, so the player isn't nudged to keep talking to a finished quest. */}
+                        {((selectedMission?.status === 'completed') || npcTaskDone) ? (
+                            <div className="mt-auto flex flex-col sm:flex-row items-center justify-between gap-4 bg-green-50 p-4 border-4 border-double border-green-700 relative z-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                                <div className="flex items-center gap-3 text-green-800">
+                                    <CheckCircle size={30} className="text-green-700 shrink-0" />
+                                    <div className="text-left">
+                                        <p className="font-medieval uppercase tracking-wider text-base font-black leading-tight">{t('npc.dialogue.mission_done_title')}</p>
+                                        <p className="text-xs font-serif italic text-green-700/80 leading-tight">{t('npc.dialogue.mission_done_hint')}</p>
+                                    </div>
+                                </div>
+                                {(availableMissions.length > 0 && (resolvedType || npcType) === 'quest_master') ? (
+                                    <button
+                                        onClick={() => {
+                                            setSelectedMissionId(null);
+                                            setMessages([{
+                                                sender: 'npc',
+                                                text: t('npc.dialogue.anything_else', { lng: 'en' }),
+                                                translation: t('npc.dialogue.anything_else', { lng: 'es' }),
+                                                timestamp: new Date()
+                                            }]);
+                                        }}
+                                        className="flex items-center gap-2 px-6 py-3 bg-[var(--color-accent-blue)] text-[var(--color-gold)] font-medieval uppercase tracking-wider border-4 border-[var(--color-gold)] shadow-lg hover:bg-[var(--color-base-dark)] active:translate-y-1 transition-all whitespace-nowrap"
+                                    >
+                                        <MapPin size={20} /> {t('npc.dialogue.back_to_missions')}
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={handleClose}
+                                        className="flex items-center gap-2 px-6 py-3 bg-green-700 text-white font-medieval uppercase tracking-wider border-4 border-green-900 shadow-lg hover:bg-green-600 active:translate-y-1 transition-all whitespace-nowrap"
+                                    >
+                                        <CheckCircle size={20} /> {t('npc.dialogue.close')}
+                                    </button>
+                                )}
+                            </div>
+                        ) : (
                         <div className="mt-auto flex items-center gap-4 bg-[var(--color-base-dark)]/10 p-2 pl-6 border-4 border-double border-[var(--color-gold)] relative z-10">
                             <button
                                 onClick={toggleRecording}
                                 className={`p-4 transition-all border-2 border-[var(--color-gold-dark)] shadow-md ${
-                                    isRecording 
-                                        ? 'bg-[var(--color-orange-vibrant)] text-white animate-pulse' 
+                                    isRecording
+                                        ? 'bg-[var(--color-orange-vibrant)] text-white animate-pulse'
                                         : 'bg-[var(--color-accent-blue)] text-[var(--color-gold)]'
                                 }`}
                             >
                                 {isRecording ? <MicOff size={22} /> : <Mic size={22} />}
                             </button>
-                            
+
                             <input
                                 type="text"
                                 value={inputText}
@@ -979,6 +1076,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                 <ChevronRight size={28} />
                             </button>
                         </div>
+                        )}
                     </div>
                 </div>
             </div>

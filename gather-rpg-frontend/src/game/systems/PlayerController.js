@@ -1,4 +1,5 @@
 import ComboSystem from './ComboSystem.js';
+import { useGameStore } from '../../store/gameStore';
 
 /**
  * PlayerController — Controles simplificados (desktop + mobile-ready)
@@ -400,6 +401,14 @@ export default class PlayerController {
   _handleMovement() {
     if (this.isKnockedBack || !this.player.body) return;
 
+    // Pausa total mientras hay una Ninja Card activa (incluido el overlay de resultado,
+    // que mantiene ninjaCardData hasta ocultarse). Antes el jugador podía moverse durante
+    // la card y al "despausarse" lo hacía antes de que el mensaje desapareciera.
+    if (useGameStore.getState().ninjaCardData) {
+      this.player.body.setVelocity(0, 0);
+      return;
+    }
+
     // Bloquear movimiento durante ataques y spells
     if (this.hitboxSystem.isAttacking || this.spellSystem?.isCasting) {
       this.player.body.setVelocity(0, 0);
@@ -423,6 +432,11 @@ export default class PlayerController {
   }
 
   _updateAnimation() {
+    // Durante la Ninja Card el jugador está congelado → mantener idle.
+    if (useGameStore.getState().ninjaCardData) {
+      this.player.playAnimation('idle');
+      return;
+    }
     // No anular animaciones si hay un combate o bloqueo activo
     if (this.hitboxSystem.isAttacking || this.isKnockedBack) return;
     if (this._isBlocking) {

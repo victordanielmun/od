@@ -34,6 +34,7 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
   const isConnected = useGameStore(state => state.isConnected);
 
   const currentRoomId = useGameStore(state => state.currentRoomId);
+  const isMapLoading = useGameStore(state => state.isMapLoading);
   const fetchRooms = useRoomStore(state => state.fetchRooms);
   const createRoom = useRoomStore(state => state.createRoom);
 
@@ -313,7 +314,7 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
 
   return (
     <div className="w-full h-full relative bg-black">
-      {isLoading && (
+      {(isLoading || isMapLoading) && (
         <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-black">
           <div className="w-12 h-12 border-4 border-gray-600 border-t-yellow-500 rounded-full animate-spin mb-4"></div>
           <h2 className="text-xl font-bold text-white tracking-widest animate-pulse">{t('lobby.loading_world')}</h2>

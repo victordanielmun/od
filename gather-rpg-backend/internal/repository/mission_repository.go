@@ -69,6 +69,14 @@ func (r *MissionRepository) CreateTask(task *models.MissionTask) error {
 	return database.DB.Create(task).Error
 }
 
+func (r *MissionRepository) GetTaskByID(id uint) (*models.MissionTask, error) {
+	var task models.MissionTask
+	if err := database.DB.First(&task, id).Error; err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
+
 func (r *MissionRepository) GetTasksByMission(missionID uint) ([]models.MissionTask, error) {
 	var tasks []models.MissionTask
 	if err := database.DB.Where("mission_id = ?", missionID).Order("\"order\" ASC").Find(&tasks).Error; err != nil {

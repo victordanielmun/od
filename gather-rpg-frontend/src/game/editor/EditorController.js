@@ -330,7 +330,7 @@ export class EditorController {
     const colors = { 
       wall: 0x666666, floor: 0x8B7355, forest: 0x228B22, build: 0xCD853F, 
       spawn: 0x00CC66, npc: 0x4488FF, void: 0x2596be, collider: 0xFFD700,
-      store: 0x556270, furniture: 0xFF6B6B, enemy: 0xFF4444
+      store: 0x556270, furniture: 0xFF6B6B, furniture2: 0xFF8E8E, furniture3: 0xFFB3B3, enemy: 0xFF4444
     };
     this.cursorPreview?.setFillStyle(colors[type] || 0xffffff, 0.3);
   }
@@ -501,7 +501,7 @@ export class EditorController {
       if (this.tileType === 'build') newMetadata = this.buildMetadata;
       else if (this.tileType === 'npc') newMetadata = this.npcMetadata;
       else if (this.tileType === 'enemy') newMetadata = this.enemyMetadata;
-      else if (this.tileType === 'furniture' || this.tileType === 'furniture2') newMetadata = this.furnitureMetadata;
+      else if (this.tileType === 'furniture' || this.tileType === 'furniture2' || this.tileType === 'furniture3') newMetadata = this.furnitureMetadata;
 
       this._pushHistory({ 
         action: 'replace', 
@@ -518,14 +518,14 @@ export class EditorController {
       }
 
       let currentMetadata = null;
-      if (this.tileType === 'build') currentMetadata = this.buildMetadata;
+      if (this.tileType === 'build' || this.tileType === 'exit') currentMetadata = this.buildMetadata;
       else if (this.tileType === 'npc') currentMetadata = this.npcMetadata;
       else if (this.tileType === 'enemy') {
         currentMetadata = this.enemyMetadata;
         console.log(`[Editor] Placing enemy spawn with metadata:`, currentMetadata);
       }
       else if (this.tileType === 'item') currentMetadata = this.pickupMetadata;
-      else if (this.tileType === 'furniture' || this.tileType === 'furniture2') currentMetadata = this.furnitureMetadata;
+      else if (this.tileType === 'furniture' || this.tileType === 'furniture2' || this.tileType === 'furniture3') currentMetadata = this.furnitureMetadata;
 
       this._pushHistory({ 
         action: 'place', 
@@ -541,12 +541,12 @@ export class EditorController {
     // Determinar el frame efectivo según el tipo de tile
     const effectiveFrame = this.textureFrame || this._getDefaultFrameForType(this.tileType);
 
-    this.scene._placeTileDirect(this.tileType, gx, gy, effectiveFrame, 
-      this.tileType === 'build' ? this.buildMetadata : 
+    this.scene._placeTileDirect(this.tileType, gx, gy, effectiveFrame,
+      (this.tileType === 'build' || this.tileType === 'exit') ? this.buildMetadata :
       this.tileType === 'npc' ? this.npcMetadata : 
       this.tileType === 'enemy' ? this.enemyMetadata : 
-      this.tileType === 'item' ? this.pickupMetadata : 
-      (this.tileType === 'furniture' || this.tileType === 'furniture2') ? this.furnitureMetadata : null, 
+      this.tileType === 'item' ? this.pickupMetadata :
+      (this.tileType === 'furniture' || this.tileType === 'furniture2' || this.tileType === 'furniture3') ? this.furnitureMetadata : null,
       this.buildScale);
 
     this.emitStats();
@@ -566,6 +566,7 @@ export class EditorController {
       case 'store':     return 'sprite1';
       case 'furniture':  return 'sprite2';   // sprite1 es 1×1 px invisible
       case 'furniture2': return 'sprite7';   // sprite1-6 son 1×1 px invisibles
+      case 'furniture3': return 'sprite1';   // sprite1 (118×275) es un frame visible real
       default:          return 'sprite1';
     }
   }
@@ -702,7 +703,8 @@ export class EditorController {
         walls: this.scene.walls?.getChildren()?.length || 0,
         floors: this.scene.floors?.getChildren()?.length || 0,
         forest: this.scene.forest?.getChildren()?.length || 0,
-        builds: this.scene.builds?.getChildren()?.length || 0,
+        builds: this.scene.builds?.getChildren()?.filter(t => !t.data?.get?.('isExit'))?.length || 0,
+        exits: this.scene.builds?.getChildren()?.filter(t => t.data?.get?.('isExit'))?.length || 0,
         spawns: this.scene.spawns?.getChildren()?.length || 0,
         npcZones: this.scene.npcZones?.getChildren()?.length || 0,
         pickups: this.scene.pickups?.getChildren()?.length || 0,
@@ -711,6 +713,7 @@ export class EditorController {
         storeTiles: this.scene.storeTiles?.getChildren()?.length || 0,
         furniture: this.scene.storeFurniture?.getChildren()?.filter(t => t.texture.key === 'store-furniture')?.length || 0,
         furniture2: this.scene.storeFurniture?.getChildren()?.filter(t => t.texture.key === 'store-furniture2')?.length || 0,
+        furniture3: this.scene.storeFurniture?.getChildren()?.filter(t => t.texture.key === 'furniture')?.length || 0,
         enemySpawns: this.scene.enemySpawns?.getChildren()?.length || 0,
         historySize: this.history?.length || 0,
         redoSize: this.redoStack?.length || 0,

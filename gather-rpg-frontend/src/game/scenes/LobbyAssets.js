@@ -29,6 +29,7 @@ const ATLASES = [
   ['store-tiles', '/store/tiles.png', '/store/tiles.json'],
   ['store-furniture', '/store/furniture.png', '/store/furniture.json'],
   ['store-furniture2', '/store/furniture2.png', '/store/furniture2.json'],
+  ['furniture', '/furniture/spritesheet.png', '/furniture/sprites.json'],
 ];
 
 // Background music tracks — [cacheKey, path].

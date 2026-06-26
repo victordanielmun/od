@@ -67,6 +67,7 @@ const (
 	TaskTypeTalkToNPC     TaskType = "talk_to_npc"
 	TaskTypeDeliverMsg    TaskType = "deliver_message"
 	TaskTypePronunciation TaskType = "pronunciation_threshold"
+	TaskTypeKaraoke       TaskType = "karaoke"
 )
 
 type ProgressStatus string
@@ -146,6 +147,11 @@ type Mission struct {
 	RewardQuantity int             `gorm:"default:0" json:"reward_quantity"`
 	RewardGold     int             `gorm:"default:0" json:"reward_gold"`
 	RewardXP       int             `gorm:"default:0" json:"reward_xp"`
+	// AdvanceGold is an up-front gold stipend paid ONCE when the player first
+	// accepts the mission, before any task is done. It solves the "buy at the
+	// shop" chicken-and-egg problem (a fetch mission that requires purchasing
+	// items, where RewardGold is only paid on completion). 0 = no advance.
+	AdvanceGold    int             `gorm:"default:0" json:"advance_gold"`
 	Difficulty    DifficultyLevel `gorm:"type:varchar(20);not null;default:'beginner'" json:"difficulty"`
 	CreatedAt     time.Time       `json:"created_at"`
 }
@@ -164,6 +170,11 @@ type MissionTask struct {
 	PronunciationMinScore int       `gorm:"default:80" json:"pronunciation_min_score"`
 	TargetPhraseEn        string    `json:"target_phrase_en"`
 	MessageToDeliver      string    `json:"message_to_deliver"`
+	// KaraokeLines holds the ordered lyric lines for a 'karaoke' task as JSON:
+	// [{"order":1,"line":"Twinkle twinkle little star"}, ...]. Each line is scored
+	// per-recording by the voice backend; the task completes when the average meets
+	// PronunciationMinScore (see MissionService.CompleteKaraoke).
+	KaraokeLines          json.RawMessage `gorm:"type:jsonb" json:"karaoke_lines"`
 	CreatedAt             time.Time `json:"created_at"`
 }
 

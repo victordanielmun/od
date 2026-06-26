@@ -4,9 +4,25 @@ import (
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/services"
 	"strconv"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 )
+
+// normalizeDifficulty coerces a raw difficulty string into a valid enum value,
+// defaulting to beginner when empty or unrecognized. Difficulty is an informative
+// label shown to players (not a gate); this just keeps the stored value clean since
+// the admin form may omit or mistype the field.
+func normalizeDifficulty(raw models.DifficultyLevel) models.DifficultyLevel {
+	switch models.DifficultyLevel(strings.ToLower(strings.TrimSpace(string(raw)))) {
+	case models.DifficultyIntermediate:
+		return models.DifficultyIntermediate
+	case models.DifficultyAdvanced:
+		return models.DifficultyAdvanced
+	default:
+		return models.DifficultyBeginner
+	}
+}
 
 type MissionAdminHandler struct {
 	Service *services.MissionService
@@ -29,6 +45,7 @@ func (h *MissionAdminHandler) CreateMission(c *fiber.Ctx) error {
 	if err := c.BodyParser(&mission); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
+	mission.Difficulty = normalizeDifficulty(mission.Difficulty)
 
 	if err := h.Service.CreateMission(&mission); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
@@ -44,6 +61,7 @@ func (h *MissionAdminHandler) UpdateMission(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 	mission.ID = uint(id)
+	mission.Difficulty = normalizeDifficulty(mission.Difficulty)
 
 	if err := h.Service.UpdateMission(&mission); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})

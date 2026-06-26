@@ -27,3 +27,15 @@ type UserLearningProfile struct {
 	// Relationships
 	User User `gorm:"foreignKey:UserID" json:"-"`
 }
+
+// LeaderboardEntry is a single ranked row for the XP leaderboard. It joins the
+// accumulated learning-profile XP with the user's display name. Rank is 1-based and
+// assigned by the query order (TotalXP desc).
+type LeaderboardEntry struct {
+	Rank         int             `json:"rank"`
+	UserID       uuid.UUID       `json:"user_id"`
+	Username     string          `json:"username"`
+	EnglishLevel DifficultyLevel `json:"english_level"`
+	TotalXP      int             `json:"total_xp"`
+	WeeklyScore  int             `json:"weekly_score"`
+}

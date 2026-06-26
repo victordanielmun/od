@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import api from '../../services/api';
+import { normalizeBehavior } from '../../game/config/enemyBehaviors';
+import { InfoSignEditor } from './InfoSignEditor';
 
 const TILE_COLORS = {
   wall: '#666666',
@@ -21,6 +23,7 @@ const TILE_COLORS = {
   store: '#556270',
   furniture: '#FF6B6B',
   furniture2: '#FF8E8E',
+  furniture3: '#FFB3B3',
   exit: '#FF4500',
   enemy: '#FF4444',
 };
@@ -167,6 +170,10 @@ export const MapEditorUI = ({ gameRef }) => {
     width: 800, height: 800, isPublic: false, maxUsers: 50,
     defaultSpawnX: 1000, defaultSpawnY: 750
   });
+  // True once currentSettings has been seeded from the loaded map. Until then we
+  // must NOT push currentSettings back into the scene, or the initial React
+  // defaults (spawn 1000,750) clobber the spawn/dims loaded from the DB.
+  const hasInitializedSettings = useRef(false);
 
   const TOOLS = useMemo(() => [
     { id: 'brush', label: t('lobby.editor.tool_brush'), icon: Paintbrush, shortcut: 'B' },
@@ -192,6 +199,7 @@ export const MapEditorUI = ({ gameRef }) => {
     { id: 'store', label: t('lobby.editor.tile_store') || 'Store Tiles', color: TILE_COLORS.store },
     { id: 'furniture', label: t('lobby.editor.tile_furniture') || 'Furniture 1', color: TILE_COLORS.furniture },
     { id: 'furniture2', label: t('lobby.editor.tile_furniture2') || 'Furniture 2', color: TILE_COLORS.furniture2 },
+    { id: 'furniture3', label: t('lobby.editor.tile_furniture3') || 'Furniture 3', color: TILE_COLORS.furniture3 },
     { id: 'enemy', label: t('lobby.editor.tile_enemy') || 'Enemy Spawn', color: TILE_COLORS.enemy },
   ], [t]);
 
@@ -234,7 +242,7 @@ export const MapEditorUI = ({ gameRef }) => {
           itemId: metadata.itemId || '',
           quantity: metadata.quantity || 1
         });
-      } else if (type === 'furniture' || type === 'furniture2') {
+      } else if (type === 'furniture' || type === 'furniture2' || type === 'furniture3') {
         const fm = {
           minigameType: metadata.minigameType || '',
           minigameId: metadata.minigameId || '',
@@ -320,6 +328,11 @@ export const MapEditorUI = ({ gameRef }) => {
     }
   }, [isEditorActive]);
 
+  // Reset the init guard whenever the editor closes so a fresh open re-seeds.
+  useEffect(() => {
+    if (!isEditorActive) hasInitializedSettings.current = false;
+  }, [isEditorActive]);
+
   // Sync current settings when availableMaps loads or editor opens
   useEffect(() => {
     if (!isEditorActive) return;
@@ -342,6 +355,7 @@ export const MapEditorUI = ({ gameRef }) => {
         defaultSpawnX: spawnX, defaultSpawnY: spawnY,
         bgmTrack: bgm
       });
+      hasInitializedSettings.current = true;
     } else {
       // New map defaults? Or maybe read from current scene if already loaded
       const sc = getScene();
@@ -350,15 +364,20 @@ export const MapEditorUI = ({ gameRef }) => {
           ...prev,
           width: sc.mapWidth || 800,
           height: sc.mapHeight || 800,
+          defaultSpawnX: sc.mapDefaultSpawnX ?? prev.defaultSpawnX,
+          defaultSpawnY: sc.mapDefaultSpawnY ?? prev.defaultSpawnY,
           bgmTrack: sc.bgmTrack || 'none'
         }));
+        hasInitializedSettings.current = true;
       }
     }
   }, [availableMaps, isEditorActive]);
 
-  // Sync currentSettings back to Phaser scene whenever they change
+  // Sync currentSettings back to Phaser scene whenever they change. Guarded so the
+  // initial React defaults can't overwrite the spawn/dims loaded from the DB before
+  // currentSettings has been seeded from the map (see hasInitializedSettings).
   useEffect(() => {
-    if (!isEditorActive) return;
+    if (!isEditorActive || !hasInitializedSettings.current) return;
     const sc = getScene();
     if (sc && typeof sc.updateMapMetadata === 'function') {
       sc.updateMapMetadata(currentSettings);
@@ -454,7 +473,7 @@ export const MapEditorUI = ({ gameRef }) => {
     // Para tipos con atlas propios NO reseteamos a 'sprite1' (que solo existe en el terrain atlas).
     // Dejamos que el usuario seleccione el sprite, o usamos null para que _placeTileDirect
     // use su propio frame por defecto (ej. tree1.png para forest).
-    const tilesWithOwnAtlas = ['forest', 'wall', 'build', 'store', 'furniture', 'furniture2'];
+    const tilesWithOwnAtlas = ['forest', 'wall', 'build', 'store', 'furniture', 'furniture2', 'furniture3'];
     if (!tilesWithOwnAtlas.includes(id)) {
       setActiveTexture('sprite1');
       dispatchEditorCommand('setTexture', 'sprite1');
@@ -509,13 +528,24 @@ export const MapEditorUI = ({ gameRef }) => {
     setSaveStatus(null);
 
     const wallsJson = sc.exportMapConfig();
+    // Single source of truth: derive map_data's dimensions/spawn from the live
+    // exported config (the running scene), NOT from the React `currentSettings`.
+    // loadServerMapConfig lets map_data override walls_json for width/height, so if
+    // these two disagree the map "jumps" to whatever stale/default value was in
+    // currentSettings on reload. Reading both from the same source keeps them in sync.
+    let live = {};
+    try { live = JSON.parse(wallsJson) || {}; } catch { live = {}; }
     const mapData = JSON.stringify({
-      width: currentSettings.width,
-      height: currentSettings.height,
-      defaultSpawnX: currentSettings.defaultSpawnX,
-      defaultSpawnY: currentSettings.defaultSpawnY,
-      bgmTrack: currentSettings.bgmTrack
+      width:         live.width        ?? currentSettings.width,
+      height:        live.height       ?? currentSettings.height,
+      defaultSpawnX: live.defaultSpawnX ?? currentSettings.defaultSpawnX,
+      defaultSpawnY: live.defaultSpawnY ?? currentSettings.defaultSpawnY,
+      bgmTrack:      live.bgmTrack     ?? currentSettings.bgmTrack,
     });
+
+    // Trace: confirm what gets persisted (dimensions/spawn single source of truth +
+    // how many sign/furniture pieces are being saved, to debug readText persistence).
+    console.log(`[MapEditor] Saving '${sceneKey}' → dims ${live.width}x${live.height}, spawn (${live.defaultSpawnX},${live.defaultSpawnY}), furniture ${(live.furniture?.length || 0) + (live.furniture2?.length || 0) + (live.furniture3?.length || 0)} (with text: ${[...(live.furniture || []), ...(live.furniture2 || []), ...(live.furniture3 || [])].filter(f => f.readText).length})`);
 
     const payload = {
       scene_key: sceneKey,
@@ -601,7 +631,7 @@ export const MapEditorUI = ({ gameRef }) => {
     e.target.value = ''; // Reset for next time
   };
 
-  const total = (stats.walls || 0) + (stats.floors || 0) + (stats.forest || 0) + (stats.builds || 0) + (stats.spawns || 0) + (stats.npcZones || 0) + (stats.pickups || 0) + (stats.storeTiles || 0) + (stats.furniture || 0) + (stats.furniture2 || 0) + (stats.exits || 0);
+  const total = (stats.walls || 0) + (stats.floors || 0) + (stats.forest || 0) + (stats.builds || 0) + (stats.spawns || 0) + (stats.npcZones || 0) + (stats.pickups || 0) + (stats.storeTiles || 0) + (stats.furniture || 0) + (stats.furniture2 || 0) + (stats.furniture3 || 0) + (stats.exits || 0);
 
   const TILE_TYPE_TO_STAT = {
     wall: 'stat_walls',
@@ -615,6 +645,7 @@ export const MapEditorUI = ({ gameRef }) => {
     store: 'stat_store',
     furniture: 'stat_furniture',
     furniture2: 'stat_furniture2',
+    furniture3: 'stat_furniture3',
     exit: 'stat_exits',
     enemy: 'stat_enemies',
   };
@@ -699,14 +730,22 @@ export const MapEditorUI = ({ gameRef }) => {
                     <div className="flex-1">
                       <label className="text-[9px] text-gray-500 block mb-0.5">{t('lobby.editor.spawn_x')}</label>
                       <input type="number" value={currentSettings.defaultSpawnX}
-                        onChange={e => setCurrentSettings(p => ({ ...p, defaultSpawnX: Number(e.target.value) }))}
+                        onChange={e => {
+                          const val = Number(e.target.value);
+                          getScene()?.updateMapMetadata?.({ defaultSpawnX: val });
+                          setCurrentSettings(p => ({ ...p, defaultSpawnX: val }));
+                        }}
                         placeholder="1000"
                         className="w-full bg-gray-800 border border-green-800/60 rounded px-2 py-1 text-[10px] text-green-300 outline-none" />
                     </div>
                     <div className="flex-1">
                       <label className="text-[9px] text-gray-500 block mb-0.5">{t('lobby.editor.spawn_y')}</label>
                       <input type="number" value={currentSettings.defaultSpawnY}
-                        onChange={e => setCurrentSettings(p => ({ ...p, defaultSpawnY: Number(e.target.value) }))}
+                        onChange={e => {
+                          const val = Number(e.target.value);
+                          getScene()?.updateMapMetadata?.({ defaultSpawnY: val });
+                          setCurrentSettings(p => ({ ...p, defaultSpawnY: val }));
+                        }}
                         placeholder="750"
                         className="w-full bg-gray-800 border border-green-800/60 rounded px-2 py-1 text-[10px] text-green-300 outline-none" />
                     </div>
@@ -883,6 +922,40 @@ export const MapEditorUI = ({ gameRef }) => {
 
                 <div className="space-y-2">
                   <div>
+                    <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.enemy_model') || 'Modelo de enemigo'}</label>
+                    <select value={enemyMeta.npcId}
+                      onChange={e => {
+                        const id = e.target.value;
+                        const model = availableEnemies.find(m => String(m.id) === String(id));
+                        // El modelo es la fuente de verdad: al elegirlo se hereda su
+                        // comportamiento (y stats base). Editable después si hace falta.
+                        setEnemyMeta(p => ({
+                          ...p,
+                          npcId: id,
+                          ...(model ? {
+                            type: normalizeBehavior(model.ai_behavior),
+                            hp: model.hp_max ?? p.hp,
+                            damage: model.attack ?? p.damage,
+                            speed: model.speed ?? p.speed,
+                            attackRate: model.attack_rate ?? p.attackRate,
+                            // Si el modelo es boss, hereda también su economía de jefe.
+                            ...(normalizeBehavior(model.ai_behavior) === 'boss' ? {
+                              manaMax: model.mana_max ?? p.manaMax,
+                              manaRegen: model.mana_regen ?? p.manaRegen,
+                              hpRegen: model.hp_regen ?? p.hpRegen,
+                              cardFailHealPct: model.card_fail_heal_pct ?? p.cardFailHealPct,
+                            } : {}),
+                          } : {}),
+                        }));
+                      }}
+                      className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50 transition-colors">
+                      <option value="">{t('lobby.editor.none')}...</option>
+                      {availableEnemies.map(e => (
+                        <option key={e.id} value={e.id}>{e.name} (Lv.{e.level} · {normalizeBehavior(e.ai_behavior)})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.enemy_archetype') || 'Comportamiento'}</label>
                     <select value={enemyMeta.type} onChange={e => setEnemyMeta(p => ({ ...p, type: e.target.value }))}
                       className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50 transition-colors">
@@ -891,16 +964,7 @@ export const MapEditorUI = ({ gameRef }) => {
                       <option value="thrower">Lanzador</option>
                       <option value="boss">Boss</option>
                     </select>
-                  </div>
-                  <div>
-                    <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.enemy_sprite') || 'Sprite'}</label>
-                    <select value={enemyMeta.npcId} onChange={e => setEnemyMeta(p => ({ ...p, npcId: e.target.value }))}
-                      className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50 transition-colors">
-                      <option value="">{t('lobby.editor.none')}...</option>
-                      {availableEnemies.map(e => (
-                        <option key={e.id} value={e.id}>{e.name} (Lv.{e.level})</option>
-                      ))}
-                    </select>
+                    <p className="text-[8px] text-gray-600 mt-0.5">{t('lobby.editor.enemy_archetype_hint') || 'Se hereda del modelo; puedes sobreescribirlo.'}</p>
                   </div>
 
                   <div className="grid grid-cols-3 gap-2 mt-2">
@@ -931,7 +995,7 @@ export const MapEditorUI = ({ gameRef }) => {
                         className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50" />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-gray-500 mb-0.5">HP (Mult.)</label>
+                      <label className="block text-[9px] text-gray-500 mb-0.5">HP</label>
                       <input type="number" min="1" value={enemyMeta.hp}
                         onChange={e => setEnemyMeta(p => ({ ...p, hp: parseInt(e.target.value) || 1 }))}
                         className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50" />
@@ -990,7 +1054,7 @@ export const MapEditorUI = ({ gameRef }) => {
 
             {/* Texture / Sprites */}
             <Section title={t('lobby.editor.texture')}>
-              {(activeTile === 'floor' || activeTile === 'exit') && (
+              {activeTile === 'floor' && (
                 <FloorGrid active={activeTexture} onSelect={selectTexture} />
               )}
               {activeTile === 'forest' && (
@@ -1035,7 +1099,17 @@ export const MapEditorUI = ({ gameRef }) => {
                   active={activeTexture} onSelect={selectTexture} scaleTarget={32}
                 />
               )}
-              {!['floor', 'forest', 'build', 'wall', 'store', 'furniture', 'furniture2', 'exit'].includes(activeTile) && (
+              {activeTile === 'furniture3' && (
+                <SpriteJsonGrid
+                  jsonPath="/furniture/sprites.json"
+                  imgPath="/furniture/spritesheet.png"
+                  active={activeTexture} onSelect={selectTexture} scaleTarget={32}
+                />
+              )}
+              {activeTile === 'exit' && (
+                <p className="text-[10px] text-gray-600 italic">{t('lobby.editor.exit_marker_hint') || 'La salida usa un marcador de portal automático. Configura su destino abajo.'}</p>
+              )}
+              {!['floor', 'forest', 'build', 'wall', 'store', 'furniture', 'furniture2', 'furniture3', 'exit'].includes(activeTile) && (
                 <p className="text-[10px] text-gray-600 italic">{t('lobby.editor.no_texture_options')}</p>
               )}
             </Section>
@@ -1247,7 +1321,7 @@ export const MapEditorUI = ({ gameRef }) => {
             )}
 
             {/* Furniture Settings */}
-            {(activeTile === 'furniture' || activeTile === 'furniture2') && (
+            {(activeTile === 'furniture' || activeTile === 'furniture2' || activeTile === 'furniture3') && (
               <Section title="Configuración de Interactivos" defaultOpen={true}>
                 <div className="mb-2">
                   <label className="block text-[9px] text-gray-500 mb-0.5">Tipo de Interactividad</label>
@@ -1274,16 +1348,10 @@ export const MapEditorUI = ({ gameRef }) => {
                 </div>
 
                 {furnitureMeta.minigameType === 'read' ? (
-                  <div className="mb-2">
-                    <label className="block text-[9px] text-gray-500 mb-0.5">Texto a Mostrar (Pop-up)</label>
-                    <textarea
-                      value={furnitureMeta.readText || ''}
-                      onChange={e => setFurnitureMeta(prev => ({ ...prev, readText: e.target.value }))}
-                      placeholder="Escribe el mensaje aquí..."
-                      rows={4}
-                      className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none resize-none font-sans"
-                    />
-                  </div>
+                  <InfoSignEditor
+                    value={furnitureMeta.readText}
+                    onChange={(v) => setFurnitureMeta(prev => ({ ...prev, readText: v }))}
+                  />
                 ) : (
                   <div className="mb-2">
                     <label className="block text-[9px] text-gray-500 mb-0.5">ID de la Sala</label>
@@ -1309,7 +1377,7 @@ export const MapEditorUI = ({ gameRef }) => {
               <div className="grid grid-cols-2 gap-1">
                 {TILE_TYPES.map(t_obj => {
                   const key = TILE_TYPE_TO_STAT[t_obj.id] || `${t_obj.id}s`;
-                  const cnt = stats[t_obj.id === 'npc' ? 'npcZones' : (t_obj.id === 'item' ? 'pickups' : (t_obj.id === 'enemy' ? 'enemySpawns' : (t_obj.id === 'furniture' ? 'furniture' : (t_obj.id === 'furniture2' ? 'furniture2' : `${t_obj.id}s`))))] || 0;
+                  const cnt = stats[t_obj.id === 'npc' ? 'npcZones' : (t_obj.id === 'item' ? 'pickups' : (t_obj.id === 'enemy' ? 'enemySpawns' : (t_obj.id === 'furniture' ? 'furniture' : (t_obj.id === 'furniture2' ? 'furniture2' : (t_obj.id === 'furniture3' ? 'furniture3' : `${t_obj.id}s`)))))] || 0;
                   return (
                     <div key={t_obj.id} className="flex items-center gap-1.5 text-[9px] text-gray-400">
                       <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: t_obj.color }} />

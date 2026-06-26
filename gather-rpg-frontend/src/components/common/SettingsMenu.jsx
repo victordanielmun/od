@@ -10,7 +10,12 @@ import { Heart, Zap, Shield, Target, Sparkles, HelpCircle, Swords, Info } from '
 export default function SettingsMenu({ onClose, initialTab = 'config' }) {
     const { t } = useTranslation();
     const { musicVolume, sfxVolume, voiceVolume, setVolume } = useAudioStore();
-    const { activeChat, sendPrivateMessage, chatRequests, acceptChatRequest, rejectChatRequest, sendEmoji, inventory, fetchInventory, useItem, virtualControlsMode, setVirtualControlsMode } = useGameStore();
+    const { activeChat, sendPrivateMessage, chatRequests, acceptChatRequest, rejectChatRequest, sendEmoji, inventory, fetchInventory, useItem, virtualControlsMode, setVirtualControlsMode, activeScrollId, activeThrowableId, setActiveScroll, setActiveThrowable } = useGameStore();
+
+    // ¿Esta entrada de inventario es el pergamino/arrojadizo activo de combate?
+    const isActiveSlot = (inv) =>
+        (inv?.item?.item_type === 'scroll' && activeScrollId === inv.id) ||
+        (inv?.item?.item_type === 'throwable' && activeThrowableId === inv.id);
     const { user } = useAuthStore();
     
     const [activeTab, setActiveTab] = useState(initialTab);
@@ -195,6 +200,9 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
                                             onDoubleClick={() => useItem(inv.id)}
                                         >
                                             <div className="absolute top-1 right-1 bg-[var(--color-orange-vibrant)] text-white text-[10px] font-medieval px-1.5 py-0.5 border border-[var(--color-gold)] shadow-md z-10">x{inv.quantity}</div>
+                                            {isActiveSlot(inv) && (
+                                                <div className="absolute top-1 left-1 bg-green-600 text-white text-[9px] font-bold px-1 py-0.5 border border-green-300 shadow-md z-10">✓</div>
+                                            )}
                                             <div className="p-2 transition-transform group-hover:scale-110 filter drop-shadow-lg">
                                                 <ItemIcon 
                                                     iconKey={inv.item?.icon_key} 
@@ -270,8 +278,20 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
                                                 >
                                                     <Sparkles size={18} /> {t('lobby.menu.use')}
                                                 </button>
+                                            ) : (selectedItem.item?.item_type === 'scroll' || selectedItem.item?.item_type === 'throwable') ? (
+                                                <button
+                                                    onClick={() => {
+                                                        if (selectedItem.item.item_type === 'scroll') setActiveScroll(selectedItem.id);
+                                                        else setActiveThrowable(selectedItem.id);
+                                                    }}
+                                                    className={`flex-1 font-medieval uppercase text-sm py-3 border-2 shadow-[0_4px_10px_rgba(0,0,0,0.5)] active:translate-y-1 transition-all flex items-center justify-center gap-2 ${isActiveSlot(selectedItem) ? 'bg-green-700 text-white border-green-300' : 'bg-[var(--color-accent-blue)] hover:bg-[var(--color-orange-vibrant)] text-white border-[var(--color-gold)]'}`}
+                                                >
+                                                    {isActiveSlot(selectedItem)
+                                                        ? <>✓ {t('lobby.menu.equipped', { defaultValue: 'Activo' })}</>
+                                                        : <><Sparkles size={18} /> {t('lobby.menu.equip', { defaultValue: 'Equipar' })}</>}
+                                                </button>
                                             ) : (
-                                                <button 
+                                                <button
                                                     disabled
                                                     className="flex-1 bg-[var(--color-accent-blue)] text-white/30 text-xs font-medieval py-3 border-2 border-[var(--color-base-dark)] opacity-50 cursor-not-allowed"
                                                 >

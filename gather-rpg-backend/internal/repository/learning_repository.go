@@ -3,6 +3,7 @@ package repository
 import (
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
+	"gather-rpg-backend/internal/utils"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -12,6 +13,23 @@ type LearningRepository struct{}
 
 func NewLearningRepository() *LearningRepository {
 	return &LearningRepository{}
+}
+
+// ResetWeeklyIfNeeded zeroes the weekly counters when the profile's stored week is
+// older than the current one (lazy weekly reset — no cron needed). It mutates the
+// profile in memory and returns true if a reset happened; the caller is responsible
+// for persisting. Always stamps WeekStart to the current week so a freshly seeded
+// profile (zero WeekStart) is brought current without wiping the same-week counters.
+func ResetWeeklyIfNeeded(p *models.UserLearningProfile) bool {
+	current := utils.CurrentWeekStart()
+	if p.WeekStart.Before(current) {
+		p.WeeklyScore = 0
+		p.WeeklyCorrect = 0
+		p.WeeklyAttempts = 0
+		p.WeekStart = current
+		return true
+	}
+	return false
 }
 
 // GetRandomChallenge fetching a random challenge matching criteria
@@ -95,6 +113,9 @@ func (r *LearningRepository) RecordAttempt(userID uuid.UUID, challengeID uuid.UU
 			}
 		}
 
+		// 2b. Roll over weekly counters if we've crossed into a new week.
+		ResetWeeklyIfNeeded(&profile)
+
 		// 3. Update stats
 		profile.WeeklyAttempts++
 		xpGained := 5 // Base XP just for attempting
@@ -147,6 +168,7 @@ func (r *LearningRepository) GetProfileByUserID(userID uuid.UUID) (*models.UserL
 				WeeklyScore:    0,
 				WeeklyAttempts: 0,
 				WeeklyCorrect:  0,
+				WeekStart:      utils.CurrentWeekStart(),
 			}
 			if err := database.DB.Create(&profile).Error; err != nil {
 				return nil, err
@@ -156,7 +178,45 @@ func (r *LearningRepository) GetProfileByUserID(userID uuid.UUID) (*models.UserL
 		return nil, err
 	}
 
+	// Lazy weekly reset: if the stored week is stale, zero the weekly counters and
+	// persist so reads (e.g. the dashboard) reflect the current week.
+	if ResetWeeklyIfNeeded(&profile) {
+		if err := database.DB.Save(&profile).Error; err != nil {
+			return nil, err
+		}
+	}
+
 	return &profile, nil
+}
+
+// GetLeaderboard returns the top users ranked by accumulated TotalXP (all-time).
+// It joins users for the display name and skips guests and soft-deleted profiles.
+// Rank is assigned 1-based in the returned order.
+func (r *LearningRepository) GetLeaderboard(limit int) ([]models.LeaderboardEntry, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	// Effective weekly score: a stored value from a previous week reads as 0 here, so
+	// the board shows the current week without needing every stale profile rewritten.
+	weekStart := utils.CurrentWeekStart()
+	weeklyExpr := "CASE WHEN p.week_start < ? THEN 0 ELSE p.weekly_score END"
+
+	var entries []models.LeaderboardEntry
+	err := database.DB.
+		Table("user_learning_profiles AS p").
+		Select("u.id AS user_id, u.username AS username, p.english_level AS english_level, p.total_xp AS total_xp, "+weeklyExpr+" AS weekly_score", weekStart).
+		Joins("JOIN users u ON u.id = p.user_id").
+		Where("p.deleted_at IS NULL AND u.deleted_at IS NULL AND u.is_guest = ?", false).
+		Order("p.total_xp DESC, weekly_score DESC, u.username ASC").
+		Limit(limit).
+		Scan(&entries).Error
+	if err != nil {
+		return nil, err
+	}
+	for i := range entries {
+		entries[i].Rank = i + 1
+	}
+	return entries, nil
 }
 
 // UpdateEnglishLevel updates the user's English difficulty level

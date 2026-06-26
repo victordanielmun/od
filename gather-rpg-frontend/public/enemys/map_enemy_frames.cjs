@@ -26,61 +26,49 @@ function processEnemy(id, filePath) {
     const atlas = loadAtlas(filePath);
     const animationMap = {};
     
-    // 1. Filtrar frames reales
+    // 1. Filtrar frames reales (descarta marcadores 1x1 / 2x1 del exportador).
     const realFrames = atlas.frames.filter(f => f.frame.w > 10 && f.frame.h > 10);
-    
-    // 2. Agrupar por filas (eje Y) con tolerancia
-    const rows = [];
-    const TOLERANCE = 30;
 
-    realFrames.forEach(f => {
-        let added = false;
-        for (const row of rows) {
-            const avgY = row.reduce((sum, rf) => sum + rf.frame.y, 0) / row.length;
-            if (Math.abs(f.frame.y - avgY) < TOLERANCE) {
-                row.push(f);
-                added = true;
-                break;
-            }
-        }
-        if (!added) {
-            rows.push([f]);
-        }
+    // 2. Ordenar globalmente de arriba a abajo (Y) y, a igual Y, de izq. a der. (X).
+    //    Las hojas son una cuadrícula de N animaciones × M frames donde cada fila
+    //    ocupa una banda de Y propia (siempre hay un hueco entre filas). NO usamos
+    //    agrupamiento por tolerancia de Y: sprites altos como 'knocked'/'dying'
+    //    varían >180px dentro de su misma fila y la tolerancia los partía en trozos,
+    //    rompiendo el mapeo de los enemigos 2 y 4.
+    realFrames.sort((a, b) => (a.frame.y - b.frame.y) || (a.frame.x - b.frame.x));
+
+    const expectedTotal = ENEMY_ANIMATIONS.reduce((sum, a) => sum + a.count, 0);
+    console.log(`  ${realFrames.length} real frames (expected ${expectedTotal}).`);
+    if (realFrames.length !== expectedTotal) {
+        console.warn(`  ⚠️  El nº de frames no coincide con el esperado; el corte por filas puede desalinearse.`);
+    }
+
+    // 3. Cortar la lista ordenada por Y en filas contiguas de 'count' frames y
+    //    mapear cada fila a su animación.
+    let cursor = 0;
+    ENEMY_ANIMATIONS.forEach(anim => {
+        const limit = Math.min(anim.count, realFrames.length - cursor);
+        if (limit <= 0) return;
+
+        const rowFrames = realFrames.slice(cursor, cursor + limit);
+        cursor += limit;
+
+        // Orden izquierda → derecha dentro de la fila.
+        rowFrames.sort((a, b) => a.frame.x - b.frame.x);
+
+        animationMap[anim.name] = {
+            frames: [],
+            frameRate: anim.frameRate,
+            repeat: anim.repeat
+        };
+        rowFrames.forEach((f, i) => {
+            const newName = `${anim.name}_${i}`;
+            f.filename = newName;
+            animationMap[anim.name].frames.push(newName);
+        });
+        console.log(`    Mapped '${anim.name}' with ${limit} frames.`);
     });
 
-    // 3. Ordenar las filas por Y
-    rows.sort((a, b) => {
-        const avgYA = a.reduce((sum, f) => sum + f.frame.y, 0) / a.length;
-        const avgYB = b.reduce((sum, f) => sum + f.frame.y, 0) / b.length;
-        return avgYA - avgYB;
-    });
-
-    // 4. Ordenar frames dentro de cada fila por X (izquierda a derecha)
-    rows.forEach(row => row.sort((a, b) => a.frame.x - b.frame.x));
-
-    console.log(`  Found ${rows.length} rows of sprites.`);
-
-    // 5. Mapear cada fila a una animación
-    ENEMY_ANIMATIONS.forEach((anim, idx) => {
-        if (idx < rows.length) {
-            const rowFrames = rows[idx];
-            animationMap[anim.name] = {
-                frames: [],
-                frameRate: anim.frameRate,
-                repeat: anim.repeat
-            };
-            
-            // Usamos hasta 'count' frames de la fila, o todos si hay menos
-            const limit = Math.min(anim.count, rowFrames.length);
-            for (let i = 0; i < limit; i++) {
-                const newName = `${anim.name}_${i}`;
-                rowFrames[i].filename = newName;
-                animationMap[anim.name].frames.push(newName);
-            }
-            console.log(`    Mapped row ${idx} to '${anim.name}' with ${limit} frames.`);
-        }
-    });
-    
     saveAtlas(filePath, atlas);
     return animationMap;
 }

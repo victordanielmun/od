@@ -40,7 +40,10 @@ var attackDamage = map[string]int{
 	"combo1":          10,
 	"combo2":          12,
 	"combo3_finisher": 20,
-	"spell":           25,
+	"spell":           25, // genérico (fallback si el cliente no manda el subtipo)
+	"fire_rain":       12, // hechizos: daño por tipo (coincide con los perfiles del cliente)
+	"wave":            25,
+	"nova":            40,
 	"throw":           15,
 }
 
@@ -51,6 +54,29 @@ func damageForAttack(attackType string) int {
 		return d
 	}
 	return 10
+}
+
+// throwDamageForItem busca server-side el daño de un arma arrojable a partir del
+// ID del item (plantilla). El daño lo define el admin en effect_value; el cliente
+// solo informa QUÉ item lanzó, nunca el valor del daño (sigue siendo autoritativo
+// en el servidor y acotado a valores configurados por el admin). Devuelve 0 si el
+// item no existe o no es un arrojable válido, para que el llamador use el default.
+func throwDamageForItem(itemID string) int {
+	if itemID == "" {
+		return 0
+	}
+	id, err := uuid.Parse(itemID)
+	if err != nil {
+		return 0
+	}
+	var item models.Item
+	if err := database.DB.First(&item, "id = ?", id).Error; err != nil {
+		return 0
+	}
+	if item.ItemType != "throwable" || item.EffectValue <= 0 {
+		return 0
+	}
+	return item.EffectValue
 }
 
 func (h *Hub) handleSelectClass(client *Client, payload interface{}) {
@@ -214,6 +240,64 @@ func (h *Hub) sendPlayerHP(client *Client) {
 	})
 }
 
+// sendPlayerMP envía al cliente su maná autoritativo actual.
+func (h *Hub) sendPlayerMP(client *Client) {
+	client.SendJSON(&models.WSMessage{
+		Type: MsgPlayerMP,
+		Payload: map[string]interface{}{
+			"mp":     client.MP,
+			"mp_max": client.MPMax,
+		},
+	})
+}
+
+// loadPlayerMana carga el maná persistente del jugador desde PlayerStats (fuente de
+// verdad), con defaults sensatos si no hay registro o valores en 0.
+func (h *Hub) loadPlayerMana(client *Client) {
+	var stats models.PlayerStats
+	if err := database.DB.First(&stats, "user_id = ?", client.ID).Error; err == nil {
+		client.MPMax = stats.MPMax
+		client.MP = stats.MPCurrent
+	}
+	if client.MPMax <= 0 {
+		client.MPMax = 50
+	}
+	if client.MP < 0 {
+		client.MP = 0
+	}
+	if client.MP > client.MPMax {
+		client.MP = client.MPMax
+	}
+}
+
+// handleSpendMana descuenta maná de forma autoritativa (hechizos/arrojadizos) y lo
+// persiste en PlayerStats. Si no alcanza, no descuenta y solo re-sincroniza al cliente.
+func (h *Hub) handleSpendMana(client *Client, payload interface{}) {
+	var p struct {
+		Amount int `json:"amount"`
+	}
+	parsePayload(payload, &p)
+	if p.Amount <= 0 {
+		return
+	}
+
+	if client.MP >= p.Amount {
+		client.MP -= p.Amount
+		database.DB.Model(&models.PlayerStats{}).
+			Where("user_id = ?", client.ID).
+			Update("mp_current", client.MP)
+	}
+	// En ambos casos devolvemos el valor autoritativo para que el cliente reconcilie.
+	h.sendPlayerMP(client)
+}
+
+// handleRefreshMana recarga el maná desde BD y lo reenvía. Lo llama el cliente tras usar
+// una poción de maná en el inventario (REST), para que el HUD de combate se sincronice.
+func (h *Hub) handleRefreshMana(client *Client, _ interface{}) {
+	h.loadPlayerMana(client)
+	h.sendPlayerMP(client)
+}
+
 // applyDamageToPlayer resta daño server-side respetando i-frames y emite el HP.
 // Devuelve true si el daño se aplicó (no estaba en i-frames ni muerto).
 func (h *Hub) applyDamageToPlayer(client *Client, dmg int, respectIFrames bool) bool {
@@ -287,6 +371,9 @@ func (h *Hub) handlePlayerRespawn(client *Client) {
 	client.IsDead = false
 	client.LastDamageAt = time.Time{}
 	h.sendPlayerHP(client)
+	// El maná NO se resetea (persiste); reenviamos el valor autoritativo para que el
+	// HUD no quede con el 100 local de resetDeathState tras revivir.
+	h.sendPlayerMP(client)
 }
 
 // handlePlayerHeal: cura server-side al usar una poción de vida. Cantidad fija y
@@ -312,11 +399,21 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 	var p struct {
 		TargetInstanceID string `json:"target_instance_id"`
 		AttackType       string `json:"attack_type"`
+		ItemID           string `json:"item_id"`
 	}
 	parsePayload(payload, &p)
 
 	// El daño lo decide el servidor según el tipo de ataque, nunca el cliente.
 	dmg := damageForAttack(p.AttackType)
+
+	// Para arrojables, el daño puede provenir del effect_value del item (definido
+	// por el admin en la BD). Si el item es un arrojable válido, su valor sustituye
+	// al daño base de la tabla; si no, se mantiene el default de "throw".
+	if p.AttackType == "throw" {
+		if d := throwDamageForItem(p.ItemID); d > 0 {
+			dmg = d
+		}
+	}
 
 	roomID := client.RoomID
 	if roomID == "" {

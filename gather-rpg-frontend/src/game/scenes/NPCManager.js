@@ -49,8 +49,17 @@ export class NPCManager {
 
         response.data.forEach(instance => this.createNPCSprite(instance));
 
-        this.lastLoadedRoomId = roomId;
-        this.lastLoadedSceneKey = scene.currentMapKey;
+        // Only lock the dedupe guard once we actually rendered NPCs. If the list
+        // came back empty or nothing rendered (a transient race), leave the guard
+        // open so a later trigger (room subscription / map reload) retries instead
+        // of forcing the user to refresh.
+        const received = response.data.length;
+        const rendered = this.npcs.length;
+        console.log(`[NPCManager] Rendered ${rendered}/${received} NPCs (room ${roomId}, map ${scene.currentMapKey}) — guard ${rendered > 0 ? 'LOCKED' : 'OPEN (will retry)'}`);
+        if (rendered > 0) {
+          this.lastLoadedRoomId = roomId;
+          this.lastLoadedSceneKey = scene.currentMapKey;
+        }
 
         // Update indicators based on active mission
         this.handleMissionUpdate(useGameStore.getState().activeMission);
@@ -65,7 +74,10 @@ export class NPCManager {
     console.log('[NPCManager] Raw instance from API:', instance);
     const tmpl = instance.npc_template;
     const def = tmpl?.npc_definition;
-    if (!tmpl || !def) return;
+    if (!tmpl || !def) {
+      console.warn('[NPCManager] Skipping NPC instance with missing template/definition:', instance?.id, { hasTemplate: !!tmpl, hasDefinition: !!def });
+      return;
+    }
 
     console.log(`[NPCManager] Spawning NPC: ${def.name} at (${tmpl.position_x}, ${tmpl.position_y})`);
 
@@ -141,6 +153,9 @@ export class NPCManager {
       // Ensure they don't move on collision
       container.body.setBounce(0);
       container.body.setFriction(1);
+      // Safety net: even if shoved by the player, a wandering NPC can't be pushed
+      // past the map edges (world bounds are set to the map size on load).
+      container.body.setCollideWorldBounds(true);
     }
     this.npcs.push(container);
     this.npcSprites.set(tmpl.id, container);
@@ -264,8 +279,14 @@ export class NPCManager {
           if (time > data.moveTimer) {
             const angle = Math.random() * Math.PI * 2;
             const dist = Math.random() * data.movementRange;
-            data.targetX = data.spawnX + Math.cos(angle) * dist;
-            data.targetY = data.spawnY + Math.sin(angle) * dist;
+            // Clamp the wander target to the map bounds (with a margin) so NPCs in
+            // walking/wander state can never roam off the edge of the map.
+            const mm = scene.mapManager;
+            const margin = 40;
+            const maxX = (mm?.mapWidth  || scene.scale.width)  - margin;
+            const maxY = (mm?.mapHeight || scene.scale.height) - margin;
+            data.targetX = Phaser.Math.Clamp(data.spawnX + Math.cos(angle) * dist, margin, maxX);
+            data.targetY = Phaser.Math.Clamp(data.spawnY + Math.sin(angle) * dist, margin, maxY);
             data.moveTimer = time + 2000 + Math.random() * 3000; // Wait 2-5 seconds
           }
         } else {

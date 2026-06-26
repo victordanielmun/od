@@ -102,7 +102,8 @@ export const AdminItems = () => {
         price: 10,
         max_stack: 99,
         icon_key: '',
-        grants_skill_id: ''
+        grants_skill_id: '',
+        spell_type: ''
     });
 
     const fetchData = async () => {
@@ -172,7 +173,8 @@ export const AdminItems = () => {
             price: 10,
             max_stack: 99,
             icon_key: '',
-            grants_skill_id: ''
+            grants_skill_id: '',
+            spell_type: ''
         });
         setIsModalOpen(true);
     };
@@ -191,7 +193,8 @@ export const AdminItems = () => {
             price: item.price,
             max_stack: item.max_stack,
             icon_key: item.icon_key || '',
-            grants_skill_id: item.grants_skill_id || ''
+            grants_skill_id: item.grants_skill_id || '',
+            spell_type: item.spell_type || ''
         });
         setIsModalOpen(true);
     };
@@ -406,7 +409,7 @@ export const AdminItems = () => {
                                         {formData.effect_type === 'grant_skill' && (
                                             <div className="col-span-2">
                                                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1.5 px-1">Habilidad que Otorga</label>
-                                                <select 
+                                                <select
                                                     value={formData.grants_skill_id || ''}
                                                     onChange={e => setFormData({...formData, grants_skill_id: e.target.value || null})}
                                                     className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none"
@@ -416,6 +419,22 @@ export const AdminItems = () => {
                                                         <option key={sk.id} value={sk.id}>{sk.name} ({sk.skill_type})</option>
                                                     ))}
                                                 </select>
+                                            </div>
+                                        )}
+                                        {formData.item_type === 'scroll' && (
+                                            <div className="col-span-2">
+                                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1.5 px-1">Hechizo del Pergamino</label>
+                                                <select
+                                                    value={formData.spell_type || ''}
+                                                    onChange={e => setFormData({...formData, spell_type: e.target.value})}
+                                                    className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none"
+                                                >
+                                                    <option value="">Auto (según el nombre)</option>
+                                                    <option value="fire_rain">Lluvia de Fuego (12 dmg/bola)</option>
+                                                    <option value="wave">Onda (25 dmg)</option>
+                                                    <option value="nova">Nova (40 dmg)</option>
+                                                </select>
+                                                <p className="text-[10px] text-gray-500 mt-1 px-1">Define qué hechizo lanza este Pergamino al equiparlo y pulsar la tecla de hechizo.</p>
                                             </div>
                                         )}
                                     </div>

@@ -1,6 +1,8 @@
 package services
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -230,6 +232,63 @@ func (s *TranslationService) translateText(text, lang string) (string, error) {
 	}
 	langName := utils.LanguageName(lang)
 	systemPrompt := fmt.Sprintf("Translate the user's text into %s for a player learning English. Reply with the translation only, no quotes, no extra words.", langName)
+	out, err := s.AIClient.SendPrompt(systemPrompt, text)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// hashText devuelve el SHA-256 hex del texto (clave de cache de letreros de info).
+func hashText(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
+
+// TranslateInfo traduce (y cachea) el contenido markdown de un letrero de info al idioma
+// dado. Inglés es canónico → devuelve el texto tal cual. Cache por (hash, lang): si ya
+// existe lo reutiliza (cached=true); si no, traduce vía LLM preservando el markdown y lo
+// persiste. Ante fallo del LLM degrada al texto original (cached=false).
+func (s *TranslationService) TranslateInfo(text, lang string) (string, bool, error) {
+	lang = utils.NormalizeLang(lang)
+	if utils.IsEnglish(lang) || strings.TrimSpace(text) == "" {
+		return text, false, nil
+	}
+	hash := hashText(text)
+
+	var existing models.InfoTranslation
+	if err := database.DB.Where("source_hash = ? AND lang = ?", hash, lang).First(&existing).Error; err == nil {
+		return existing.TranslatedText, true, nil // ya existe → cache hit
+	}
+
+	translated, err := s.translateMarkdown(text, lang)
+	if err != nil {
+		return text, false, err // degrada al inglés
+	}
+	row := &models.InfoTranslation{SourceHash: hash, Lang: lang, SourceText: text, TranslatedText: translated}
+	if err := database.DB.Create(row).Error; err != nil {
+		// Carrera: otro request creó la fila primero → devolver el ganador.
+		var winner models.InfoTranslation
+		if e := database.DB.Where("source_hash = ? AND lang = ?", hash, lang).First(&winner).Error; e == nil {
+			return winner.TranslatedText, true, nil
+		}
+	}
+	return translated, false, nil
+}
+
+// translateMarkdown traduce conservando la sintaxis markdown (encabezados, **negrita**,
+// imágenes ![](url)) y SIN tocar las URLs.
+func (s *TranslationService) translateMarkdown(text, lang string) (string, error) {
+	if s.AIClient == nil {
+		return "", fmt.Errorf("no AI client configured")
+	}
+	langName := utils.LanguageName(lang)
+	systemPrompt := fmt.Sprintf(`You translate in-game info-board text into %s for a player who speaks %s.
+The text is Markdown. Rules:
+- Translate ONLY the human-readable prose.
+- Keep ALL Markdown syntax intact: headings (#), bold (**), italics (*), and line breaks.
+- Do NOT translate or modify any URL. Keep image/link syntax like ![alt](url) and (url) exactly; you MAY translate the alt text.
+- No explanations, no quotes. Reply with the translated Markdown only.`, langName, langName)
 	out, err := s.AIClient.SendPrompt(systemPrompt, text)
 	if err != nil {
 		return "", err

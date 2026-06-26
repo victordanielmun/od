@@ -19,9 +19,18 @@ type Enemy struct {
 	Speed       int             `json:"speed"`
 	EXPReward   int             `json:"exp_reward"`
 	GoldReward  int             `json:"gold_reward"`
-	AIBehavior  string          `json:"ai_behavior"` // "aggressive", "defensive", "random"
+	AIBehavior  string          `json:"ai_behavior"` // arquetipo del motor: "melee" | "fast" | "thrower" | "boss" (el editor de mapas hereda este valor como Type al colocar el enemigo)
+	AttackRate  int             `gorm:"default:1000" json:"attack_rate"` // ms entre ataques/disparos (cadencia). Lo hereda el editor de mapas.
 	SkillIDs    json.RawMessage `gorm:"type:jsonb" json:"skill_ids"`
 	SpriteKey   string          `json:"sprite_key"`
+
+	// Economía de boss (solo aplica si AIBehavior == "boss"). El editor de mapas las
+	// hereda al colocar el enemigo, igual que hp/daño/velocidad. Ver EnemySpawn.
+	ManaMax         int `gorm:"default:100" json:"mana_max"`
+	ManaRegen       int `gorm:"default:10" json:"mana_regen"`           // maná por segundo
+	HPRegen         int `gorm:"default:0" json:"hp_regen"`              // HP por segundo (autoregen)
+	CardFailHealPct int `gorm:"default:100" json:"card_fail_heal_pct"` // % de HPMax al fallar la card
+
 	CreatedAt   time.Time       `json:"created_at"`
 }
 

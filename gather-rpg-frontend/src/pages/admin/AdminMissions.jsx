@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollText, Plus, Trash2, Edit2, ChevronDown, ChevronUp, Target, User, MapPin, List, MessageSquare, Mic, Box, Sword, Send, Search, Hammer } from 'lucide-react';
+import { ScrollText, Plus, Trash2, Edit2, ChevronDown, ChevronUp, Target, User, MapPin, List, MessageSquare, Mic, Box, Sword, Send, Search, Hammer, Music, ArrowUpDown, SlidersHorizontal } from 'lucide-react';
 import api from '../../services/api';
 
 const slugify = (text) => {
@@ -16,10 +16,14 @@ const slugify = (text) => {
 export const AdminMissions = () => {
     const { t } = useTranslation();
 
+    // NOTE: 'find_items' (multi-item at the MISSION level) was removed: a mission
+    // only stores ONE objective_target, so it could never really hold several
+    // items. The supported way to require multiple items is one TASK per item
+    // (bring_item / collect_items, each with its own quantity). Legacy missions
+    // already saved as 'find_items' still render via the fallback option below.
     const MISSION_TYPES = [
         { value: 'talk_to_npc', label: t('admin.missions.types.talk_to_npc') },
         { value: 'find_item', label: t('admin.missions.types.find_item') },
-        { value: 'find_items', label: t('admin.missions.types.find_items') },
         { value: 'defeat_enemy', label: t('admin.missions.types.defeat_enemy') },
         { value: 'kill_all', label: t('admin.missions.types.kill_all') },
         { value: 'kill_boss', label: t('admin.missions.types.kill_boss') },
@@ -36,6 +40,7 @@ export const AdminMissions = () => {
         { value: 'kill_boss', label: t('admin.missions.types.kill_boss'), icon: Target },
         { value: 'kill_all', label: t('admin.missions.types.kill_all'), icon: Sword },
         { value: 'pronunciation_threshold', label: t('admin.missions.types.pronunciation'), icon: Mic },
+        { value: 'karaoke', label: t('admin.missions.types.karaoke'), icon: Music },
         { value: 'deliver_message', label: t('admin.missions.types.deliver_msg'), icon: Send }
     ];
     const [missions, setMissions] = useState([]);
@@ -47,6 +52,12 @@ export const AdminMissions = () => {
     const [items, setItems] = useState([]);
     const [enemies, setEnemies] = useState([]);
     const [maps, setMaps] = useState([]);
+
+    // Search / filter / sort for the mission list
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [difficultyFilter, setDifficultyFilter] = useState('all');
+    const [sortBy, setSortBy] = useState('title_asc');
     
     const [isMissionModalOpen, setIsMissionModalOpen] = useState(false);
     const [editingMission, setEditingMission] = useState(null);
@@ -58,9 +69,12 @@ export const AdminMissions = () => {
         type: 'talk_to_npc', 
         status: 'active',
         mode: 'individual',
+        difficulty: 'beginner',
         reward_item_id: '',
         reward_quantity: 0,
         reward_gold: 0,
+        reward_xp: 0,
+        advance_gold: 0,
         objective_target: ''
     });
 
@@ -78,11 +92,13 @@ export const AdminMissions = () => {
         order: 0,
         target_npc_template_id: '',
         required_item: '',
+        required_quantity: 1,
         required_enemy: '',
         required_kills: 1,
         pronunciation_min_score: 80,
         target_phrase_en: '',
-        message_to_deliver: ''
+        message_to_deliver: '',
+        karaoke_lines: [] // array of strings in the form; serialized to [{order,line}] on submit
     });
 
     const fetchData = async () => {
@@ -204,6 +220,18 @@ export const AdminMissions = () => {
         if (payload.target_npc_template_id) payload.target_npc_template_id = parseInt(payload.target_npc_template_id);
         else payload.target_npc_template_id = null;
 
+        // Karaoke: the form keeps lyric lines as a flat string array; the backend
+        // stores them as ordered objects ([{order, line}]). Drop empty lines.
+        if (payload.type === 'karaoke') {
+            payload.karaoke_lines = (payload.karaoke_lines || [])
+                .map(l => (typeof l === 'string' ? l : l?.line || '').trim())
+                .filter(Boolean)
+                .map((line, i) => ({ order: i + 1, line }));
+        } else {
+            // Non-karaoke tasks must not carry a partial lyric list.
+            delete payload.karaoke_lines;
+        }
+
         try {
             if (editingTask) {
                 await api.put(`/admin/tasks/${editingTask.id}`, payload);
@@ -254,6 +282,26 @@ export const AdminMissions = () => {
         }
     };
 
+    const diffRank = { beginner: 1, intermediate: 2, advanced: 3 };
+    const displayedMissions = missions
+        .filter(m => {
+            const q = search.toLowerCase();
+            return (m.title || '').toLowerCase().includes(q) || (m.scene_key || '').toLowerCase().includes(q);
+        })
+        .filter(m => statusFilter === 'all' || m.status === statusFilter)
+        .filter(m => difficultyFilter === 'all' || (m.difficulty || 'beginner') === difficultyFilter)
+        .slice()
+        .sort((a, b) => {
+            switch (sortBy) {
+                case 'title_desc':      return (b.title || '').localeCompare(a.title || '');
+                case 'difficulty_asc':  return (diffRank[a.difficulty] || 1) - (diffRank[b.difficulty] || 1);
+                case 'difficulty_desc': return (diffRank[b.difficulty] || 1) - (diffRank[a.difficulty] || 1);
+                case 'scene':           return (a.scene_key || '').localeCompare(b.scene_key || '');
+                case 'title_asc':
+                default:                return (a.title || '').localeCompare(b.title || '');
+            }
+        });
+
     return (
         <div className="space-y-6 pb-20">
             <div className="flex items-center justify-between mb-8">
@@ -272,15 +320,18 @@ export const AdminMissions = () => {
                             scene_key: maps[0]?.scene_key || 'lobby', 
                             description_en: '', 
                             objective_en: '', 
-                            type: 'talk_to_npc', 
+                            type: 'talk_to_npc',
                             status: 'active',
                             mode: 'individual',
+                            difficulty: 'beginner',
                             reward_item_id: '',
                             reward_quantity: 0,
                             reward_gold: 0,
+                            reward_xp: 0,
+                            advance_gold: 0,
                             objective_target: ''
-                        }); 
-                        setIsMissionModalOpen(true); 
+                        });
+                        setIsMissionModalOpen(true);
                     }}
                     className="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-lg font-bold transition-all shadow-lg active:scale-95 flex items-center gap-2"
                 >
@@ -288,11 +339,60 @@ export const AdminMissions = () => {
                 </button>
             </div>
 
+            {/* Search / Filter / Sort toolbar */}
+            <div className="flex flex-col md:flex-row gap-3">
+                <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                    <input
+                        type="text"
+                        placeholder={t('admin.missions.search_placeholder') || 'Buscar por título o escena...'}
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-gray-200 focus:border-orange-500 focus:outline-none"
+                    />
+                </div>
+                <div className="relative">
+                    <SlidersHorizontal className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
+                    <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+                        className="appearance-none bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-8 py-2 text-sm text-gray-200 focus:border-orange-500 focus:outline-none cursor-pointer">
+                        <option value="all">{t('admin.missions.filter_all_status') || 'Todos los estados'}</option>
+                        <option value="active">{t('admin.missions.form.active') || 'Activa'}</option>
+                        <option value="inactive">{t('admin.missions.form.inactive') || 'Inactiva'}</option>
+                    </select>
+                </div>
+                <div className="relative">
+                    <Target className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
+                    <select value={difficultyFilter} onChange={e => setDifficultyFilter(e.target.value)}
+                        className="appearance-none bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-8 py-2 text-sm text-gray-200 focus:border-orange-500 focus:outline-none cursor-pointer">
+                        <option value="all">{t('admin.missions.filter_all_difficulty') || 'Toda dificultad'}</option>
+                        <option value="beginner">{t('admin.missions.form.difficulty_beginner') || 'Principiante'}</option>
+                        <option value="intermediate">{t('admin.missions.form.difficulty_intermediate') || 'Intermedio'}</option>
+                        <option value="advanced">{t('admin.missions.form.difficulty_advanced') || 'Avanzado'}</option>
+                    </select>
+                </div>
+                <div className="relative">
+                    <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
+                    <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+                        className="appearance-none bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-8 py-2 text-sm text-gray-200 focus:border-orange-500 focus:outline-none cursor-pointer">
+                        <option value="title_asc">{t('admin.missions.sort_title_asc') || 'Título (A-Z)'}</option>
+                        <option value="title_desc">{t('admin.missions.sort_title_desc') || 'Título (Z-A)'}</option>
+                        <option value="difficulty_asc">{t('admin.missions.sort_difficulty_asc') || 'Dificultad ↑'}</option>
+                        <option value="difficulty_desc">{t('admin.missions.sort_difficulty_desc') || 'Dificultad ↓'}</option>
+                        <option value="scene">{t('admin.missions.sort_scene') || 'Escena'}</option>
+                    </select>
+                </div>
+            </div>
+
             {loading ? (
                 <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-400"></div></div>
+            ) : displayedMissions.length === 0 ? (
+                <div className="py-12 text-center text-gray-500 bg-gray-800/20 rounded-2xl border-2 border-dashed border-gray-800">
+                    <ScrollText className="mx-auto mb-3 opacity-20" size={48} />
+                    <p>{t('admin.missions.no_results') || 'No hay misiones que coincidan con el filtro.'}</p>
+                </div>
             ) : (
                 <div className="grid gap-4">
-                    {missions.map(mission => (
+                    {displayedMissions.map(mission => (
                         <div key={mission.id} className="bg-gray-800/50 border border-gray-700/50 rounded-2xl overflow-hidden backdrop-blur-sm transition-all hover:bg-gray-800/80">
                             <div className="p-4 flex items-center justify-between">
                                 <div className="flex items-center gap-4 flex-1 cursor-pointer" onClick={() => toggleMission(mission.id)}>
@@ -335,10 +435,13 @@ export const AdminMissions = () => {
                                             ...mission,
                                             reward_item_id: mission.reward_item_id || '',
                                             mode: mission.mode || 'individual',
+                                            difficulty: mission.difficulty || 'beginner',
                                             reward_quantity: mission.reward_quantity || 0,
                                             reward_gold: mission.reward_gold || 0,
+                                            reward_xp: mission.reward_xp || 0,
+                                            advance_gold: mission.advance_gold || 0,
                                             objective_target: mission.objective_target || ''
-                                        }); 
+                                        });
                                         setIsMissionModalOpen(true); 
                                     }} className="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-all"><Edit2 size={18} /></button>
                                     
@@ -375,7 +478,7 @@ export const AdminMissions = () => {
                                                     setEditingTask(null); 
                                                     setActiveMissionId(mission.id);
                                                     setMissionFormData(prev => ({ ...prev, scene_key: mission.scene_key }));
-                                                    setTaskFormData({ type: 'talk_to_npc', description_en: '', order: (tasks[mission.id]?.length || 0) + 1, target_npc_template_id: '', required_item: '', required_enemy: '', pronunciation_min_score: 80, target_phrase_en: '', message_to_deliver: '' });
+                                                    setTaskFormData({ type: 'talk_to_npc', description_en: '', order: (tasks[mission.id]?.length || 0) + 1, target_npc_template_id: '', required_item: '', required_quantity: 1, required_enemy: '', required_kills: 1, pronunciation_min_score: 80, target_phrase_en: '', message_to_deliver: '', karaoke_lines: [] });
                                                     setNpcInstanceEdits({ instructions: '', success_message: '', greeting: '' });
                                                     setIsTaskModalOpen(true); 
                                                 }}
@@ -412,7 +515,7 @@ export const AdminMissions = () => {
                                                                     )}
                                                                     {task.required_item && (
                                                                         <span className="text-yellow-400 font-bold bg-yellow-400/5 px-1.5 rounded border border-yellow-400/10">
-                                                                            Item: {task.required_item}
+                                                                            Item: {task.required_item}{(task.required_quantity || 1) > 1 ? ` x${task.required_quantity}` : ''}
                                                                         </span>
                                                                     )}
                                                                 </div>
@@ -423,7 +526,12 @@ export const AdminMissions = () => {
                                                                 setEditingTask(task);
                                                                 setActiveMissionId(mission.id);
                                                                 setMissionFormData(prev => ({ ...prev, scene_key: mission.scene_key }));
-                                                                setTaskFormData(task);
+                                                                // Karaoke lines come back as [{order,line}]; the form edits plain strings.
+                                                                setTaskFormData({
+                                                                    ...task,
+                                                                    required_quantity: task.required_quantity || 1,
+                                                                    karaoke_lines: (task.karaoke_lines || []).map(l => (typeof l === 'string' ? l : l?.line || ''))
+                                                                });
                                                                 // Clear edits first; we then load them deterministically below.
                                                                 setNpcInstanceEdits({ instructions: '', success_message: '', greeting: '' });
                                                                 setIsTaskModalOpen(true);
@@ -502,6 +610,9 @@ export const AdminMissions = () => {
                                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-1">{t('admin.missions.form.type')}</label>
                                     <select value={missionFormData.type} onChange={e => setMissionFormData({...missionFormData, type: e.target.value})} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-3.5 text-white outline-none appearance-none">
                                         {MISSION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                        {missionFormData.type && !MISSION_TYPES.some(mt => mt.value === missionFormData.type) && (
+                                            <option value={missionFormData.type}>{missionFormData.type} (legacy)</option>
+                                        )}
                                     </select>
                                 </div>
                                 <div className="space-y-1 col-span-2">
@@ -518,11 +629,29 @@ export const AdminMissions = () => {
                                             <option value="competitive">{t('admin.missions.form.competitive')}</option>
                                         </select>
 
+                                        <select value={missionFormData.difficulty} onChange={e => setMissionFormData({...missionFormData, difficulty: e.target.value})} className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-5 py-3.5 text-white outline-none appearance-none">
+                                            <option value="beginner">{t('admin.missions.form.difficulty_beginner')}</option>
+                                            <option value="intermediate">{t('admin.missions.form.difficulty_intermediate')}</option>
+                                            <option value="advanced">{t('admin.missions.form.difficulty_advanced')}</option>
+                                        </select>
+
                                         <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 rounded-2xl px-5 text-orange-400">
                                             <span className="text-[10px] font-bold uppercase">{t('admin.missions.form.gold')}:</span>
                                             <input type="number" value={missionFormData.reward_gold} onChange={e => setMissionFormData({...missionFormData, reward_gold: parseInt(e.target.value)})} className="bg-transparent w-full outline-none font-bold" />
                                         </div>
+
+                                        <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 rounded-2xl px-5 text-sky-400">
+                                            <span className="text-[10px] font-bold uppercase">{t('admin.missions.form.xp')}:</span>
+                                            <input type="number" value={missionFormData.reward_xp} onChange={e => setMissionFormData({...missionFormData, reward_xp: parseInt(e.target.value) || 0})} className="bg-transparent w-full outline-none font-bold" />
+                                        </div>
+
+                                        <div className="flex items-center gap-2 bg-gray-950 border border-emerald-800/40 rounded-2xl px-5 text-emerald-400">
+                                            <span className="text-[10px] font-bold uppercase">{t('admin.missions.form.advance_gold')}:</span>
+                                            <input type="number" min="0" value={missionFormData.advance_gold} onChange={e => setMissionFormData({...missionFormData, advance_gold: parseInt(e.target.value) || 0})} className="bg-transparent w-full outline-none font-bold" />
+                                        </div>
                                     </div>
+                                    <p className="text-[10px] text-emerald-600/80 italic px-1 mt-2">{t('admin.missions.form.advance_gold_hint')}</p>
+                                    <p className="text-[10px] text-gray-600 italic px-1 mt-1">{t('admin.missions.form.difficulty')}</p>
                                 </div>
                             </div>
 
@@ -750,12 +879,19 @@ export const AdminMissions = () => {
                                 )}
 
                                 {(taskFormData.type === 'bring_item' || taskFormData.type === 'find_item' || taskFormData.type === 'collect_items') && (
-                                    <div className="space-y-1 md:col-span-2">
-                                        <label className="text-[10px] font-bold text-yellow-500 uppercase tracking-widest pl-1">{t('admin.missions.tasks.select_item')}</label>
-                                        <select value={taskFormData.required_item} onChange={e => setTaskFormData({...taskFormData, required_item: e.target.value})} className="w-full bg-gray-950 border border-yellow-500/20 rounded-2xl px-5 py-3 text-yellow-100 outline-none">
-                                            <option value="">{t('admin.missions.form.objective_item_placeholder')}</option>
-                                            {items.map(item => <option key={item.id} value={item.name}>{item.name}</option>)}
-                                        </select>
+                                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="space-y-1 md:col-span-2">
+                                            <label className="text-[10px] font-bold text-yellow-500 uppercase tracking-widest pl-1">{t('admin.missions.tasks.select_item')}</label>
+                                            <select value={taskFormData.required_item} onChange={e => setTaskFormData({...taskFormData, required_item: e.target.value})} className="w-full bg-gray-950 border border-yellow-500/20 rounded-2xl px-5 py-3 text-yellow-100 outline-none">
+                                                <option value="">{t('admin.missions.form.objective_item_placeholder')}</option>
+                                                {items.map(item => <option key={item.id} value={item.name}>{item.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest pl-1">{t('admin.missions.tasks.required_quantity')}</label>
+                                            <input type="number" min="1" value={taskFormData.required_quantity} onChange={e => setTaskFormData({...taskFormData, required_quantity: parseInt(e.target.value) || 1})} className="w-full bg-gray-950 border border-yellow-500/20 rounded-2xl px-5 py-3 text-yellow-100 outline-none" />
+                                        </div>
+                                        <p className="md:col-span-3 text-[10px] text-gray-500 italic pl-1">{t('admin.missions.tasks.multi_item_hint')}</p>
                                     </div>
                                 )}
 
@@ -792,7 +928,7 @@ export const AdminMissions = () => {
                                     </div>
                                 )}
 
-                                {taskFormData.type === 'pronunciation' && (
+                                {taskFormData.type === 'pronunciation_threshold' && (
                                     <div className="md:col-span-2 grid grid-cols-2 gap-4">
                                         <div className="space-y-1">
                                             <label className="text-[10px] font-bold text-green-500 uppercase tracking-widest pl-1">{t('admin.missions.tasks.target_phrase')}</label>
@@ -802,6 +938,60 @@ export const AdminMissions = () => {
                                             <label className="text-[10px] font-bold text-green-500 uppercase tracking-widest pl-1">{t('admin.missions.tasks.min_score')}</label>
                                             <input type="number" value={taskFormData.pronunciation_min_score} onChange={e => setTaskFormData({...taskFormData, pronunciation_min_score: parseInt(e.target.value)})} className="w-full bg-gray-950 border border-green-500/20 rounded-2xl px-5 py-3 text-white outline-none" />
                                         </div>
+                                    </div>
+                                )}
+
+                                {taskFormData.type === 'karaoke' && (
+                                    <div className="md:col-span-2 p-5 bg-pink-500/5 border border-pink-500/10 rounded-3xl space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-[10px] font-bold text-pink-400 uppercase tracking-widest flex items-center gap-2">
+                                                <Music size={12} /> {t('admin.missions.tasks.karaoke_lines')}
+                                            </p>
+                                            <div className="flex items-center gap-2">
+                                                <label className="text-[10px] font-bold text-pink-400 uppercase tracking-widest">{t('admin.missions.tasks.min_avg_score')}</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max="100"
+                                                    value={taskFormData.pronunciation_min_score}
+                                                    onChange={e => setTaskFormData({...taskFormData, pronunciation_min_score: parseInt(e.target.value) || 0})}
+                                                    className="w-20 bg-gray-950 border border-pink-500/20 rounded-xl px-3 py-1.5 text-white text-sm outline-none focus:border-pink-500/50 transition-all"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            {(taskFormData.karaoke_lines || []).map((line, idx) => (
+                                                <div key={idx} className="flex items-center gap-2">
+                                                    <span className="text-pink-400/60 text-xs font-mono w-6 text-right">{idx + 1}.</span>
+                                                    <input
+                                                        value={typeof line === 'string' ? line : (line?.line || '')}
+                                                        onChange={e => {
+                                                            const next = [...taskFormData.karaoke_lines];
+                                                            next[idx] = e.target.value;
+                                                            setTaskFormData({...taskFormData, karaoke_lines: next});
+                                                        }}
+                                                        placeholder={t('admin.missions.tasks.karaoke_line_placeholder')}
+                                                        className="flex-1 bg-gray-950 border border-pink-500/20 rounded-xl px-4 py-2 text-white text-sm outline-none focus:border-pink-500/50 transition-all"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setTaskFormData({...taskFormData, karaoke_lines: taskFormData.karaoke_lines.filter((_, i) => i !== idx)})}
+                                                        className="p-2 text-red-400 hover:text-red-300"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setTaskFormData({...taskFormData, karaoke_lines: [...(taskFormData.karaoke_lines || []), '']})}
+                                            className="text-[10px] font-bold text-pink-400 hover:text-pink-300 flex items-center gap-1.5 py-1.5 px-3 bg-pink-500/5 hover:bg-pink-500/10 border border-pink-500/20 rounded-full transition-all"
+                                        >
+                                            <Plus size={14} /> {t('admin.missions.tasks.karaoke_add_line')}
+                                        </button>
                                     </div>
                                 )}
 

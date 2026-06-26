@@ -102,6 +102,11 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 	client.LastDamageAt = time.Time{}
 	h.sendPlayerHP(client)
 
+	// Maná: a diferencia del HP, NO se resetea — se carga el valor persistente de
+	// PlayerStats (fuente de verdad compartida con el inventario y el Sidebar).
+	h.loadPlayerMana(client)
+	h.sendPlayerMP(client)
+
 	// Notify others that an ally has joined (System Notification)
 	if room.Type == "cooperative" || room.Type == "mission" {
 		h.broadcastToRoomSimple(room, &models.WSMessage{

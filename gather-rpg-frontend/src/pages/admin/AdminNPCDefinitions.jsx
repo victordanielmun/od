@@ -85,7 +85,11 @@ const DefinitionCard = ({ definition, onEdit, onDelete }) => {
     useEffect(() => {
         if (!canvasRef.current) return;
         const game = new Phaser.Game({
-            type: Phaser.AUTO,
+            // Canvas 2D, NOT WebGL: each card spins up its own Phaser instance, and
+            // browsers cap active WebGL contexts at ~16. With many NPC cards that cap
+            // was exceeded ("Too many active WebGL contexts" → getProgramParameter
+            // crash). The Canvas renderer has no such limit for these tiny previews.
+            type: Phaser.CANVAS,
             width: 150,
             height: 150,
             parent: canvasRef.current,

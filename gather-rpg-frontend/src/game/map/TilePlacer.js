@@ -59,8 +59,11 @@ export class TilePlacer {
         break;
 
       case 'build':
-      case 'exit':
         this._placeBuild(group, gx, gy, frame, metadata, scale);
+        break;
+
+      case 'exit':
+        this._placeExit(group, gx, gy, metadata, scale);
         break;
 
       case 'furniture':
@@ -69,6 +72,10 @@ export class TilePlacer {
 
       case 'furniture2':
         this._placeFurniture(group, gx, gy, frame, metadata, 'store-furniture2');
+        break;
+
+      case 'furniture3':
+        this._placeFurniture(group, gx, gy, frame, metadata, 'furniture');
         break;
 
       case 'npc':
@@ -134,6 +141,56 @@ export class TilePlacer {
     }
     sprite.data.set('buildScale', originalScale);
     this._setupBuildSprite(sprite);
+  }
+
+  /**
+   * Coloca un tile 'exit' (teletransporte): un MARCADOR DE SALIDA a nivel de suelo,
+   * no un edificio. Visualmente es un portal brillante con pulso para indicar que es
+   * una salida; comparte el grupo `builds` para que el InteractionSystem lo detecte y
+   * el jugador pueda usarlo con [E]. A diferencia de un edificio, NO bloquea el paso
+   * (se puede caminar encima como un trigger de suelo).
+   */
+  _placeExit(group, gx, gy, metadata, scale) {
+    this._ensureExitMarkerTexture();
+    const s = scale || (metadata?.buildScale) || 1;
+    const sprite = group.create(gx, gy, 'exit-marker');
+    sprite.setDisplaySize(this.scene.GRID_SIZE * s, this.scene.GRID_SIZE * s);
+    sprite.setDepth(-5); // sobre el suelo (-10), bajo jugadores/entidades
+    sprite.data = new Phaser.Data.DataManager(sprite);
+    sprite.data.set('isExit', true);
+    if (metadata) {
+      const keys = ['targetMap', 'targetRoute', 'targetX', 'targetY', 'interactionText', 'portalType'];
+      keys.forEach(k => { if (metadata[k] !== undefined) sprite.data.set(k, metadata[k]); });
+    }
+    sprite.data.set('buildScale', s);
+    // Trigger de suelo: el cuerpo físico no debe empujar al jugador (se camina encima).
+    if (sprite.body) sprite.body.enable = false;
+    // Pulso continuo: indica visualmente que el suelo es una salida interactuable.
+    if (this.scene.tweens) {
+      this.scene.tweens.add({
+        targets: sprite,
+        alpha: { from: 0.6, to: 1 },
+        duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
+    }
+  }
+
+  /** Genera (una sola vez) la textura del marcador de salida: un portal radial brillante. */
+  _ensureExitMarkerTexture() {
+    if (this.scene.textures.exists('exit-marker')) return;
+    const size = 100;
+    const c = size / 2;
+    const g = this.scene.make.graphics({ x: 0, y: 0, add: false });
+    // Halo exterior translúcido
+    g.fillStyle(0xff6a00, 0.16); g.fillCircle(c, c, c * 0.92);
+    g.fillStyle(0xff8c1a, 0.26); g.fillCircle(c, c, c * 0.66);
+    // Anillos brillantes
+    g.lineStyle(5, 0xffd34d, 0.95); g.strokeCircle(c, c, c * 0.62);
+    g.lineStyle(3, 0xffffff, 0.85); g.strokeCircle(c, c, c * 0.42);
+    // Núcleo
+    g.fillStyle(0xffffff, 0.45); g.fillCircle(c, c, c * 0.18);
+    g.generateTexture('exit-marker', size, size);
+    g.destroy();
   }
 
   _placeFurniture(group, gx, gy, frame, metadata, atlas = 'store-furniture') {

@@ -1,9 +1,27 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ENEMY_CONFIG } from '../../game/config/EnemyConfig';
-import { Swords, Activity, Info } from 'lucide-react';
+import { BOSS_CONFIG } from '../../game/config/BossConfig';
+import { Swords, Activity, Info, Crown } from 'lucide-react';
 
 const Phaser = window.Phaser;
+
+// Tamaño objetivo (px) al que se ajusta el sprite dentro del canvas de 300×300.
+const PREVIEW_TARGET = 200;
+
+// Escala un sprite para que su frame más grande quepa en el canvas, sin importar
+// el tamaño real de la hoja (los enemigos 2/4 y los bosses son ~300px de alto, así
+// que un setScale fijo los recortaba). Excluye el frame __BASE (la hoja completa).
+const computeFitScale = (scene, textureKey, target = PREVIEW_TARGET) => {
+    const tex = scene.textures.get(textureKey);
+    if (!tex) return 1;
+    let maxDim = 0;
+    tex.getFrameNames().forEach(name => {
+        const fr = tex.frames[name];
+        if (fr) maxDim = Math.max(maxDim, fr.width, fr.height);
+    });
+    return maxDim > 0 ? target / maxDim : 1;
+};
 
 // ─── Mini Phaser scene to render an Enemy animation ───
 class EnemyPreviewScene extends Phaser.Scene {
@@ -48,8 +66,8 @@ class EnemyPreviewScene extends Phaser.Scene {
 
         const baseKey = `enemy-${this.enemyId}-body`;
         this.animSprite = this.add.sprite(150, 150, baseKey);
-        this.animSprite.setScale(2);
         this.animSprite.setOrigin(0.5, 0.5);
+        this.animSprite.setScale(computeFitScale(this, baseKey));
 
         this.playAnim('idle');
     }
@@ -57,6 +75,62 @@ class EnemyPreviewScene extends Phaser.Scene {
     playAnim(animName) {
         if (!this.animSprite) return;
         const key = `enemy-${this.enemyId}-${animName}`;
+        if (this.anims.exists(key)) {
+            this.animSprite.play(key, true);
+        }
+    }
+}
+
+// ─── Mini Phaser scene to render a Boss animation ───
+// El boss usa la estructura de Character (varias hojas) y claves 'boss-<id>-<sheet>'.
+class BossPreviewScene extends Phaser.Scene {
+    constructor(bossId) {
+        super({ key: `boss-preview-${bossId}-${Date.now()}` });
+        this.bossId = bossId;
+        this.animSprite = null;
+    }
+
+    preload() {
+        const bossDef = BOSS_CONFIG.bosses.find(b => b.id === this.bossId);
+        if (!bossDef) return;
+        bossDef.sheets.forEach(sheet => {
+            const key = `boss-${this.bossId}-${sheet.type}`;
+            if (!this.textures.exists(key)) {
+                this.load.atlas(key, sheet.path, sheet.json);
+            }
+        });
+    }
+
+    create() {
+        this.cameras.main.setBackgroundColor('#1a1a2e');
+
+        const bossAnims = BOSS_CONFIG.animationsByBoss[this.bossId];
+        if (!bossAnims) return;
+
+        Object.entries(bossAnims).forEach(([animName, config]) => {
+            const textureKey = `boss-${this.bossId}-${config.sheetType}`;
+            const animKey = `boss-${this.bossId}-${animName}`;
+            if (this.textures.exists(textureKey) && !this.anims.exists(animKey)) {
+                this.anims.create({
+                    key: animKey,
+                    frames: config.frames.map(frameName => ({ key: textureKey, frame: frameName })),
+                    frameRate: config.frameRate,
+                    repeat: config.repeat
+                });
+            }
+        });
+
+        const baseKey = `boss-${this.bossId}-base`;
+        this.animSprite = this.add.sprite(150, 150, baseKey);
+        this.animSprite.setOrigin(0.5, 0.5);
+        this.animSprite.setScale(computeFitScale(this, baseKey));
+
+        this.playAnim('idle');
+    }
+
+    playAnim(animName) {
+        if (!this.animSprite) return;
+        const key = `boss-${this.bossId}-${animName}`;
         if (this.anims.exists(key)) {
             this.animSprite.play(key, true);
         }
@@ -176,9 +250,108 @@ const EnemyCard = ({ enemyDef }) => {
     );
 };
 
+const BossCard = ({ bossDef }) => {
+    const { t } = useTranslation();
+    const canvasRef = useRef(null);
+    const gameRef = useRef(null);
+    const sceneRef = useRef(null);
+    const [activeAnim, setActiveAnim] = useState('idle');
+
+    useEffect(() => {
+        if (!canvasRef.current) return;
+
+        const scene = new BossPreviewScene(bossDef.id);
+        sceneRef.current = scene;
+
+        const game = new Phaser.Game({
+            type: Phaser.CANVAS,
+            width: 300,
+            height: 300,
+            parent: canvasRef.current,
+            backgroundColor: '#1a1a2e',
+            scene: scene,
+            audio: { disableWebAudio: true, noAudio: true },
+            physics: { default: 'arcade' },
+            render: { pixelArt: true },
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            input: { keyboard: false, mouse: false, touch: false, gamepad: false }
+        });
+        gameRef.current = game;
+
+        return () => game.destroy(true);
+    }, [bossDef.id]);
+
+    const handleAnimClick = (animName) => {
+        setActiveAnim(animName);
+        sceneRef.current?.playAnim(animName);
+    };
+
+    // Estados FSM del boss → animación (ver BOSS_STATE_TO_ANIM en BossConfig).
+    const anims = [
+        { key: 'idle', label: 'IDLE', color: 'bg-indigo-600' },
+        { key: 'walk', label: 'CHASE', color: 'bg-cyan-600' },
+        { key: 'combo1', label: 'ATTACK', color: 'bg-red-600' },
+        { key: 'special', label: 'SKILL', color: 'bg-fuchsia-600' },
+        { key: 'projectile', label: 'THROW', color: 'bg-amber-600' },
+        { key: 'hurt', label: 'HURT', color: 'bg-orange-600' },
+        { key: 'die', label: 'DEAD', color: 'bg-gray-700' },
+    ];
+
+    return (
+        <div className="bg-gray-900 border border-amber-500/30 rounded-2xl overflow-hidden shadow-2xl flex flex-col h-full hover:border-amber-400/50 transition-colors group">
+            <div className="px-5 py-4 bg-gradient-to-r from-amber-900/40 to-gray-800 border-b border-amber-700/40 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Crown size={16} className="text-amber-400" />
+                    <h3 className="text-white font-black tracking-tight text-lg">
+                        {t('admin.enemies.boss_card_title', { id: bossDef.id, defaultValue: 'BOSS #{{id}}' })}
+                    </h3>
+                </div>
+                <Swords size={18} className="text-amber-500/70 group-hover:text-amber-400 transition-colors" />
+            </div>
+
+            <div className="bg-gray-950 p-4 flex justify-center flex-grow">
+                <div
+                    ref={canvasRef}
+                    className="rounded-xl overflow-hidden border border-amber-900/40 shadow-inner w-full max-w-[300px] aspect-square"
+                />
+            </div>
+
+            <div className="p-5 space-y-4">
+                <div>
+                    <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-3 flex items-center gap-2">
+                        <Activity size={10} /> {t('admin.enemies.fsm_states')}
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                        {anims.map(a => (
+                            <StateButton
+                                key={a.key}
+                                label={a.label}
+                                active={activeAnim === a.key}
+                                onClick={() => handleAnimClick(a.key)}
+                                color={a.color}
+                            />
+                        ))}
+                    </div>
+                </div>
+
+                <div className="pt-4 border-t border-gray-800">
+                    <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-2">{t('admin.enemies.sprite_info')}</p>
+                    <div className="text-[10px] sm:text-[11px] font-mono text-gray-400 bg-black/30 p-2 rounded-lg border border-gray-800/50 break-all">
+                        {bossDef.sheets.map(s => s.path).join('  •  ')}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 export const AdminEnemies = () => {
     const { t } = useTranslation();
     const enemies = ENEMY_CONFIG.enemies;
+    const bosses = BOSS_CONFIG.bosses;
 
     return (
         <div className="p-4 sm:p-8 max-w-7xl mx-auto">
@@ -199,6 +372,22 @@ export const AdminEnemies = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
                 {enemies.map(e => <EnemyCard key={e.id} enemyDef={e} />)}
             </div>
+
+            {bosses.length > 0 && (
+                <div className="mt-12">
+                    <div className="mb-6 flex items-center gap-3">
+                        <div className="p-2 bg-amber-500/10 rounded-xl border border-amber-500/20">
+                            <Crown size={24} className="text-amber-400" />
+                        </div>
+                        <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                            {t('admin.enemies.bosses_title', { defaultValue: 'Jefes' })}
+                        </h2>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+                        {bosses.map(b => <BossCard key={b.id} bossDef={b} />)}
+                    </div>
+                </div>
+            )}
 
             <div className="mt-12 bg-gray-900/50 border border-gray-800 rounded-2xl p-6 shadow-lg">
                 <h4 className="text-white font-bold mb-4 flex items-center gap-2">

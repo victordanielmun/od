@@ -58,6 +58,7 @@ type Item struct {
 	MaxStack      int        `json:"max_stack"`
 	IconKey       string     `json:"icon_key"`
 	GrantsSkillID *uuid.UUID `gorm:"type:uuid" json:"grants_skill_id,omitempty"`
+	SpellType     string     `json:"spell_type"` // solo scrolls: "fire_rain" | "wave" | "nova" (qué hechizo lanza). Vacío = se resuelve por el nombre.
 	CreatedAt     time.Time  `json:"created_at"`
 }
 

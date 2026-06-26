@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Copy, Minus, Plus, X, Brain, LogOut, User, Coins, Heart, Sparkles, Award, Mic, MicOff, Music, ScrollText, HelpCircle } from 'lucide-react';
+import { InfoMarkdown } from '../components/common/InfoMarkdown';
 import { RoomList } from '../components/lobby/RoomList';
 import { CreateRoomModal } from '../components/lobby/CreateRoomModal';
 import { CharacterSelector } from '../components/lobby/CharacterSelector';
@@ -71,8 +72,22 @@ export const LobbyLayout = () => {
     };
     fetchRPGStats();
 
+    // Maná autoritativo del servidor: mantener el Sidebar en sync con el HUD de combate.
+    const onPlayerMP = (e) => {
+      const d = e.detail || {};
+      setRpgStats(prev => prev ? {
+        ...prev,
+        ...(typeof d.mp === 'number' ? { mp_current: d.mp } : {}),
+        ...(typeof d.mp_max === 'number' ? { mp_max: d.mp_max } : {}),
+      } : prev);
+    };
+
     window.addEventListener('refresh-player-stats', fetchRPGStats);
-    return () => window.removeEventListener('refresh-player-stats', fetchRPGStats);
+    window.addEventListener('player-mp-update', onPlayerMP);
+    return () => {
+      window.removeEventListener('refresh-player-stats', fetchRPGStats);
+      window.removeEventListener('player-mp-update', onPlayerMP);
+    };
   }, []);
 
   const handleLogout = () => {
@@ -88,7 +103,11 @@ export const LobbyLayout = () => {
   const [challengeChatInput, setChallengeChatInput] = useState('');
   const [minigameData, setMinigameData] = useState(null);
   const [npcData, setNpcData] = useState(null);
-  const [readPopupText, setReadPopupText] = useState('');
+  const [readPopupText, setReadPopupText] = useState('');           // texto original (inglés)
+  const [readPopupTranslated, setReadPopupTranslated] = useState(null); // traducción (o null)
+  const [readPopupShowOriginal, setReadPopupShowOriginal] = useState(false);
+  const [readPopupTranslating, setReadPopupTranslating] = useState(false);
+  const readReqRef = useRef('');
   const [showMissionBanner, setShowMissionBanner] = useState(false);
   const lastShownMissionIdRef = useRef(null);
   const challengeMessagesEndRef = useRef(null);
@@ -210,10 +229,30 @@ export const LobbyLayout = () => {
   }, []);
 
   useEffect(() => {
-    const handleOpenReadPopup = (e) => {
+    const handleOpenReadPopup = async (e) => {
       const { text } = e.detail;
-      setReadPopupText(text || '');
+      const original = text || '';
+      setReadPopupText(original);
+      setReadPopupTranslated(null);
+      setReadPopupShowOriginal(false);
       setActiveOverlay('read');
+      readReqRef.current = original; // token para descartar respuestas obsoletas
+      if (!original.trim()) return;
+
+      // Traducir al idioma nativo del jugador (backend cachea por hash; inglés = sin cambio).
+      setReadPopupTranslating(true);
+      try {
+        const res = await api.post('/info-translate', { text: original });
+        // Solo aplicar si el letrero abierto sigue siendo el mismo (anti-carrera) y la
+        // traducción difiere del original (si es inglés, el backend devuelve lo mismo).
+        if (readReqRef.current === original && res.data?.text && res.data.text !== original) {
+          setReadPopupTranslated(res.data.text);
+        }
+      } catch (err) {
+        console.warn('[read-popup] traducción falló, se muestra el original:', err?.message || err);
+      } finally {
+        if (readReqRef.current === original) setReadPopupTranslating(false);
+      }
     };
 
     window.addEventListener('lobby-open-read-popup', handleOpenReadPopup);
@@ -527,6 +566,8 @@ export const LobbyLayout = () => {
                 onClick={() => {
                   setActiveOverlay(null);
                   setReadPopupText('');
+                  setReadPopupTranslating(false);
+                  readReqRef.current = '';
                 }}
                 className="text-gray-400 hover:text-white transition cursor-pointer p-1 rounded-lg hover:bg-white/5 border-0 bg-transparent outline-none"
               >
@@ -538,21 +579,38 @@ export const LobbyLayout = () => {
               <ScrollText size={24} />
             </div>
 
-            <h3 className="text-lg font-bold text-white mb-4 tracking-wide uppercase">
+            <h3 className="text-lg font-bold text-white mb-4 tracking-wide uppercase flex items-center gap-2">
               {t('lobby.read_popup.title') || "Mensaje del Letrero"}
+              {readPopupTranslating && (
+                <span className="text-[10px] font-semibold text-yellow-400/80 normal-case tracking-normal animate-pulse">
+                  {t('lobby.read_popup.translating') || 'traduciendo…'}
+                </span>
+              )}
             </h3>
-            
-            <div className="bg-gray-900/60 border border-gray-800/80 rounded-xl p-6 w-full mb-6 max-h-60 overflow-y-auto custom-scrollbar text-left">
-              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap font-sans">
-                {readPopupText}
-              </p>
+
+            <div className="bg-gray-900/60 border border-gray-800/80 rounded-xl p-6 w-full mb-2 max-h-[60vh] overflow-y-auto custom-scrollbar text-left text-sm text-gray-300 font-sans">
+              <InfoMarkdown content={(readPopupShowOriginal || !readPopupTranslated) ? readPopupText : readPopupTranslated} />
             </div>
+
+            {readPopupTranslated && (
+              <button
+                type="button"
+                onClick={() => setReadPopupShowOriginal(v => !v)}
+                className="self-end text-[11px] text-yellow-400/70 hover:text-yellow-300 underline mb-4 outline-none cursor-pointer bg-transparent border-0"
+              >
+                {readPopupShowOriginal
+                  ? (t('lobby.read_popup.show_translation') || 'Ver traducción')
+                  : (t('lobby.read_popup.show_original') || 'Ver original')}
+              </button>
+            )}
 
             <button
               type="button"
               onClick={() => {
                 setActiveOverlay(null);
                 setReadPopupText('');
+                setReadPopupTranslating(false);
+                readReqRef.current = '';
               }}
               className="bg-yellow-500/10 hover:bg-yellow-500/25 border border-yellow-500/30 hover:border-yellow-500/50 text-yellow-400 w-full py-2.5 rounded-xl transition text-xs font-bold active:scale-95 cursor-pointer uppercase tracking-wider outline-none"
             >

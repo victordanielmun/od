@@ -74,6 +74,9 @@ export class MapSerializer {
           const v = getData(t.data, k);
           if (v !== undefined) entry[k] = v;
         });
+        // Distingue el tile 'exit' (marcador de salida en el suelo) del 'build' (edificio);
+        // ambos comparten el grupo `builds`, así que persistimos el flag para recrearlos bien.
+        if (getData(t.data, 'isExit')) entry.isExit = true;
         return entry;
       }),
 
@@ -125,6 +128,23 @@ export class MapSerializer {
 
       furniture2: mm.storeFurniture.getChildren()
         .filter(t => t.texture.key === 'store-furniture2')
+        .map(t => {
+          const entry = {
+            x: t.x,
+            y: t.y,
+            frame: safeFrame(t.frame?.name),
+          };
+          const minigameType = getData(t.data, 'minigameType');
+          const minigameId = getData(t.data, 'minigameId');
+          const readText = getData(t.data, 'readText');
+          if (minigameType !== undefined) entry.minigameType = minigameType;
+          if (minigameId !== undefined) entry.minigameId = minigameId;
+          if (readText !== undefined) entry.readText = readText;
+          return entry;
+        }),
+
+      furniture3: mm.storeFurniture.getChildren()
+        .filter(t => t.texture.key === 'furniture')
         .map(t => {
           const entry = {
             x: t.x,
@@ -223,7 +243,7 @@ export class MapSerializer {
       (data.walls  || []).forEach(t => place('wall',  t.x, t.y, t.frame));
       (data.forest || []).forEach(t => place('forest', t.x, t.y, t.frame));
 
-      (data.builds || []).forEach(t => place('build', t.x, t.y, t.frame, {
+      (data.builds || []).forEach(t => place(t.isExit ? 'exit' : 'build', t.x, t.y, t.frame, {
         targetMap:       t.targetMap,
         targetRoute:     t.targetRoute,
         targetX:         t.targetX,
@@ -261,6 +281,11 @@ export class MapSerializer {
         readText:     t.readText,
       }));
       (data.furniture2 || []).forEach(t => place('furniture2', t.x, t.y, t.frame, {
+        minigameType: t.minigameType,
+        minigameId:   t.minigameId,
+        readText:     t.readText,
+      }));
+      (data.furniture3 || []).forEach(t => place('furniture3', t.x, t.y, t.frame, {
         minigameType: t.minigameType,
         minigameId:   t.minigameId,
         readText:     t.readText,

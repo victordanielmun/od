@@ -10,6 +10,7 @@ from typing import Optional
 
 from app.db.database import get_db
 from app.models.recording import Recording, UserProgress
+from app.models.word import Word
 from app.models.user import User
 from app.models.learning_challenge import LearningChallenge
 from app.core.config import get_settings
@@ -204,10 +205,11 @@ async def analyze_audio(
     with open(filepath, "wb") as f:
         f.write(content)
 
-    # 2. Transcribe locally with Whisper
+    # 2. Transcribe locally with faster-whisper
     transcription = ""
+    confidence = 1.0
     try:
-        transcription = stt_service.transcribe(filepath)
+        transcription, confidence = stt_service.transcribe_with_confidence(filepath)
     except Exception as e:
         print(f"Whisper transcription error: {e}")
         pass
@@ -221,7 +223,7 @@ async def analyze_audio(
     result = analyzer.analyze(
         expected=challenge.question,
         transcription=clean_transcription,
-        confidence=1.0,
+        confidence=confidence,
     )
 
     # Note: We no longer save UserProgress or Achievements here because the Go Backend (Gather RPG)
@@ -269,14 +271,15 @@ async def analyze_dialogue_audio(
         f.write(content)
 
     transcription = ""
+    confidence = 1.0
     start_whisper = time.time()
     try:
-        transcription = stt_service.transcribe(filepath)
+        transcription, confidence = stt_service.transcribe_with_confidence(filepath)
     except Exception as e:
         print(f"Whisper transcription error: {e}")
         pass
     whisper_time = (time.time() - start_whisper) * 1000
-    print(f"[Performance] Whisper Transcription complete. Took {whisper_time:.2f} ms")
+    print(f"[Performance] Whisper Transcription complete. Took {whisper_time:.2f} ms (confidence={confidence:.2f})")
 
     clean_transcription = transcription.lower().strip()
     import re
@@ -288,7 +291,7 @@ async def analyze_dialogue_audio(
         result = analyzer.analyze(
             expected=expected_text,
             transcription=clean_transcription,
-            confidence=1.0,
+            confidence=confidence,
         )
         scoring_time = (time.time() - start_scoring) * 1000
         total_time = (time.time() - start_total) * 1000

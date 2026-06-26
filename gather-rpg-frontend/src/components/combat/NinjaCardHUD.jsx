@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useGameStore } from '../../store/gameStore';
 
-const COUNTDOWN_START = 5; // segundos de presión para responder
+const COUNTDOWN_START = 10; // segundos de presión para responder
 
 export const NinjaCardHUD = () => {
   const ninjaCardData = useGameStore(state => state.ninjaCardData);
@@ -67,8 +67,8 @@ export const NinjaCardHUD = () => {
     sendNinjaCardAnswer(targetId, challenge.id, optionId);
   };
 
-  const timerColor = timeLeft <= 2 ? 'bg-red-600 border-red-300 animate-pulse'
-                   : timeLeft <= 3 ? 'bg-amber-600 border-amber-300'
+  const timerColor = timeLeft <= 3 ? 'bg-red-600 border-red-300 animate-pulse'
+                   : timeLeft <= 5 ? 'bg-amber-600 border-amber-300'
                    : 'bg-emerald-600 border-emerald-300';
 
   return (

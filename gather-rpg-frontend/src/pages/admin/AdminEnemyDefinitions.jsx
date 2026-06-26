@@ -3,21 +3,81 @@ import { Swords, Plus, Trash2, Edit2, Save, X, AlertCircle, Activity, Shield, Za
 import { useTranslation } from 'react-i18next';
 import api from '../../services/api';
 import { ENEMY_CONFIG } from '../../game/config/EnemyConfig';
+import { BOSS_CONFIG } from '../../game/config/BossConfig';
+import { AI_BEHAVIORS, normalizeBehavior, behaviorLabel } from '../../game/config/enemyBehaviors';
 
 const Phaser = window.Phaser;
 
-// --- Preview Scene for Enemies ---
+// Valores por defecto del formulario. Se usan para limpiar el form al crear uno nuevo
+// (antes conservaba los datos del último modelo creado/editado).
+const INITIAL_FORM = {
+    name: '',
+    level: 1,
+    hp_max: 100,
+    mp_max: 50,
+    attack: 10,
+    defense: 5,
+    speed: 100,
+    exp_reward: 20,
+    gold_reward: 10,
+    ai_behavior: 'melee',
+    sprite_key: '1',
+    attack_rate: 1000,
+    skill_ids: [],
+    // Economía de boss (solo se usa si ai_behavior === 'boss').
+    mana_max: 100,
+    mana_regen: 10,
+    hp_regen: 0,
+    card_fail_heal_pct: 100
+};
+
+// Ajusta la escala para que el frame más grande del enemigo quepa en el canvas.
+// Los enemigos 2 y 4 miden ~300px y con un setScale fijo se salían del recuadro.
+const computeFitScale = (scene, textureKey, target) => {
+    const tex = scene.textures.get(textureKey);
+    if (!tex) return 1;
+    let maxDim = 0;
+    tex.getFrameNames().forEach(name => {
+        const fr = tex.frames[name];
+        if (fr) maxDim = Math.max(maxDim, fr.width, fr.height);
+    });
+    return maxDim > 0 ? target / maxDim : 1;
+};
+
+// --- Preview Scene for Enemies / Bosses ---
+// Un boss usa la estructura de Character (claves 'boss-<id>-<sheet>' y config.sheetType),
+// un enemigo usa una sola hoja 'body' (claves 'enemy-<id>-body' y config.type).
 class EnemyDefinitionPreviewScene extends Phaser.Scene {
-    constructor(spriteKey) {
-        super({ key: `enemy-preview-${spriteKey}-${Date.now()}` });
+    constructor(spriteKey, isBoss = false) {
+        super({ key: `enemy-preview-${isBoss ? 'boss-' : ''}${spriteKey}-${Date.now()}` });
         this.spriteKey = spriteKey;
+        this.isBoss = isBoss;
+    }
+
+    _meta() {
+        if (this.isBoss) {
+            return {
+                prefix: 'boss',
+                baseSheet: 'base',
+                def: BOSS_CONFIG.bosses.find(b => b.id.toString() === this.spriteKey.toString()),
+                anims: BOSS_CONFIG.animationsByBoss[this.spriteKey],
+                sheetTypeOf: c => c.sheetType,
+            };
+        }
+        return {
+            prefix: 'enemy',
+            baseSheet: 'body',
+            def: ENEMY_CONFIG.enemies.find(e => e.id.toString() === this.spriteKey.toString()),
+            anims: ENEMY_CONFIG.animationsByEnemy[this.spriteKey],
+            sheetTypeOf: c => c.type,
+        };
     }
 
     preload() {
-        const enemyDef = ENEMY_CONFIG.enemies.find(e => e.id.toString() === this.spriteKey.toString());
-        if (!enemyDef) return;
-        enemyDef.sheets.forEach(sheet => {
-            const key = `enemy-${this.spriteKey}-${sheet.type}`;
+        const { prefix, def } = this._meta();
+        if (!def) return;
+        def.sheets.forEach(sheet => {
+            const key = `${prefix}-${this.spriteKey}-${sheet.type}`;
             if (!this.textures.exists(key)) {
                 this.load.atlas(key, sheet.path, sheet.json);
             }
@@ -26,14 +86,14 @@ class EnemyDefinitionPreviewScene extends Phaser.Scene {
 
     create() {
         this.cameras.main.setBackgroundColor('#1a1a2e');
-        
-        const enemyAnims = ENEMY_CONFIG.animationsByEnemy[this.spriteKey];
-        if (!enemyAnims) return;
 
-        Object.entries(enemyAnims).forEach(([animName, config]) => {
-            const textureKey = `enemy-${this.spriteKey}-${config.type}`;
-            const animKey = `enemy-${this.spriteKey}-${animName}`;
-            
+        const { prefix, baseSheet, anims, sheetTypeOf } = this._meta();
+        if (!anims) return;
+
+        Object.entries(anims).forEach(([animName, config]) => {
+            const textureKey = `${prefix}-${this.spriteKey}-${sheetTypeOf(config)}`;
+            const animKey = `${prefix}-${this.spriteKey}-${animName}`;
+
             if (!this.anims.exists(animKey) && this.textures.exists(textureKey)) {
                 this.anims.create({
                     key: animKey,
@@ -44,11 +104,13 @@ class EnemyDefinitionPreviewScene extends Phaser.Scene {
             }
         });
 
-        const mainTexture = `enemy-${this.spriteKey}-body`;
+        const mainTexture = `${prefix}-${this.spriteKey}-${baseSheet}`;
         if (this.textures.exists(mainTexture)) {
             this.sprite = this.add.sprite(75, 75, mainTexture);
-            this.sprite.setScale(1.5);
-            const idleAnim = `enemy-${this.spriteKey}-idle`;
+            this.sprite.setOrigin(0.5, 0.5);
+            // Canvas de 150×150 → objetivo ~110px para dejar margen.
+            this.sprite.setScale(computeFitScale(this, mainTexture, 110));
+            const idleAnim = `${prefix}-${this.spriteKey}-idle`;
             if (this.anims.exists(idleAnim)) {
                 this.sprite.play(idleAnim);
             }
@@ -59,6 +121,7 @@ class EnemyDefinitionPreviewScene extends Phaser.Scene {
 const EnemyDefinitionCard = ({ definition, onEdit, onDelete }) => {
     const canvasRef = useRef(null);
     const { t } = useTranslation();
+    const isBoss = normalizeBehavior(definition.ai_behavior) === 'boss';
 
     useEffect(() => {
         if (!canvasRef.current) return;
@@ -68,7 +131,7 @@ const EnemyDefinitionCard = ({ definition, onEdit, onDelete }) => {
             height: 150,
             parent: canvasRef.current,
             backgroundColor: '#1a1a2e',
-            scene: new EnemyDefinitionPreviewScene(definition.sprite_key || '1'),
+            scene: new EnemyDefinitionPreviewScene(definition.sprite_key || '1', isBoss),
             audio: { disableWebAudio: true, noAudio: true },
             render: { pixelArt: true },
             input: {
@@ -79,7 +142,7 @@ const EnemyDefinitionCard = ({ definition, onEdit, onDelete }) => {
             }
         });
         return () => game.destroy(true);
-    }, [definition.sprite_key]);
+    }, [definition.sprite_key, isBoss]);
 
     return (
         <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden shadow-lg group hover:border-red-500/50 transition-all">
@@ -124,7 +187,7 @@ const EnemyDefinitionCard = ({ definition, onEdit, onDelete }) => {
                     </div>
                     <div className="flex items-center gap-1.5 text-gray-400">
                         <Brain size={10} className="text-purple-500" />
-                        <span>{definition.ai_behavior}</span>
+                        <span>{behaviorLabel(definition.ai_behavior)}</span>
                     </div>
                 </div>
 
@@ -151,20 +214,24 @@ export const AdminEnemyDefinitions = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingDef, setEditingDef] = useState(null);
     
-    const [formData, setFormData] = useState({ 
-        name: '', 
-        level: 1,
-        hp_max: 100,
-        mp_max: 50,
-        attack: 10,
-        defense: 5,
-        speed: 100,
-        exp_reward: 20,
-        gold_reward: 10,
-        ai_behavior: 'aggressive',
-        sprite_key: '1',
-        skill_ids: []
-    });
+    const [formData, setFormData] = useState(INITIAL_FORM);
+
+    // Boss usa los sprites de /boss/, el resto los de /enemys/. El desplegable de sprite
+    // cambia de lista según el comportamiento elegido.
+    const formIsBoss = normalizeBehavior(formData.ai_behavior) === 'boss';
+    const spriteOptions = formIsBoss ? BOSS_CONFIG.bosses : ENEMY_CONFIG.enemies;
+
+    // Al cambiar el comportamiento: si el sprite actual no existe en la nueva categoría
+    // (p. ej. pasar a Boss con un sprite de enemigo), se reapunta al primero válido.
+    const handleBehaviorChange = (value) => {
+        const list = (normalizeBehavior(value) === 'boss' ? BOSS_CONFIG.bosses : ENEMY_CONFIG.enemies)
+            .map(x => String(x.id));
+        setFormData(prev => ({
+            ...prev,
+            ai_behavior: value,
+            sprite_key: list.includes(String(prev.sprite_key)) ? prev.sprite_key : (list[0] ?? '1'),
+        }));
+    };
 
     const fetchData = async () => {
         try {
@@ -193,6 +260,7 @@ export const AdminEnemyDefinitions = () => {
             }
             setIsModalOpen(false);
             setEditingDef(null);
+            setFormData(INITIAL_FORM);
             fetchData();
         } catch (err) {
             setError(t('admin.enemies.errors.save') || 'Error saving enemy model');
@@ -227,8 +295,8 @@ export const AdminEnemyDefinitions = () => {
                         <p className="text-gray-400 text-sm">Configure base stats and rewards for all enemy types.</p>
                     </div>
                 </div>
-                <button 
-                    onClick={() => { setEditingDef(null); setIsModalOpen(true); }}
+                <button
+                    onClick={() => { setEditingDef(null); setFormData(INITIAL_FORM); setIsModalOpen(true); }}
                     className="flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-bold transition-all shadow-lg hover:scale-105"
                 >
                     <Plus size={20} />
@@ -296,13 +364,15 @@ export const AdminEnemyDefinitions = () => {
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t('admin.enemies.form.sprite_key')}</label>
-                                            <select 
+                                            <select
                                                 value={formData.sprite_key}
                                                 onChange={e => setFormData({...formData, sprite_key: e.target.value})}
                                                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50"
                                             >
-                                                {ENEMY_CONFIG.enemies.map(e => (
-                                                    <option key={e.id} value={e.id}>{e.name} (#{e.id})</option>
+                                                {spriteOptions.map(e => (
+                                                    <option key={e.id} value={e.id}>
+                                                        {formIsBoss ? `Boss #${e.id}` : (e.name ? `${e.name} (#${e.id})` : `Enemy #${e.id}`)}
+                                                    </option>
                                                 ))}
                                             </select>
                                         </div>
@@ -361,16 +431,25 @@ export const AdminEnemyDefinitions = () => {
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t('admin.enemies.form.ai_behavior')}</label>
-                                        <select 
-                                            value={formData.ai_behavior}
-                                            onChange={e => setFormData({...formData, ai_behavior: e.target.value})}
+                                        <select
+                                            value={normalizeBehavior(formData.ai_behavior)}
+                                            onChange={e => handleBehaviorChange(e.target.value)}
                                             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50"
                                         >
-                                            <option value="aggressive">Aggressive</option>
-                                            <option value="passive">Passive</option>
-                                            <option value="flee">Flee</option>
-                                            <option value="ranged">Ranged</option>
+                                            {AI_BEHAVIORS.map(b => (
+                                                <option key={b.value} value={b.value}>{b.label}</option>
+                                            ))}
                                         </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t('admin.enemies.form.attack_rate', { defaultValue: 'Cadencia de ataque (ms)' })}</label>
+                                        <input
+                                            type="number" min="100"
+                                            value={formData.attack_rate}
+                                            onChange={e => setFormData({...formData, attack_rate: parseInt(e.target.value) || 0})}
+                                            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50"
+                                        />
+                                        <p className="text-[10px] text-gray-500 mt-1">{t('admin.enemies.form.attack_rate_hint', { defaultValue: 'ms entre ataques/disparos. Menor = más rápido. Para el lanzador es la cadencia de proyectiles.' })}</p>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
@@ -384,7 +463,7 @@ export const AdminEnemyDefinitions = () => {
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t('admin.enemies.form.gold_reward')}</label>
-                                            <input 
+                                            <input
                                                 type="number" required
                                                 value={formData.gold_reward}
                                                 onChange={e => setFormData({...formData, gold_reward: parseInt(e.target.value)})}
@@ -392,6 +471,53 @@ export const AdminEnemyDefinitions = () => {
                                             />
                                         </div>
                                     </div>
+
+                                    {/* Economía de boss: solo se muestra/usa si el comportamiento es Boss. */}
+                                    {formIsBoss && (
+                                        <div className="mt-1 p-3 bg-amber-900/10 border border-amber-500/20 rounded-lg space-y-3">
+                                            <div className="text-[10px] font-black uppercase tracking-wider text-amber-400/80">
+                                                {t('admin.enemies.form.boss_section', { defaultValue: 'Boss — Maná y regeneración' })}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t('admin.enemies.form.mana_max', { defaultValue: 'Maná Máx' })}</label>
+                                                    <input
+                                                        type="number"
+                                                        value={formData.mana_max}
+                                                        onChange={e => setFormData({...formData, mana_max: parseInt(e.target.value) || 0})}
+                                                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-amber-500/50"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t('admin.enemies.form.mana_regen', { defaultValue: 'Maná/seg' })}</label>
+                                                    <input
+                                                        type="number"
+                                                        value={formData.mana_regen}
+                                                        onChange={e => setFormData({...formData, mana_regen: parseInt(e.target.value) || 0})}
+                                                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-amber-500/50"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t('admin.enemies.form.hp_regen', { defaultValue: 'HP/seg (regen)' })}</label>
+                                                    <input
+                                                        type="number"
+                                                        value={formData.hp_regen}
+                                                        onChange={e => setFormData({...formData, hp_regen: parseInt(e.target.value) || 0})}
+                                                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-amber-500/50"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t('admin.enemies.form.card_fail_heal_pct', { defaultValue: '% Heal al fallar card' })}</label>
+                                                    <input
+                                                        type="number"
+                                                        value={formData.card_fail_heal_pct}
+                                                        onChange={e => setFormData({...formData, card_fail_heal_pct: parseInt(e.target.value) || 0})}
+                                                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-amber-500/50"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 

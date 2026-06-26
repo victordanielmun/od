@@ -6,6 +6,7 @@ import (
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/repository"
+	"gather-rpg-backend/internal/utils"
 	"time"
 
 	"github.com/google/uuid"
@@ -118,23 +119,39 @@ func (s *MissionService) GetProgressReadOnly(userID uuid.UUID, missionID uint, r
 
 // AcceptMission explicitly starts a mission for the player in a given room
 // instance. Idempotent: returns the existing progress if already accepted.
-func (s *MissionService) AcceptMission(userID uuid.UUID, missionID uint, roomID *uuid.UUID) (*models.PlayerMissionProgress, error) {
+// The second return value is the advance gold credited on THIS call (0 unless
+// this is the first time the player starts the mission).
+func (s *MissionService) AcceptMission(userID uuid.UUID, missionID uint, roomID *uuid.UUID) (*models.PlayerMissionProgress, int, error) {
 	playerID, err := s.resolvePlayerID(userID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Idempotent per (player, mission), NOT per room instance. Combat rooms are
 	// ephemeral, so a room-scoped lookup created a fresh (reset) progress on every
 	// re-entry. Looking up room-agnostically preserves progress across instances.
 	if existing, err := s.Repo.GetPlayerProgress(playerID, missionID); err == nil && existing != nil {
-		if existing.Status == models.StatusNotStarted {
-			existing.Status = models.StatusInProgress
-			if err := s.Repo.CreateOrUpdateProgress(existing); err != nil {
-				return nil, fmt.Errorf("failed to persist mission progress: %w", err)
-			}
+		// Already started or completed → never re-grant the advance, no matter how
+		// many times "accept" is called.
+		if existing.Status != models.StatusNotStarted {
+			return existing, 0, nil
 		}
-		return existing, nil
+
+		// Atomic not_started → in_progress transition. The advance is paid ONLY by
+		// the call that actually flips the row (RowsAffected == 1), so two rapid
+		// "accept" clicks (or concurrent requests) can never claim the stipend
+		// twice — the loser of the race sees RowsAffected == 0 and gets nothing.
+		res := database.DB.Model(&models.PlayerMissionProgress{}).
+			Where("id = ? AND status = ?", existing.ID, models.StatusNotStarted).
+			Update("status", models.StatusInProgress)
+		if res.Error != nil {
+			return nil, 0, fmt.Errorf("failed to persist mission progress: %w", res.Error)
+		}
+		existing.Status = models.StatusInProgress
+		if res.RowsAffected == 1 {
+			return existing, s.grantAdvanceGold(playerID, missionID), nil
+		}
+		return existing, 0, nil
 	}
 
 	progress := &models.PlayerMissionProgress{
@@ -146,9 +163,34 @@ func (s *MissionService) AcceptMission(userID uuid.UUID, missionID uint, roomID 
 		StartedAt:      time.Now(),
 	}
 	if err := s.Repo.CreateOrUpdateProgress(progress); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return progress, nil
+	return progress, s.grantAdvanceGold(playerID, missionID), nil
+}
+
+// grantAdvanceGold credits the mission's up-front gold stipend to the player.
+// It returns the amount actually granted (0 when the mission has no advance or
+// on any error). Callers MUST invoke it only on the not_started → in_progress
+// transition (AcceptMission guards this) so the stipend is paid exactly once.
+func (s *MissionService) grantAdvanceGold(playerID uuid.UUID, missionID uint) int {
+	var mission models.Mission
+	if err := database.DB.First(&mission, missionID).Error; err != nil {
+		return 0
+	}
+	if mission.AdvanceGold <= 0 {
+		return 0
+	}
+	var stats models.PlayerStats
+	if err := database.DB.First(&stats, "id = ?", playerID).Error; err != nil {
+		return 0
+	}
+	stats.Gold += mission.AdvanceGold
+	if err := database.DB.Save(&stats).Error; err != nil {
+		fmt.Printf("[MissionService] WARN: failed to grant %d advance gold to player %s for mission %d: %v\n", mission.AdvanceGold, playerID, missionID, err)
+		return 0
+	}
+	fmt.Printf("[MissionService] Granted %d advance gold to player %s for mission %d\n", mission.AdvanceGold, playerID, missionID)
+	return mission.AdvanceGold
 }
 
 // CheckTaskCondition evaluates if the player meets the requirements for a specific task.
@@ -167,9 +209,13 @@ func (s *MissionService) CheckTaskCondition(userID uuid.UUID, task *models.Missi
 	case models.TaskTypeTalkToNPC:
 		return s.checkTalkToNPC(playerID, task.TargetNPCTemplateID, task.MissionID)
 	case models.TaskTypeDeliverMsg, models.TaskTypePronunciation:
-		// AI-validated tasks are always 'true' on the backend side, 
+		// AI-validated tasks are always 'true' on the backend side,
 		// they depend on the AI response flag to actually trigger UpdateTaskProgress.
 		return true, "", nil
+	case models.TaskTypeKaraoke:
+		// Karaoke is completed deterministically via POST /missions/karaoke/complete
+		// (average score >= threshold), never through the conversational LLM flow.
+		return false, "karaoke must be completed via the karaoke flow", nil
 	}
 	return false, "Unknown task type", nil
 }
@@ -242,6 +288,40 @@ func (s *MissionService) checkTalkToNPC(playerID uuid.UUID, targetTmplID *uint, 
 	return false, "You should go talk to our friend first.", nil
 }
 
+// creditLeaderboardXP adds accumulated XP to the player's learning profile so
+// mission rewards count toward the leaderboard. It find-or-creates the profile and
+// is a no-op for non-positive xp. It deliberately does not touch EnglishLevel.
+func creditLeaderboardXP(playerID uuid.UUID, xp int) {
+	if xp <= 0 {
+		return
+	}
+	var profile models.UserLearningProfile
+	err := database.DB.Where("user_id = ?", playerID).First(&profile).Error
+	if err != nil {
+		// Create a minimal profile seeded with the reward XP.
+		profile = models.UserLearningProfile{
+			UserID:         playerID,
+			EnglishLevel:   models.DifficultyBeginner,
+			TotalXP:        xp,
+			CurrentLevelXP: xp,
+			WeeklyScore:    xp,
+			WeekStart:      utils.CurrentWeekStart(),
+		}
+		if cerr := database.DB.Create(&profile).Error; cerr != nil {
+			fmt.Printf("[MissionService] WARN: could not create learning profile for leaderboard XP (player %s): %v\n", playerID, cerr)
+		}
+		return
+	}
+	// Lazy weekly reset before crediting, so mission XP lands in the current week.
+	repository.ResetWeeklyIfNeeded(&profile)
+	profile.TotalXP += xp
+	profile.CurrentLevelXP += xp
+	profile.WeeklyScore += xp
+	if serr := database.DB.Save(&profile).Error; serr != nil {
+		fmt.Printf("[MissionService] WARN: could not credit %d leaderboard XP to player %s: %v\n", xp, playerID, serr)
+	}
+}
+
 // deliverRewards grants the mission's gold, XP and item reward to the player.
 // Callers MUST invoke it exactly once, on the transition to "completed"
 // (the kill handlers already filter out already-completed missions, and
@@ -253,7 +333,7 @@ func (s *MissionService) deliverRewards(playerID uuid.UUID, missionID uint) {
 		return
 	}
 
-	// 1. Gold + XP
+	// 1. Gold + XP (RPG stats: gold for the shop, experience for combat progression)
 	var stats models.PlayerStats
 	if err := database.DB.First(&stats, "id = ?", playerID).Error; err == nil {
 		stats.Gold += mission.RewardGold
@@ -261,6 +341,14 @@ func (s *MissionService) deliverRewards(playerID uuid.UUID, missionID uint) {
 		database.DB.Save(&stats)
 		fmt.Printf("[MissionService] Delivered %d Gold and %d XP to player %s for mission %d\n", mission.RewardGold, mission.RewardXP, playerID, missionID)
 	}
+
+	// 1b. Accumulated XP for the leaderboard. TotalXP is the canonical "all-time"
+	// total (never reset), so it's the field the leaderboard ranks by; CurrentLevelXP
+	// and WeeklyScore mirror the challenge flow so missions and challenges feed the
+	// same counters. We intentionally do NOT auto-promote EnglishLevel here: a mission
+	// (often combat) is a poor proxy for English proficiency, so level changes stay
+	// tied to learning challenges (see LearningRepository.RecordAttempt).
+	creditLeaderboardXP(playerID, mission.RewardXP)
 
 	// 2. Item
 	if mission.RewardItemID != nil && mission.RewardQuantity > 0 {
@@ -341,6 +429,45 @@ func (s *MissionService) UpdateTaskProgress(userID uuid.UUID, missionID uint, ta
 
 	isNewlyCompleted := !wasCompleted && allDone
 	return isNewlyCompleted, s.Repo.CreateOrUpdateProgress(progress)
+}
+
+// CompleteKaraoke validates a 'karaoke' task by the average pronunciation score
+// the player achieved across the song's lines. If the average meets the task's
+// PronunciationMinScore it marks the task complete deterministically (no LLM),
+// reusing UpdateTaskProgress so reward delivery / mission completion behave like
+// any other task. Returns (taskCompleted, missionNewlyCompleted, mission, error).
+// taskCompleted is false (with nil error) when the threshold was not met.
+func (s *MissionService) CompleteKaraoke(userID uuid.UUID, missionID, taskID uint, avgScore float32) (bool, bool, *models.Mission, error) {
+	task, err := s.Repo.GetTaskByID(taskID)
+	if err != nil {
+		return false, false, nil, fmt.Errorf("karaoke task not found: %w", err)
+	}
+	if task.Type != models.TaskTypeKaraoke {
+		return false, false, nil, fmt.Errorf("task %d is not a karaoke task", taskID)
+	}
+	if task.MissionID != missionID {
+		return false, false, nil, fmt.Errorf("task %d does not belong to mission %d", taskID, missionID)
+	}
+
+	minScore := task.PronunciationMinScore
+	if minScore == 0 {
+		minScore = 80 // mirror the gorm default when unset
+	}
+	if avgScore < float32(minScore) {
+		// Threshold not met: leave progress untouched so the player can retry.
+		return false, false, nil, nil
+	}
+
+	newlyDone, err := s.UpdateTaskProgress(userID, missionID, taskID, true)
+	if err != nil {
+		return false, false, nil, err
+	}
+
+	var mission *models.Mission
+	if newlyDone {
+		mission, _ = s.Repo.GetMissionByID(missionID)
+	}
+	return true, newlyDone, mission, nil
 }
 
 func (s *MissionService) IsMissionFullyCompleted(userID uuid.UUID, missionID uint) (bool, *models.Mission, error) {

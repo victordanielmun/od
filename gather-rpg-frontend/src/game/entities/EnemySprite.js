@@ -2,6 +2,7 @@ import * as Phaser from 'phaser';
 import { NPCSprite } from './NPCSprite';
 import { ENEMY_CONFIG } from '../config/EnemyConfig';
 import { BOSS_STATE_TO_ANIM, getBossScale } from '../config/BossConfig';
+import { spawnDamageNumber } from '../systems/floatingText';
 
 // Estados posibles de la FSM
 const STATES = {
@@ -22,6 +23,16 @@ const STATE_DURATION = {
   knocked: 800,
   dead:    600,  // tiempo antes de volver al pool
 };
+
+// Alto objetivo (px) del sprite en pantalla = alto del jugador. El personaje usa frames
+// de ~304px a escala 0.25 → 76px en pantalla (ver CharacterConfig). Las hojas de enemigos
+// vienen con frames muy distintos (enemy 1/3 ~67px, enemy 2/4 ~308px); sin normalizar los
+// grandes salen enormes. Escalamos cada enemigo a este alto para igualarlo al jugador.
+const TARGET_ENEMY_HEIGHT = 76;
+
+// El boss debe verse algo más grande que un personaje normal: 1.25× el alto objetivo
+// (≈ 1.25× el jugador). Se normaliza igual que el enemigo, por el alto real del frame.
+const BOSS_SIZE_FACTOR = 1.25;
 
 export default class EnemySprite extends NPCSprite {
   constructor(scene, x, y, charId, username = 'Enemy') {
@@ -45,6 +56,24 @@ export default class EnemySprite extends NPCSprite {
     if (this.body) {
       this.body.enable = true;
       this.body.setCircle(30, -30, -10);
+    }
+
+    // Normalizar el tamaño del sprite según su frame real (el boss se reescala aparte
+    // en _setupBoss, así que esto solo afecta a enemigos normales).
+    this._normalizeScale();
+  }
+
+  // Ajusta la escala del sprite para que su alto en pantalla ronde TARGET_ENEMY_HEIGHT.
+  // Solo encoge (clamp a 1.0): los enemigos pequeños se quedan a su tamaño nativo y los
+  // grandes (enemy 2/4 o cualquier otro con frame alto) se reducen para no salir gigantes.
+  _normalizeScale() {
+    if (!this.sprite || !this.sprite.texture) return;
+    const tex = this.sprite.texture;
+    // 'idle_0' es el frame de reposo: la mejor referencia del alto del personaje.
+    const frame = tex.has('idle_0') ? tex.get('idle_0') : tex.get(this.sprite.frame?.name);
+    const h = frame?.height || this.sprite.height;
+    if (h > 0) {
+      this.sprite.setScale(Math.min(1.0, TARGET_ENEMY_HEIGHT / h));
     }
   }
 
@@ -78,6 +107,7 @@ export default class EnemySprite extends NPCSprite {
       }
     });
 
+    this._normalizeScale();
     this._changeState(STATES.IDLE);
     if (this.healthBar) this.healthBar.setVisible(true);
   }
@@ -147,9 +177,15 @@ export default class EnemySprite extends NPCSprite {
   }
 
   updateHealth(current, max) {
+    const dmg = this.hp - current; // positivo = daño recibido en este update del servidor
     this.hp = current;
     this.maxHp = max;
     this._drawHealthBar();
+
+    // Número de daño flotante (solo si bajó HP; el primer sync entra como negativo).
+    if (dmg > 0 && this.maxHp > 0) {
+        spawnDamageNumber(this.scene, this.x, this.y - 30, dmg, { color: '#ffe066' });
+    }
 
     if (this.hp <= 0 && this.fsm !== STATES.DEAD) {
         this._changeState(STATES.DEAD);
@@ -265,8 +301,20 @@ export default class EnemySprite extends NPCSprite {
     const baseKey = `${prefix}-base`;
     if (this.sprite && this.scene.textures.exists(baseKey)) {
       this.sprite.setTexture(baseKey);
-      this.sprite.setScale(getBossScale(this.bossId));
+      this.sprite.setScale(this._computeBossScale(baseKey));
     }
+  }
+
+  // Escala del boss normalizada por el alto de su frame de reposo, a 1.25× el objetivo
+  // del personaje. Así un boss queda siempre ~1.25× el jugador aunque su hoja venga con
+  // frames de otro tamaño. Si no encuentra el frame, cae al valor fijo de BossConfig.
+  _computeBossScale(baseKey) {
+    const tex = this.scene.textures.get(baseKey);
+    // 'frame_000' es el primer frame del idle en la hoja base del boss.
+    const frame = tex && tex.has('frame_000') ? tex.get('frame_000') : null;
+    const h = frame?.height || 0;
+    if (h > 0) return (TARGET_ENEMY_HEIGHT * BOSS_SIZE_FACTOR) / h;
+    return getBossScale(this.bossId);
   }
 
   // Cadencia de ataque en ms. El servidor manda attack_rate (snake_case); el modo
@@ -502,11 +550,13 @@ export default class EnemySprite extends NPCSprite {
     const verticalGap = Math.abs(selfCenter.y - targetCenter.y);
     const horizontalGap = Math.abs(selfCenter.x - targetCenter.x) - (selfRadius + targetRadius);
 
-    // Usamos la distancia entre bordes de hitbox, no entre centros de container.
-    // Eso hace que el rango se sienta natural aunque los sprites usen offsets distintos.
-    const extraReach = Math.max(10, (this.config?.attackRange ?? 70) * 0.35) + padding;
+    // El servidor mueve al enemigo hasta ~90px (centro a centro) antes de pasar a 'attack'
+    // (ver room.go attackRange = 90). El alcance del cliente debe cubrir esa distancia o el
+    // enemigo "ataca pero no llega": a 90px el edgeGap ronda 35, así que damos margen.
+    const baseRange = this.config?.attackRange ?? 90;
+    const extraReach = Math.max(45, baseRange * 0.5) + padding;
 
-    return verticalGap <= 70 && horizontalGap <= extraReach + 18 && edgeGap <= extraReach;
+    return verticalGap <= 80 && horizontalGap <= extraReach + 18 && edgeGap <= extraReach;
   }
 
   _moveTowardTarget() {
@@ -585,8 +635,16 @@ export default class EnemySprite extends NPCSprite {
     const hasSprite = spriteKey && scene.textures.exists(spriteKey);
     const initialKey = hasSprite ? spriteKey : 'enemy-projectile';
 
+    // Fit into a 24px box preserving aspect ratio (avoids squishing non-square PNGs).
+    const fitProjectile = (sprite) => {
+      const img = sprite.texture?.getSourceImage?.();
+      const w = img?.width || 24, h = img?.height || 24;
+      const s = 24 / Math.max(w, h);
+      sprite.setDisplaySize(w * s, h * s);
+    };
+
     const proj = scene.physics.add.sprite(this.x, this.y - 10, initialKey);
-    if (hasSprite) proj.setDisplaySize(24, 24);
+    if (hasSprite) fitProjectile(proj);
     proj.setDepth(this.depth + 5);
     proj.body.setAllowGravity(false);
 
@@ -596,7 +654,7 @@ export default class EnemySprite extends NPCSprite {
       scene.load.once(`filecomplete-image-${spriteKey}`, () => {
         if (proj.active && scene.textures.exists(spriteKey)) {
           proj.setTexture(spriteKey);
-          proj.setDisplaySize(24, 24);
+          fitProjectile(proj);
         }
       });
       scene.load.start();
@@ -606,6 +664,8 @@ export default class EnemySprite extends NPCSprite {
     const speed = 320;
     const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
     proj.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+    // Spin as it travels, in the horizontal direction of flight.
+    proj.body.setAngularVelocity((Math.cos(angle) >= 0 ? 1 : -1) * 540);
 
     scene.time.delayedCall(2500, () => { if (proj.active) proj.destroy(); });
 

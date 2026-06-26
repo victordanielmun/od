@@ -46,6 +46,13 @@ const PrivateRoute = ({ children }) => {
   return children;
 };
 
+// Catch-all for unknown routes: send authenticated users to the dashboard and
+// everyone else to login, instead of rendering a blank page.
+const NotFoundRedirect = () => {
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  return <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />;
+};
+
 function App() {
   return (
     <Router>
@@ -99,6 +106,8 @@ function App() {
           <Route path="ai-test" element={<AdminAITester />} />
           <Route path="challenges" element={<AdminChallenges />} />
           <Route path="whatsapp" element={<AdminWhatsApp />} />
+          {/* Unknown /admin/* subpath -> admin home instead of a blank Outlet */}
+          <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>
 
         {/* English Learning / Pronunciation Routes */}
@@ -107,6 +116,9 @@ function App() {
             <PracticePage />
           </PrivateRoute>
         } />
+
+        {/* Catch-all: unknown route -> dashboard if logged in, else login */}
+        <Route path="*" element={<NotFoundRedirect />} />
       </Routes>
     </Router>
   );

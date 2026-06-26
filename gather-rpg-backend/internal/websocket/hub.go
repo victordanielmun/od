@@ -336,6 +336,12 @@ func (h *Hub) HandleMessage(client *Client, message []byte) {
 	case MsgPlayerHeal:
 		h.handlePlayerHeal(client)
 
+	case MsgSpendMana:
+		h.handleSpendMana(client, wsMsg.Payload)
+
+	case MsgRefreshMana:
+		h.handleRefreshMana(client, wsMsg.Payload)
+
 	case MsgNinjaCardAnswer:
 		h.handleNinjaCardAnswer(client, wsMsg.Payload)
 

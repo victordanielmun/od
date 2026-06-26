@@ -30,7 +30,11 @@ import {
   Loader2,
   ShieldAlert,
   QrCode,
-  Check
+  Check,
+  Trophy,
+  ChevronDown,
+  ChevronUp,
+  Crown
 } from 'lucide-react';
 
 const COUNTRY_CODES = [
@@ -73,6 +77,12 @@ export const Dashboard = () => {
   const [friendUsername, setFriendUsername] = useState('');
   const [friendsError, setFriendsError] = useState(null);
   const [friendsLoading, setFriendsLoading] = useState(false);
+
+  // Leaderboard state (lazy-loaded when the user opens the panel)
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError] = useState(null);
 
   const [showSpriteSelector, setShowSpriteSelector] = useState(false);
   const [savingSprite, setSavingSprite] = useState(false);
@@ -230,6 +240,26 @@ export const Dashboard = () => {
   const handleLogoutClick = () => {
     logout();
     navigate('/login');
+  };
+
+  const fetchLeaderboard = useCallback(async () => {
+    setLeaderboardLoading(true);
+    setLeaderboardError(null);
+    try {
+      const res = await api.get('/learning/leaderboard?limit=20');
+      setLeaderboard(res.data || []);
+    } catch (err) {
+      console.error('Failed to load leaderboard:', err);
+      setLeaderboardError(err.response?.data?.error || 'Failed to load leaderboard');
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  }, []);
+
+  const handleToggleLeaderboard = () => {
+    const next = !showLeaderboard;
+    setShowLeaderboard(next);
+    if (next) fetchLeaderboard();
   };
 
   const handleSpriteSelect = async (spriteId) => {
@@ -738,6 +768,89 @@ export const Dashboard = () => {
             <Gamepad2 className="w-6 h-6 text-black group-hover:rotate-12 transition-transform" />
             <span>Enter Lobby Realm</span>
           </button>
+        </div>
+
+        {/* Leaderboard (collapsed by default to avoid clutter) */}
+        <div className="mt-8 max-w-3xl mx-auto">
+          <button
+            onClick={handleToggleLeaderboard}
+            className="w-full flex items-center justify-between gap-3 px-5 py-3.5 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 hover:border-yellow-500/30 text-gray-300 hover:text-white transition-all cursor-pointer group"
+          >
+            <span className="flex items-center gap-2.5 font-medieval uppercase tracking-wider text-sm">
+              <Trophy size={18} className="text-yellow-400" />
+              Leaderboard &amp; Weekly Standings
+            </span>
+            {showLeaderboard
+              ? <ChevronUp size={18} className="text-gray-400 group-hover:text-white" />
+              : <ChevronDown size={18} className="text-gray-400 group-hover:text-white" />}
+          </button>
+
+          {showLeaderboard && (
+            <div className="mt-3 bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-4 shadow-2xl">
+              {leaderboardLoading ? (
+                <div className="space-y-2 py-4">
+                  <div className="h-9 bg-white/5 rounded animate-pulse"></div>
+                  <div className="h-9 bg-white/5 rounded animate-pulse"></div>
+                  <div className="h-9 bg-white/5 rounded animate-pulse"></div>
+                </div>
+              ) : leaderboardError ? (
+                <p className="text-red-400 text-sm py-6 text-center">{leaderboardError}</p>
+              ) : leaderboard.length === 0 ? (
+                <p className="text-center text-xs text-gray-500 py-6 italic">No ranked adventurers yet. Complete missions and challenges to earn XP!</p>
+              ) : (
+                <>
+                  {/* Header row */}
+                  <div className="grid grid-cols-12 gap-2 px-3 pb-2 mb-1 border-b border-white/10 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                    <span className="col-span-2">Rank</span>
+                    <span className="col-span-4">Adventurer</span>
+                    <span className="col-span-2 text-center">Level</span>
+                    <span className="col-span-2 text-right">Total</span>
+                    <span className="col-span-2 text-right">Week</span>
+                  </div>
+                  <ul className="space-y-1.5 max-h-[360px] overflow-y-auto pr-1 custom-scrollbar">
+                    {leaderboard.map(entry => {
+                      const isMe = user && (entry.user_id === user.id || entry.username === user.username);
+                      return (
+                        <li
+                          key={entry.user_id}
+                          className={`grid grid-cols-12 gap-2 items-center px-3 py-2.5 rounded-xl border transition-colors ${
+                            isMe
+                              ? 'bg-yellow-500/10 border-yellow-500/40'
+                              : 'bg-gray-950/40 border-white/5 hover:bg-gray-950/60'
+                          }`}
+                        >
+                          <span className="col-span-2 flex items-center gap-1.5 font-bold">
+                            {entry.rank === 1 ? (
+                              <Crown size={16} className="text-yellow-400" />
+                            ) : (
+                              <span className={`text-sm font-mono ${entry.rank <= 3 ? 'text-yellow-400' : 'text-gray-500'}`}>#{entry.rank}</span>
+                            )}
+                          </span>
+                          <span className="col-span-4 text-sm font-medium text-gray-200 truncate flex items-center gap-2">
+                            {entry.username}
+                            {isMe && <span className="text-[9px] uppercase font-bold text-yellow-400 bg-yellow-500/15 border border-yellow-500/30 px-1.5 py-0.5 rounded">You</span>}
+                          </span>
+                          <span className="col-span-2 text-center">
+                            <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                              entry.english_level === 'advanced'
+                                ? 'bg-red-700/30 text-red-300 border border-red-500/30'
+                                : entry.english_level === 'intermediate'
+                                  ? 'bg-amber-600/30 text-amber-300 border border-amber-500/30'
+                                  : 'bg-emerald-700/30 text-emerald-300 border border-emerald-500/30'
+                            }`}>
+                              {entry.english_level?.slice(0, 3) || 'beg'}
+                            </span>
+                          </span>
+                          <span className="col-span-2 text-right text-sm font-bold text-yellow-400 font-mono">{entry.total_xp}</span>
+                          <span className="col-span-2 text-right text-xs text-indigo-300 font-mono">{entry.weekly_score}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
       </div>

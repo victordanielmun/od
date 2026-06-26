@@ -67,6 +67,7 @@ func main() {
 		&models.MapPickup{},
 		&models.MapPickupClaim{},
 		&models.PlayerNPCGift{},
+		&models.InfoTranslation{}, // cache de traducción de letreros de info (por hash de texto)
 		// ── WhatsApp Integration System ──────────────────────────────────
 		&models.WhatsAppContact{},
 		&models.WhatsAppConversation{},
@@ -142,13 +143,15 @@ func main() {
 	friendHandler := handlers.NewFriendHandler(friendService, hub)
 	learningHandler := handlers.NewLearningHandler(learningService, translationService)
 	dialogueHandler := handlers.NewDialogueHandler(dialogueService, hub)
-	missionHandler := handlers.NewMissionHandler(missionService, translationService)
+	missionHandler := handlers.NewMissionHandler(missionService, translationService, hub)
 	npcHandler := handlers.NewNPCHandler(npcService, llmClient)
 	missionAdminHandler := handlers.NewMissionAdminHandler(missionService)
 	inventoryService := services.NewInventoryService(inventoryRepo)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	shopHandler := handlers.NewShopHandler(inventoryService)
 	pickupHandler := handlers.NewMapPickupHandler(inventoryService)
+	infoArtHandler := handlers.NewInfoArtHandler()
+	infoTranslateHandler := handlers.NewInfoTranslateHandler(translationService)
 	whatsAppService := services.NewWhatsAppService(cfg)
 	whatsAppPhraseService := services.NewWAPhraseService(llmClient)
 	whatsAppQueueService := services.NewWhatsAppQueueService(whatsAppService)
@@ -193,6 +196,13 @@ func main() {
 
 	// NPC Guides Routes
 	app.Get("/npcs/guides", middleware.Protected(cfg), npcHandler.GetGuides)
+
+	// Arte de letreros de info (PÚBLICO: el <img> lo carga sin auth). El markdown del
+	// letrero referencia /api/info-art/<archivo>.
+	app.Get("/info-art/:file", infoArtHandler.ServeInfoArt)
+
+	// Traducción de letreros de info al idioma nativo del jugador (cacheada por hash).
+	app.Post("/info-translate", middleware.Protected(cfg), infoTranslateHandler.TranslateInfo)
 
 	// Friend Routes
 	friends := app.Group("/friends", middleware.Protected(cfg))
@@ -240,6 +250,11 @@ func main() {
 	admin.Put("/enemies/:id", adminHandler.UpdateEnemy)
 	admin.Delete("/enemies/:id", adminHandler.DeleteEnemy)
 	admin.Get("/item-sprites", adminHandler.ListItemSprites)
+
+	// Arte de letreros de info (admin: subir / listar / borrar).
+	admin.Get("/info-art", infoArtHandler.ListInfoArt)
+	admin.Post("/info-art", infoArtHandler.UploadInfoArt)
+	admin.Delete("/info-art/:file", infoArtHandler.DeleteInfoArt)
 	admin.Post("/items", adminHandler.CreateItem)
 	admin.Put("/items/:id", adminHandler.UpdateItem)
 	admin.Delete("/items/:id", adminHandler.DeleteItem)
@@ -275,6 +290,7 @@ func main() {
 	learning := app.Group("/learning")
 	learning.Get("/challenges/random", learningHandler.GetRandomChallenge)
 	learning.Get("/challenges/metadata", learningHandler.GetChallengeMetadata)
+	learning.Get("/leaderboard", learningHandler.GetLeaderboard)
 
 	// Protected Learning Routes within the same group if possible, or just register individually
 	learning.Post("/attempts", middleware.Protected(cfg), learningHandler.RecordAttempt)
@@ -295,6 +311,7 @@ func main() {
 	missions.Get("/npc/:id", missionHandler.GetMissionsByNPC)
 	missions.Get("/:id/validate", missionHandler.ValidateMissionCompletion)
 	missions.Post("/:id/accept", missionHandler.AcceptMission)
+	missions.Post("/karaoke/complete", missionHandler.CompleteKaraoke)
 
 	// Inventory Routes
 	inventory := app.Group("/inventory", middleware.Protected(cfg))

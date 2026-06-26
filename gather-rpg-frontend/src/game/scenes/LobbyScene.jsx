@@ -235,11 +235,12 @@ export class LobbyScene extends Phaser.Scene {
     // Sync with gameStore for UI components
     useGameStore.setState({ currentSceneKey: this.currentMapKey });
 
-    this.mapManager.loadServerMapConfig(this.currentMapKey);
-
-    // 3. NPCs (Dynamic from Backend)
+    // 3. NPCs (Dynamic from Backend). Reset first, then load AFTER the map config
+    // resolves: loadServerMapConfig creates the local player on resolve, so loading
+    // NPCs concurrently raced and could leave them unrendered until a manual reload.
     this.npcManager.reset();
-    this.npcManager.loadNPCs();
+    this.mapManager.loadServerMapConfig(this.currentMapKey)
+      .finally(() => { this.npcManager.loadNPCs(); });
     this.pickupManager.resetAndLoadMapPickups();
     this.nearbyNPC = null;
     this.nearbyPickup = null;
@@ -528,7 +529,14 @@ export class LobbyScene extends Phaser.Scene {
     const hasNinjaCard = useGameStore.getState().ninjaCardData != null;
     if (this.isDead || hasNinjaCard || this.isStunned) {
       if (this.player.body) this.player.body.setVelocity(0, 0);
-      return; 
+      return;
+    }
+
+    // 2b. Hit-stop arcade: tras un golpe el jugador queda aturdido un instante. No leemos
+    // input (deja correr el pequeño empuje aplicado en CombatSystem); recupera el control
+    // solo cuando isHurtStaggered() expira.
+    if (this.combatSystem?.isHurtStaggered?.()) {
+      return;
     }
 
     // Update NPCs
