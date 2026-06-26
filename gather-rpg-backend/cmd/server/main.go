@@ -27,57 +27,64 @@ func main() {
 	database.ConnectPostgres(cfg)
 	database.ConnectRedis(cfg)
 
-	// Ensure database enums are updated before migration
-	database.EnsureEnumValues()
+	// Schema setup (enums + AutoMigrate). Skipped when AUTO_MIGRATE=false: against a
+	// remote DB the introspection AutoMigrate runs takes minutes, so once the schema
+	// is stable you can start fast and only re-enable it after pulling schema changes.
+	if !cfg.AutoMigrate {
+		log.Println("AUTO_MIGRATE=false → skipping enum sync + AutoMigrate (fast startup)")
+	} else {
+		// Ensure database enums are updated before migration
+		database.EnsureEnumValues()
 
-	// Auto-migrate
-	if err := database.DB.AutoMigrate(
-		&models.User{},
-		&models.Room{},
-		&models.PlayerStats{},
-		&models.Enemy{},
-		&models.Skill{},
-		&models.Item{},
-		&models.Inventory{},
-		&models.PlayerSkill{},
-		&models.FriendRequest{},
-		&models.Friendship{},
-		&models.DirectMessage{},
-		&models.MapConfig{},
-		// ── English Learning System ──────────────────────────────────────
-		&models.LearningChallenge{},
-		&models.ChallengeTranslation{},
-		&models.UserChallengeAttempt{},
-		&models.UserLearningProfile{},
-		// ── NPC AI & Mission System (v2) ──────────────────────────────────
-		&models.Shop{},
-		&models.NPCDefinition{},
-		&models.NPCTemplate{},
-		&models.NPCDialogueCache{},
-		&models.Mission{},
-		&models.MissionTranslation{},
-		&models.MissionTask{},
-		&models.TaskTranslation{},
-		&models.NPCMissionRole{},
-		&models.NPCRoomInstance{},
-		&models.Conversation{},
-		&models.ConversationMessage{},
-		&models.PlayerMissionProgress{},
-		&models.PlayerLearningStats{},
-		&models.MapPickup{},
-		&models.MapPickupClaim{},
-		&models.PlayerNPCGift{},
-		&models.InfoTranslation{}, // cache de traducción de letreros de info (por hash de texto)
-		// ── WhatsApp Integration System ──────────────────────────────────
-		&models.WhatsAppContact{},
-		&models.WhatsAppConversation{},
-		&models.WhatsAppMessage{},
-		&models.WhatsAppReminder{},
-		&models.WAConversationPhrase{},
-		&models.Motivation{},
-		&models.UserMotivationHistory{},
-	); err != nil {
-		log.Fatalf("Failed to migrate database: %v", err)
+		// Auto-migrate
+		if err := database.DB.AutoMigrate(
+			&models.User{},
+			&models.Room{},
+			&models.PlayerStats{},
+			&models.Enemy{},
+			&models.Skill{},
+			&models.Item{},
+			&models.Inventory{},
+			&models.PlayerSkill{},
+			&models.FriendRequest{},
+			&models.Friendship{},
+			&models.DirectMessage{},
+			&models.MapConfig{},
+			// ── English Learning System ──────────────────────────────────────
+			&models.LearningChallenge{},
+			&models.ChallengeTranslation{},
+			&models.UserChallengeAttempt{},
+			&models.UserLearningProfile{},
+			// ── NPC AI & Mission System (v2) ──────────────────────────────────
+			&models.Shop{},
+			&models.NPCDefinition{},
+			&models.NPCTemplate{},
+			&models.NPCDialogueCache{},
+			&models.Mission{},
+			&models.MissionTranslation{},
+			&models.MissionTask{},
+			&models.TaskTranslation{},
+			&models.NPCMissionRole{},
+			&models.NPCRoomInstance{},
+			&models.Conversation{},
+			&models.ConversationMessage{},
+			&models.PlayerMissionProgress{},
+			&models.PlayerLearningStats{},
+			&models.MapPickup{},
+			&models.MapPickupClaim{},
+			&models.PlayerNPCGift{},
+			&models.InfoTranslation{}, // cache de traducción de letreros de info (por hash de texto)
+			// ── WhatsApp Integration System ──────────────────────────────────
+			&models.WhatsAppContact{},
+			&models.WhatsAppConversation{},
+			&models.WhatsAppMessage{},
+			&models.WhatsAppReminder{},
+			&models.WAConversationPhrase{},
+			&models.Motivation{},
+			&models.UserMotivationHistory{},
+		); err != nil {
+			log.Fatalf("Failed to migrate database: %v", err)
+		}
 	}
 
 	// Los seeds estáticos ya NO corren en el arranque. Ejecútalos a mano una vez
@@ -124,8 +131,8 @@ func main() {
 		log.Fatalf("Failed to initialize AI Client: %v", err)
 	}
 
-	dialogueService := services.NewDialogueService(npcRepo, missionRepo, missionService, llmClient)
 	translationService := services.NewTranslationService(llmClient)
+	dialogueService := services.NewDialogueService(npcRepo, missionRepo, missionService, llmClient, translationService)
 
 	// TTS Service & Handler
 	ttsService := services.NewTTSService(cfg.PiperExePath, cfg.PiperModelsDir, cfg.PiperCacheDir)
@@ -145,7 +152,16 @@ func main() {
 	dialogueHandler := handlers.NewDialogueHandler(dialogueService, hub)
 	missionHandler := handlers.NewMissionHandler(missionService, translationService, hub)
 	npcHandler := handlers.NewNPCHandler(npcService, llmClient)
-	missionAdminHandler := handlers.NewMissionAdminHandler(missionService)
+	missionAdminHandler := handlers.NewMissionAdminHandler(missionService, translationService, cfg.PrecacheLangs)
+
+	// Warm mission/task translations for the configured player languages in the
+	// background, so the first dialogue open (especially a quest master with many
+	// missions) doesn't pay the per-mission LLM translation cost.
+	go translationService.WarmAllActiveMissions(cfg.PrecacheLangs)
+
+	// Warm the map-config cache so teleports/map entries serve from memory and never
+	// wait on the remote DB (a transient stall there made one map load take ~20s).
+	go handlers.WarmMapConfigCache()
 	inventoryService := services.NewInventoryService(inventoryRepo)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	shopHandler := handlers.NewShopHandler(inventoryService)

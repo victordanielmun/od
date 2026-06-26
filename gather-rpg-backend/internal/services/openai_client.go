@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -60,9 +61,15 @@ func (c *OpenAIClient) SendPrompt(systemPrompt string, userPrompt string) (strin
 		// Safety ceiling so a runaway generation can't stall the turn. The
 		// bilingual JSON fits comfortably under this; it only caps pathological cases.
 		MaxCompletionTokens: 1000,
-		// Native JSON mode. Requires the word "JSON" in the prompt, which the
-		// system prompt already contains ("RESPOND ONLY IN JSON").
-		ResponseFormat: &openAIResponseFormat{Type: "json_object"},
+	}
+
+	// Native JSON mode, but ONLY when the prompt actually asks for JSON. OpenAI
+	// rejects response_format=json_object (status 400) unless the word "json" appears
+	// in the messages. The dialogue prompt contains "RESPOND ONLY IN JSON", but plain
+	// callers like the translation service do not — forcing JSON mode there made every
+	// translation fail (so nothing got cached and missions re-translated on every open).
+	if strings.Contains(strings.ToLower(systemPrompt+" "+userPrompt), "json") {
+		reqBody.ResponseFormat = &openAIResponseFormat{Type: "json_object"}
 	}
 
 	jsonBody, _ := json.Marshal(reqBody)

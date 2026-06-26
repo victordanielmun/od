@@ -5,7 +5,8 @@ import { useAudioStore } from '../../store/audioStore';
 import { useGameStore } from '../../store/gameStore';
 import { useAuthStore } from '../../store/authStore';
 import { ItemIcon } from './ItemIcon';
-import { Heart, Zap, Shield, Target, Sparkles, HelpCircle, Swords, Info } from 'lucide-react';
+import { Heart, Zap, Shield, Target, Sparkles, HelpCircle, Swords, Info, Languages } from 'lucide-react';
+import { LanguageSwitcher } from './LanguageSwitcher';
 
 export default function SettingsMenu({ onClose, initialTab = 'config' }) {
     const { t } = useTranslation();
@@ -245,7 +246,7 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
                                             <div className="flex items-center justify-between mb-1">
                                                 <h4 className="text-xl font-medieval uppercase tracking-tight text-[var(--color-base-dark)]">{selectedItem.item?.name}</h4>
                                                 <span className="text-[10px] font-medieval bg-[var(--color-accent-blue)] text-[var(--color-gold)] px-3 py-1 border border-[var(--color-gold-dark)] shadow-sm">
-                                                    {t(`items.types.${selectedItem.item?.item_type}`) || selectedItem.item?.item_type?.replace('_', ' ')}
+                                                    {t(`items.types.${selectedItem.item?.item_type}`, { defaultValue: (selectedItem.item?.item_type || '').replace(/_/g, ' ') })}
                                                 </span>
                                             </div>
                                             <p className="text-sm text-[var(--color-accent-blue)] leading-tight italic font-serif mb-4">
@@ -354,6 +355,18 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
                                 </select>
                                 <p className="text-[10px] text-[var(--color-parchment-dark)] italic">
                                     {t('lobby.menu.controls_desc')}
+                                </p>
+                            </div>
+
+                            {/* Native language — drives the translated helper text under each NPC line.
+                                Changing it persists to the user's record via the existing PUT endpoint. */}
+                            <div className="flex flex-col gap-3 pt-4 border-t border-[var(--color-gold-dark)]/25">
+                                <div className="flex items-center justify-between">
+                                    <label className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-gold-dark)]"><Languages size={16} /> {t('lobby.menu.language')}</label>
+                                    <LanguageSwitcher />
+                                </div>
+                                <p className="text-[10px] text-[var(--color-parchment-dark)] italic">
+                                    {t('lobby.menu.language_desc')}
                                 </p>
                             </div>
 

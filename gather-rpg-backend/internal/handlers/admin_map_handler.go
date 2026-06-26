@@ -7,10 +7,39 @@ import (
 	"gather-rpg-backend/internal/models"
 	"log"
 	"strconv"
+	"sync"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
+
+// mapConfigCache serves map configs from memory. They are small (a few KB) and change
+// only when an admin edits a map, but they're read on every teleport/map entry — over
+// a remote DB a transient stall there made a single map load take ~20s. Reads hit
+// memory; writes (save/update/delete) invalidate the affected scene so the next read
+// refreshes from the DB.
+var mapConfigCache sync.Map // scene_key(string) -> models.MapConfig
+
+func invalidateMapConfigCache(sceneKey string) {
+	if sceneKey != "" {
+		mapConfigCache.Delete(sceneKey)
+	}
+}
+
+// WarmMapConfigCache loads every map config into memory at startup so even the FIRST
+// teleport/map entry is served from cache and never waits on the remote DB. Cheap: a
+// handful of small rows. Safe to run in a goroutine.
+func WarmMapConfigCache() {
+	var cfgs []models.MapConfig
+	if err := database.DB.Find(&cfgs).Error; err != nil {
+		fmt.Printf("[MapConfigCache] warm failed: %v\n", err)
+		return
+	}
+	for i := range cfgs {
+		mapConfigCache.Store(cfgs[i].SceneKey, cfgs[i])
+	}
+	fmt.Printf("[MapConfigCache] Warmed %d map configs.\n", len(cfgs))
+}
 
 // SaveMapConfig upserts the wall configuration for a scene.
 // POST /admin/maps
@@ -110,6 +139,7 @@ func (h *AdminHandler) SaveMapConfig(c *fiber.Ctx) error {
 		fmt.Printf("[AdminHandler] WARNING: Failed to sync pickups: %v\n", err)
 	}
 
+	invalidateMapConfigCache(req.SceneKey)
 	return c.JSON(existing)
 }
 
@@ -121,11 +151,16 @@ func (h *AdminHandler) GetMapConfig(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "scene_key query param is required"})
 	}
 
+	if cached, ok := mapConfigCache.Load(sceneKey); ok {
+		return c.JSON(cached.(models.MapConfig))
+	}
+
 	var cfg models.MapConfig
 	if err := database.DB.Where("scene_key = ?", sceneKey).First(&cfg).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Map config not found for scene: " + sceneKey})
 	}
 
+	mapConfigCache.Store(sceneKey, cfg)
 	return c.JSON(cfg)
 }
 
@@ -219,6 +254,7 @@ func (h *AdminHandler) UpdateMapConfig(c *fiber.Ctx) error {
 
 	// Re-fetch to return full updated record
 	database.DB.First(&mapConfig, uid)
+	invalidateMapConfigCache(mapConfig.SceneKey)
 
 	// SYNC NPCs: Parse walls_json and update templates
 	wallsJSON := mapConfig.WallsJSON
@@ -279,6 +315,7 @@ func (h *AdminHandler) DeleteMapConfig(c *fiber.Ctx) error {
 	if err := database.DB.Delete(&mapConfig).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete map: " + err.Error()})
 	}
+	invalidateMapConfigCache(sceneKey)
 
 	// 3. Clean up associated NPC Templates
 	database.DB.Where("scene_key = ?", sceneKey).Delete(&models.NPCTemplate{})

@@ -142,7 +142,7 @@ export const MapEditorUI = ({ gameRef }) => {
   const [activeTool, setActiveTool] = useState('brush');
   const [activeTile, setActiveTile] = useState('wall');
   const [activeTexture, setActiveTexture] = useState('sprite1');
-  const [buildMeta, setBuildMeta] = useState({ portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '' });
+  const [buildMeta, setBuildMeta] = useState({ portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '', missionIds: [] });
   const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [], state: 'idle', facing: 'right' });
   const [enemyMeta, setEnemyMeta] = useState({ npcId: '', waveNum: 1, hp: 50, speed: 120, damage: 10, attackRate: 1000, type: 'melee', projectileSprite: '', manaMax: 100, manaRegen: 10, hpRegen: 0, cardFailHealPct: 100 });
   const [buildScale, setBuildScale] = useState(2.5);
@@ -227,7 +227,8 @@ export const MapEditorUI = ({ gameRef }) => {
           targetX: metadata.targetX || '',
           targetY: metadata.targetY || '',
           targetRoute: metadata.targetRoute || '',
-          interactionText: metadata.interactionText || ''
+          interactionText: metadata.interactionText || '',
+          missionIds: Array.isArray(metadata.missionIds) ? metadata.missionIds : (metadata.missionId ? [metadata.missionId] : [])
         };
         setBuildMeta(bm);
         dispatchEditorCommand('setBuildMetadata', bm);
@@ -1174,6 +1175,40 @@ export const MapEditorUI = ({ gameRef }) => {
                     onChange={e => updateMeta('interactionText', e.target.value)}
                     placeholder={t('lobby.editor.interaction_placeholder') || 'Enter...'}
                     className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none" />
+                </div>
+
+                {/* Mission gate: portal only appears while the player is on a selected
+                    mission. No scene filter — a return portal gates on a mission from
+                    another map (e.g. pet_shop → back to amy_house during "help Amy"). */}
+                <div className="mb-2">
+                  <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.portal_mission_gate')}</label>
+                  <div className="max-h-32 overflow-y-auto bg-gray-800 border border-gray-700 rounded p-2 custom-scrollbar">
+                    {availableMissions.length === 0 && (
+                      <p className="text-[10px] text-gray-500 italic">{t('lobby.editor.no_missions_found') || 'No missions found'}</p>
+                    )}
+                    {availableMissions.map(m => {
+                      const ids = (buildMeta.missionIds || []).map(String);
+                      const checked = ids.includes(String(m.id));
+                      return (
+                        <label key={m.id} className="flex items-center gap-2 py-1 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={e => {
+                              const next = (buildMeta.missionIds || []).map(String).filter(x => x !== String(m.id));
+                              if (e.target.checked) next.push(String(m.id));
+                              updateMeta('missionIds', next);
+                            }}
+                            className="w-3 h-3 accent-yellow-500"
+                          />
+                          <span className="text-[10px] text-gray-300 group-hover:text-white truncate">
+                            {m.title} <span className="text-gray-500">({m.scene_key})</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[9px] text-gray-500 italic mt-0.5">{t('lobby.editor.portal_mission_gate_hint')}</p>
                 </div>
 
                 {/* Spawn coords (Skip for route) */}

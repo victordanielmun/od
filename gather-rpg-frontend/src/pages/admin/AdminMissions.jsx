@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollText, Plus, Trash2, Edit2, ChevronDown, ChevronUp, Target, User, MapPin, List, MessageSquare, Mic, Box, Sword, Send, Search, Hammer, Music, ArrowUpDown, SlidersHorizontal } from 'lucide-react';
 import api from '../../services/api';
@@ -82,6 +82,7 @@ export const AdminMissions = () => {
     const [loadingMapNPCs, setLoadingMapNPCs] = useState(false);
     const [mapEnemiesCount, setMapEnemiesCount] = useState(0);
     const [npcInstanceEdits, setNpcInstanceEdits] = useState({ instructions: '', success_message: '', greeting: '' });
+    const loadedNpcIdRef = useRef(null); // which NPC's config is currently loaded in the task form
 
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState(null);
@@ -93,6 +94,7 @@ export const AdminMissions = () => {
         target_npc_template_id: '',
         required_item: '',
         required_quantity: 1,
+        required_items: [],
         required_enemy: '',
         required_kills: 1,
         pronunciation_min_score: 80,
@@ -158,22 +160,26 @@ export const AdminMissions = () => {
 
 
 
-    // Reactively sync NPC instructions when task data or map NPCs are available
+    // Reactively load the selected NPC's instructions/success/greeting into the form.
+    // These fields belong to the NPC (template), not the task. We must RELOAD them when
+    // the target NPC changes — otherwise the previous task's NPC config lingered in the
+    // form and got written to the new NPC on save (so every task ended up with the last
+    // task's data). loadedNpcIdRef tracks which NPC is currently loaded so we reload on
+    // a change but preserve manual edits while the same NPC stays selected.
     useEffect(() => {
-        if (isTaskModalOpen && taskFormData.target_npc_template_id && mapNPCs.length > 0) {
-            const npc = mapNPCs.find(n => String(n.id) === String(taskFormData.target_npc_template_id));
-            if (npc) {
-                setNpcInstanceEdits(prev => {
-                    // Only update if currently empty (modal just opened) or if ID changed
-                    // We don't want to overwrite manual edits while the modal is open
-                    if (prev.instructions || prev.success_message) return prev;
-                    return {
-                        instructions: npc.instructions || '',
-                        success_message: npc.success_message || '',
-                        greeting: npc.greeting || ''
-                    };
-                });
-            }
+        if (!isTaskModalOpen) {
+            loadedNpcIdRef.current = null; // reset so the next open reloads fresh
+            return;
+        }
+        const npcId = taskFormData.target_npc_template_id ? String(taskFormData.target_npc_template_id) : '';
+        if (npcId !== loadedNpcIdRef.current) {
+            loadedNpcIdRef.current = npcId;
+            const npc = npcId ? mapNPCs.find(n => String(n.id) === npcId) : null;
+            setNpcInstanceEdits({
+                instructions: npc?.instructions || '',
+                success_message: npc?.success_message || '',
+                greeting: npc?.greeting || ''
+            });
         }
     }, [isTaskModalOpen, taskFormData.target_npc_template_id, mapNPCs]);
 
@@ -478,7 +484,7 @@ export const AdminMissions = () => {
                                                     setEditingTask(null); 
                                                     setActiveMissionId(mission.id);
                                                     setMissionFormData(prev => ({ ...prev, scene_key: mission.scene_key }));
-                                                    setTaskFormData({ type: 'talk_to_npc', description_en: '', order: (tasks[mission.id]?.length || 0) + 1, target_npc_template_id: '', required_item: '', required_quantity: 1, required_enemy: '', required_kills: 1, pronunciation_min_score: 80, target_phrase_en: '', message_to_deliver: '', karaoke_lines: [] });
+                                                    setTaskFormData({ type: 'talk_to_npc', description_en: '', order: (tasks[mission.id]?.length || 0) + 1, target_npc_template_id: '', required_item: '', required_quantity: 1, required_items: [], required_enemy: '', required_kills: 1, pronunciation_min_score: 80, target_phrase_en: '', message_to_deliver: '', karaoke_lines: [] });
                                                     setNpcInstanceEdits({ instructions: '', success_message: '', greeting: '' });
                                                     setIsTaskModalOpen(true); 
                                                 }}
@@ -513,11 +519,17 @@ export const AdminMissions = () => {
                                                                             <User size={10} /> NPC #{task.target_npc_template_id}
                                                                         </span>
                                                                     )}
-                                                                    {task.required_item && (
+                                                                    {task.required_items && task.required_items.length > 0 ? (
+                                                                        task.required_items.map((ri, i) => (
+                                                                            <span key={`ri-${i}`} className="text-yellow-400 font-bold bg-yellow-400/5 px-1.5 rounded border border-yellow-400/10">
+                                                                                Item: {ri.item}{(ri.quantity || 1) > 1 ? ` x${ri.quantity}` : ''}
+                                                                            </span>
+                                                                        ))
+                                                                    ) : task.required_item ? (
                                                                         <span className="text-yellow-400 font-bold bg-yellow-400/5 px-1.5 rounded border border-yellow-400/10">
                                                                             Item: {task.required_item}{(task.required_quantity || 1) > 1 ? ` x${task.required_quantity}` : ''}
                                                                         </span>
-                                                                    )}
+                                                                    ) : null}
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -530,6 +542,7 @@ export const AdminMissions = () => {
                                                                 setTaskFormData({
                                                                     ...task,
                                                                     required_quantity: task.required_quantity || 1,
+                                                                    required_items: task.required_items || [],
                                                                     karaoke_lines: (task.karaoke_lines || []).map(l => (typeof l === 'string' ? l : l?.line || ''))
                                                                 });
                                                                 // Clear edits first; we then load them deterministically below.
@@ -879,19 +892,60 @@ export const AdminMissions = () => {
                                 )}
 
                                 {(taskFormData.type === 'bring_item' || taskFormData.type === 'find_item' || taskFormData.type === 'collect_items') && (
-                                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div className="space-y-1 md:col-span-2">
-                                            <label className="text-[10px] font-bold text-yellow-500 uppercase tracking-widest pl-1">{t('admin.missions.tasks.select_item')}</label>
-                                            <select value={taskFormData.required_item} onChange={e => setTaskFormData({...taskFormData, required_item: e.target.value})} className="w-full bg-gray-950 border border-yellow-500/20 rounded-2xl px-5 py-3 text-yellow-100 outline-none">
-                                                <option value="">{t('admin.missions.form.objective_item_placeholder')}</option>
-                                                {items.map(item => <option key={item.id} value={item.name}>{item.name}</option>)}
-                                            </select>
+                                    <div className="md:col-span-2 p-5 bg-yellow-500/5 border border-yellow-500/10 rounded-3xl space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest flex items-center gap-2">
+                                                <Box size={12} /> {t('admin.missions.tasks.required_items') || 'Ítems Requeridos'}
+                                            </p>
                                         </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest pl-1">{t('admin.missions.tasks.required_quantity')}</label>
-                                            <input type="number" min="1" value={taskFormData.required_quantity} onChange={e => setTaskFormData({...taskFormData, required_quantity: parseInt(e.target.value) || 1})} className="w-full bg-gray-950 border border-yellow-500/20 rounded-2xl px-5 py-3 text-yellow-100 outline-none" />
+
+                                        <div className="space-y-2">
+                                            {(taskFormData.required_items || []).map((req, idx) => (
+                                                <div key={idx} className="flex items-center gap-2">
+                                                    <span className="text-yellow-400/60 text-xs font-mono w-6 text-right">{idx + 1}.</span>
+                                                    <select
+                                                        value={req.item || ''}
+                                                        onChange={e => {
+                                                            const next = [...(taskFormData.required_items || [])];
+                                                            next[idx] = { ...req, item: e.target.value };
+                                                            setTaskFormData({...taskFormData, required_items: next});
+                                                        }}
+                                                        className="flex-1 bg-gray-950 border border-yellow-500/20 rounded-xl px-4 py-2 text-yellow-100 text-sm outline-none focus:border-yellow-500/50 transition-all"
+                                                    >
+                                                        <option value="">{t('admin.missions.form.objective_item_placeholder') || 'Seleccionar Ítem'}</option>
+                                                        {items.map(item => <option key={item.id} value={item.name}>{item.name}</option>)}
+                                                    </select>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        value={req.quantity || 1}
+                                                        onChange={e => {
+                                                            const next = [...(taskFormData.required_items || [])];
+                                                            next[idx] = { ...req, quantity: parseInt(e.target.value) || 1 };
+                                                            setTaskFormData({...taskFormData, required_items: next});
+                                                        }}
+                                                        className="w-24 bg-gray-950 border border-yellow-500/20 rounded-xl px-4 py-2 text-yellow-100 text-sm outline-none focus:border-yellow-500/50 transition-all"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setTaskFormData({...taskFormData, required_items: taskFormData.required_items.filter((_, i) => i !== idx)})}
+                                                        className="p-2 text-red-400 hover:text-red-300"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            ))}
                                         </div>
-                                        <p className="md:col-span-3 text-[10px] text-gray-500 italic pl-1">{t('admin.missions.tasks.multi_item_hint')}</p>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setTaskFormData({...taskFormData, required_items: [...(taskFormData.required_items || []), {item: '', quantity: 1}]})}
+                                            className="text-[10px] font-bold text-yellow-400 hover:text-yellow-300 flex items-center gap-1.5 py-1.5 px-3 bg-yellow-500/5 hover:bg-yellow-500/10 border border-yellow-500/20 rounded-full transition-all"
+                                        >
+                                            <Plus size={14} /> Añadir Ítem
+                                        </button>
+                                        
+                                        <p className="md:col-span-3 text-[10px] text-gray-500 italic pl-1">{t('admin.missions.tasks.multi_item_hint') || 'Puedes requerir múltiples ítems diferentes para esta tarea.'}</p>
                                     </div>
                                 )}
 

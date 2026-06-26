@@ -69,7 +69,7 @@ export class MapSerializer {
           frame: safeFrame(t.frame?.name),
           scale: getData(t.data, 'buildScale') || t.scaleX || 1,
         };
-        const portalKeys = ['targetMap', 'targetRoute', 'targetX', 'targetY', 'interactionText', 'portalType'];
+        const portalKeys = ['targetMap', 'targetRoute', 'targetX', 'targetY', 'interactionText', 'portalType', 'missionIds'];
         portalKeys.forEach(k => {
           const v = getData(t.data, k);
           if (v !== undefined) entry[k] = v;
@@ -250,6 +250,7 @@ export class MapSerializer {
         targetY:         t.targetY,
         interactionText: t.interactionText,
         portalType:      t.portalType,
+        missionIds:      t.missionIds, // mission-gated portal: only shown on these missions
         buildScale:      t.scale,
       }));
 

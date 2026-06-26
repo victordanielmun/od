@@ -423,7 +423,9 @@
       "controls_auto": "Automático (Pantallas Táctiles)",
       "controls_always": "Siempre Activados",
       "controls_never": "Desactivados (Ocultar)",
-      "controls_desc": "Permite forzar o desactivar la visualización del control táctil en pantalla en caso de que se haya activado por error."
+      "controls_desc": "Permite forzar o desactivar la visualización del control táctil en pantalla en caso de que se haya activado por error.",
+      "language": "Idioma",
+      "language_desc": "Tu idioma nativo. Define en qué idioma aparece la ayuda traducida bajo cada frase de los NPC. Se guarda en tu cuenta."
     },
     "character_selector": {
       "title": "Elige a tu Héroe",
@@ -539,6 +541,8 @@
       "character_def": "Definición de Personaje",
       "role": "Rol / Función",
       "associated_mission": "Misión Asociada (Opcional)",
+      "portal_mission_gate": "Mostrar solo en misión (Opcional)",
+      "portal_mission_gate_hint": "Si marcas una o más misiones, este portal solo aparece cuando el jugador está en ellas. Vacío = siempre visible.",
       "none": "Ninguna",
       "npc_placement_hint": "Al colocar el NPC, se guardará con esta configuración.",
       "item_config": "Config. Objeto",
@@ -623,6 +627,9 @@
       "weapon": "Arma",
       "armor": "Armadura",
       "quest": "Ítem de Misión",
+      "mission_item": "Ítem de Misión",
+      "scroll": "Pergamino",
+      "throwable": "Arrojadizo",
       "material": "Material"
     }
   },
@@ -688,10 +695,13 @@
       "passed": "¡Lo lograste!",
       "failed": "Necesitabas una media de {{score}}. ¡Inténtalo de nuevo!",
       "retry": "Reintentar",
-      "done": "Listo"
+      "done": "Listo",
+      "analyze_failed": "No se pudo analizar tu grabación. Inténtalo de nuevo.",
+      "mic_denied": "No se pudo acceder al micrófono. Habilita el permiso e inténtalo de nuevo."
     },
     "dialogue": {
-      "default_greeting": "¡Hola {{username}}! ¿Cómo te puedo ayudar hoy?",
+      "default_greeting": "¡Hola, {{username}}!",
+      "merchant_greeting": "¡Hola, {{username}}! ¿Cómo te puedo ayudar hoy?",
       "teleport_msg": "¡Excelente elección! Te enviaré de inmediato a {{scene}}. ¡Buena suerte en tu aventura!",
       "mission_completed": "¡Misión Completada!",
       "mission_completed_desc": "Has demostrado gran valentía y destreza al completar:",
@@ -715,6 +725,9 @@
       "location": "Ubicación: {{scene}}",
       "speaks": "{{name}} habla...",
       "you_responded": "Respondiste:",
+      "thinking": "Pensando...",
+      "loading_missions": "Cargando misiones...",
+      "purchased": "¡Comprado! {{quantity}}x {{name}}",
       "silence_req": "SILENCIO REQ.",
       "completed": "Completada",
       "in_progress": "En Curso",

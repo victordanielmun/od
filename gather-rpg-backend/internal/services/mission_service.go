@@ -203,7 +203,7 @@ func (s *MissionService) CheckTaskCondition(userID uuid.UUID, task *models.Missi
 
 	switch task.Type {
 	case models.TaskTypeBringItem, models.TaskTypeFindItem, models.TaskTypeCollectItems:
-		return s.checkBringItem(playerID, task.RequiredItem, task.RequiredQuantity)
+		return s.checkBringItem(playerID, task)
 	case models.TaskTypeDefeatEnemy, models.TaskTypeKillBoss, models.TaskTypeKillAll:
 		return s.checkKillTaskDone(playerID, task.MissionID, task.ID)
 	case models.TaskTypeTalkToNPC:
@@ -220,30 +220,47 @@ func (s *MissionService) CheckTaskCondition(userID uuid.UUID, task *models.Missi
 	return false, "Unknown task type", nil
 }
 
-func (s *MissionService) checkBringItem(playerID uuid.UUID, itemName string, requiredQty int) (bool, string, error) {
-	if itemName == "" {
+type reqItem struct {
+	Item     string `json:"item"`
+	Quantity int    `json:"quantity"`
+}
+
+func (s *MissionService) checkBringItem(playerID uuid.UUID, task *models.MissionTask) (bool, string, error) {
+	var items []reqItem
+	if len(task.RequiredItems) > 0 {
+		_ = json.Unmarshal(task.RequiredItems, &items)
+	}
+
+	if len(items) == 0 && task.RequiredItem != "" {
+		qty := task.RequiredQuantity
+		if qty < 1 {
+			qty = 1
+		}
+		items = append(items, reqItem{Item: task.RequiredItem, Quantity: qty})
+	}
+
+	if len(items) == 0 {
 		return true, "", nil
 	}
-	if requiredQty < 1 {
-		requiredQty = 1 // 0 = compat: exigir al menos 1
+
+	for _, req := range items {
+		var total int64
+		err := database.DB.Table("inventories").
+			Joins("JOIN items ON items.id = inventories.item_id").
+			Where("inventories.player_id = ? AND items.name ILIKE ?", playerID, req.Item).
+			Select("COALESCE(SUM(inventories.quantity), 0)").
+			Scan(&total).Error
+
+		if err != nil {
+			return false, "", err
+		}
+
+		if total < int64(req.Quantity) {
+			return false, fmt.Sprintf("You still need %d more %s.", req.Quantity-int(total), req.Item), nil
+		}
 	}
 
-	var total int64
-	// Sum the quantity across all inventory rows that match the item name
-	err := database.DB.Table("inventories").
-		Joins("JOIN items ON items.id = inventories.item_id").
-		Where("inventories.player_id = ? AND items.name ILIKE ?", playerID, itemName).
-		Select("COALESCE(SUM(inventories.quantity), 0)").
-		Scan(&total).Error
-
-	if err != nil {
-		return false, "", err
-	}
-
-	if total >= int64(requiredQty) {
-		return true, "I see you have the items!", nil
-	}
-	return false, fmt.Sprintf("You still need %d more.", requiredQty-int(total)), nil
+	return true, "I see you have the items!", nil
 }
 
 // checkKillTaskDone returns true if the WS kill handlers (UpdateKillProgress /
@@ -384,17 +401,26 @@ func (s *MissionService) UpdateTaskProgress(userID uuid.UUID, missionID uint, ta
 	if isCompleted {
 		var task models.MissionTask
 		if err := database.DB.First(&task, taskID).Error; err == nil {
-			if (task.Type == models.TaskTypeBringItem || task.Type == models.TaskTypeFindItem || task.Type == models.TaskTypeCollectItems) && task.RequiredItem != "" {
-				item, err := s.InvRepo.GetItemByName(task.RequiredItem)
-				if err == nil {
+			if task.Type == models.TaskTypeBringItem || task.Type == models.TaskTypeFindItem || task.Type == models.TaskTypeCollectItems {
+				var items []reqItem
+				if len(task.RequiredItems) > 0 {
+					_ = json.Unmarshal(task.RequiredItems, &items)
+				}
+				if len(items) == 0 && task.RequiredItem != "" {
 					qty := task.RequiredQuantity
 					if qty < 1 {
 						qty = 1
 					}
-					if err := s.InvRepo.RemoveItemFromInventory(playerID, item.ID, qty); err != nil {
-						fmt.Printf("[MissionService] WARN: failed to consume %d of item '%s' for task %d: %v\n", qty, task.RequiredItem, taskID, err)
-					} else {
-						fmt.Printf("[MissionService] Consumed %d of item '%s' for task %d completion\n", qty, task.RequiredItem, taskID)
+					items = append(items, reqItem{Item: task.RequiredItem, Quantity: qty})
+				}
+				for _, req := range items {
+					item, err := s.InvRepo.GetItemByName(req.Item)
+					if err == nil {
+						if err := s.InvRepo.RemoveItemFromInventory(playerID, item.ID, req.Quantity); err != nil {
+							fmt.Printf("[MissionService] WARN: failed to consume %d of item '%s' for task %d: %v\n", req.Quantity, req.Item, taskID, err)
+						} else {
+							fmt.Printf("[MissionService] Consumed %d of item '%s' for task %d completion\n", req.Quantity, req.Item, taskID)
+						}
 					}
 				}
 			}

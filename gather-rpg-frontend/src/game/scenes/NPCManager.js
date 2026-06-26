@@ -121,6 +121,10 @@ export class NPCManager {
       instanceId: instance.id,
       characterId: def.character_id || def.sprite || '2',
       name: def.name,
+      // The NPC definition's type (quest_master, merchant, ...). Passed so the
+      // dialogue UI can render the right surface (mission board / shop) instantly
+      // on open, without waiting for the missions API to resolve the type.
+      type: def.type,
       role: instance.role || tmpl.role || 'ambient',
       interactionMode: def.interaction_mode || 'hybrid',
       voiceType: def.voice_type || 'male',

@@ -240,7 +240,11 @@ export class LobbyScene extends Phaser.Scene {
     // NPCs concurrently raced and could leave them unrendered until a manual reload.
     this.npcManager.reset();
     this.mapManager.loadServerMapConfig(this.currentMapKey)
-      .finally(() => { this.npcManager.loadNPCs(); });
+      .finally(() => {
+        this.npcManager.loadNPCs();
+        // Apply mission-gated portal visibility once the map's builds exist.
+        this.updatePortalsForMission(useGameStore.getState().activeMission);
+      });
     this.pickupManager.resetAndLoadMapPickups();
     this.nearbyNPC = null;
     this.nearbyPickup = null;
@@ -262,7 +266,10 @@ export class LobbyScene extends Phaser.Scene {
 
     this.missionUnsubscribe = useGameStore.subscribe(
         (state) => state.activeMission,
-        (mission) => this.npcManager.handleMissionUpdate(mission)
+        (mission) => {
+            this.npcManager.handleMissionUpdate(mission);
+            this.updatePortalsForMission(mission);
+        }
     );
 
     // Initial render of existing players (in case they loaded before scene)
@@ -687,6 +694,29 @@ export class LobbyScene extends Phaser.Scene {
 
     // Continuously calculate and enforce X-axis bounds based on Void walls
     this.mapManager.updateCameraBounds();
+  }
+
+  // Show/hide mission-gated portals based on the player's active mission. A portal
+  // WITHOUT missionIds is never touched (always visible, as before). A portal WITH
+  // missionIds is shown only when the active mission's id is in that list — e.g. a
+  // "return" portal in pet_shop that appears only while on the "help Amy" mission.
+  updatePortalsForMission(mission) {
+    if (!this.builds || typeof this.builds.getChildren !== 'function') return;
+    this.builds.getChildren().forEach(sprite => {
+      const rawIds = sprite.data?.get?.('missionIds');
+      // Normalize to a list of id strings; accept array or comma-separated string.
+      const ids = (Array.isArray(rawIds) ? rawIds : String(rawIds ?? '').split(','))
+        .map(s => String(s).trim())
+        .filter(Boolean);
+      if (ids.length === 0) return; // unrestricted portal → leave as-is
+
+      const visible = !!mission && ids.includes(String(mission.id));
+      sprite.setVisible(visible);
+      sprite.data.set('missionGatedHidden', !visible);
+      // For solid 'build' portals, also drop collision while hidden so the player
+      // doesn't bump an invisible wall. Floor 'exit' triggers keep body disabled.
+      if (sprite.body && !sprite.data.get('isExit')) sprite.body.enable = visible;
+    });
   }
 
   async _handleMapEntry(targetMap, targetX, targetY) {

@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -38,6 +39,15 @@ type Config struct {
 	PiperExePath    string
 	PiperModelsDir  string
 	PiperCacheDir   string
+
+	// PrecacheLangs are the player languages whose mission/task translations are
+	// warmed at startup and on mission edit, so the first dialogue open is fast.
+	PrecacheLangs []string
+
+	// AutoMigrate controls whether GORM AutoMigrate runs on startup. Against a remote
+	// DB its schema introspection takes minutes, so set AUTO_MIGRATE=false for fast
+	// restarts once the schema is stable; set it true after pulling schema changes.
+	AutoMigrate bool
 }
 
 func LoadConfig() *Config {
@@ -77,10 +87,27 @@ func LoadConfig() *Config {
 		PiperExePath:    getEnv("PIPER_EXE_PATH", "piper"),
 		PiperModelsDir:  getEnv("PIPER_MODELS_DIR", "./models"),
 		PiperCacheDir:   getEnv("PIPER_CACHE_DIR", "./tts_cache"),
+
+		PrecacheLangs:   parseCSVLangs(getEnv("PRECACHE_LANGS", "es")),
+		AutoMigrate:     getEnv("AUTO_MIGRATE", "true") != "false",
 	}
 
 	log.Printf("Config Loaded: DB_HOST=%s, DB_PORT=%s, DB_NAME=%s", cfg.DBHost, cfg.DBPort, cfg.DBName)
 	return cfg
+}
+
+// parseCSVLangs turns "es, pt , fr" into ["es","pt","fr"] (trimmed, lowercased,
+// empties dropped). Used for PRECACHE_LANGS.
+func parseCSVLangs(csv string) []string {
+	parts := strings.Split(csv, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.ToLower(strings.TrimSpace(p))
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func getEnv(key, fallback string) string {

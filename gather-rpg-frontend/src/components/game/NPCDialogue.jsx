@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronRight, ShoppingBag, MapPin, Compass, ShieldCheck, Map, CheckCircle } from 'lucide-react';
+import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronRight, ShoppingBag, MapPin, Compass, ShieldCheck, Map, CheckCircle, Loader2 } from 'lucide-react';
 import api from '../../services/api';
 import { analyzeDialogueAudio, generateTTS, getTTSAudioUrl } from '../../services/voiceApi';
 import ShopModal from '../common/ShopModal';
@@ -9,6 +9,18 @@ import { useAuthStore } from '../../store/authStore';
 import { useGameStore } from '../../store/gameStore';
 import { ItemIcon } from '../common/ItemIcon';
 import { STATE_TO_ANIM, NPC_CONFIG } from '../../game/config/NPCConfig';
+
+// Remove emojis (and leftover variation selectors / regional indicators) from
+// text that will be SPOKEN by TTS. The chat bubble keeps the original text with
+// emojis; only the voice gets the cleaned version so it doesn't read "smiling
+// face" aloud and break the pacing for learners.
+const stripEmojisForSpeech = (s) =>
+    (s || '')
+        .replace(/\p{Extended_Pictographic}/gu, '')
+        .replace(/[\u{1F1E6}-\u{1F1FF}]/gu, '') // flag regional indicators
+        .replace(/[‍️]/g, '')         // ZWJ + variation selector
+        .replace(/\s{2,}/g, ' ')
+        .trim();
 
 const NPCPortrait = ({ npcId, state, size = 'small' }) => {
     // Normalize ID: sprite2 -> 2
@@ -92,6 +104,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const [availableMissions, setAvailableMissions] = useState([]);
     const [selectedMissionId, setSelectedMissionId] = useState(null);
     const [resolvedType, setResolvedType] = useState(null);
+    const [missionsLoading, setMissionsLoading] = useState(true); // true while the missions API is in flight
     const [autoPlay, setAutoPlay] = useState(true);
     const [isMissionComplete, setIsMissionComplete] = useState(false);
     const [hasPendingCompletion, setHasPendingCompletion] = useState(false);
@@ -178,7 +191,14 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             detail: { templateId: npcData.templateId }
         }));
 
+        // NOTE: the greeting is set from the API response (fetchMissions), where we know
+        // the NPC's real type and its own greeting. We intentionally do NOT show a generic
+        // instant greeting here — doing so made every NPC open with the merchant line
+        // "How can I help you today?". The "Cargando misiones…" spinner covers the (now
+        // fast) fetch instead.
+
         const fetchMissions = async () => {
+            setMissionsLoading(true);
             try {
                 console.log("[NPCDialogue] Fetching missions for templateId:", npcData.templateId);
                 const res = await api.get(`/missions/npc/${npcData.templateId}${npcData.roomId ? `?room_id=${npcData.roomId}` : ''}`);
@@ -188,48 +208,57 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 // Whether THIS player already completed this NPC's task (per-player).
                 // Used to show a persistent "task done" check when reopening the dialogue.
                 setNpcTaskDone(!!data.npc_task_completed);
-                
-                // Set custom greeting or default (in English)
-                const npcGreetingEn = data.greeting || t('npc.dialogue.default_greeting', { lng: 'en', username: user?.username || t('lobby.sidebar.traveler', { lng: 'en' }) });
-                
-                // Set custom greeting or default (in Spanish translation)
-                let npcGreetingEs = '';
-                if (!data.greeting) {
-                    npcGreetingEs = t('npc.dialogue.default_greeting', { lng: 'es', username: user?.username || t('lobby.sidebar.traveler', { lng: 'es' }) });
-                } else {
-                    const cleanKey = data.greeting.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-                    const key = `npc.dialogue.custom.${cleanKey}`;
-                    const translated = t(key);
-                    if (translated && translated !== key) {
-                        npcGreetingEs = translated;
+
+                // Resolve the real role from the API (source of truth) UP FRONT so the
+                // mission board renders immediately for a quest master, instead of
+                // waiting behind the greeting and its TTS.
+                const finalRoleType = data.npc_type || npcType;
+                console.log("[NPCDialogue] Final Role Type resolved:", finalRoleType);
+                setResolvedType(finalRoleType);
+                const isBoardNpc = finalRoleType === 'quest_master' || finalRoleType === 'master';
+
+                // Greeting + auto-play. Skipped for board NPCs (quest master / portal):
+                // their primary UI is the mission board, so a greeting bubble + spoken
+                // audio just delayed the missions from showing ("sale primero un diálogo").
+                if (!isBoardNpc) {
+                    // When the NPC has no custom greeting, the fallback depends on its role:
+                    // only merchants get the shopkeeper line ("How can I help you today?");
+                    // every other NPC gets a neutral greeting.
+                    const defaultKey = finalRoleType === 'merchant' ? 'npc.dialogue.merchant_greeting' : 'npc.dialogue.default_greeting';
+                    const npcGreetingEn = data.greeting || t(defaultKey, { lng: 'en', username: user?.username || t('lobby.sidebar.traveler', { lng: 'en' }) });
+
+                    let npcGreetingEs = '';
+                    if (!data.greeting) {
+                        npcGreetingEs = t(defaultKey, { lng: 'es', username: user?.username || t('lobby.sidebar.traveler', { lng: 'es' }) });
+                    } else {
+                        const cleanKey = data.greeting.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+                        const key = `npc.dialogue.custom.${cleanKey}`;
+                        const translated = t(key);
+                        if (translated && translated !== key) {
+                            npcGreetingEs = translated;
+                        }
+                    }
+
+                    setMessages([{
+                        sender: 'npc',
+                        text: npcGreetingEn,
+                        translation: npcGreetingEs,
+                        timestamp: new Date()
+                    }]);
+
+                    if (autoPlay && !hasPlayedGreeting.current) {
+                        hasPlayedGreeting.current = true;
+                        console.log("[NPCDialogue] Playing initial greeting audio:", npcGreetingEn);
+                        setTimeout(() => {
+                            handleListen(npcGreetingEn, 'en', false);
+                        }, 500);
                     }
                 }
 
-                setMessages([{
-                    sender: 'npc',
-                    text: npcGreetingEn,
-                    translation: npcGreetingEs,
-                    timestamp: new Date()
-                }]);
-
-                // AUTO-PLAY: Play the first greeting automatically
-                if (autoPlay && !hasPlayedGreeting.current) {
-                    hasPlayedGreeting.current = true;
-                    console.log("[NPCDialogue] Playing initial greeting audio:", npcGreetingEn);
-                    setTimeout(() => {
-                        handleListen(npcGreetingEn, 'en', false);
-                    }, 500);
-                }
-                
                 if (data && data.missions) {
                     setAvailableMissions(data.missions);
-                    
-                    // Use the type from API if available (source of truth)
-                    const finalRoleType = data.npc_type || npcType;
-                    console.log("[NPCDialogue] Final Role Type resolved:", finalRoleType);
-                    setResolvedType(finalRoleType);
 
-                    // Priority 1: Check NPC type for role-based UI
+                    // Role-based UI (type already resolved above).
                     if (finalRoleType === 'merchant') {
                         setHasShop(true);
                         console.log("[NPCDialogue] Merchant type detected, enabling shop");
@@ -240,16 +269,13 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                     if (data.shop) {
                         setShopData(data.shop);
                     }
-                    
-                    // AUTO-SELECT MISSION: If there is exactly one mission and NPC is not a Master/Portal,
-                    // skip the selection menu and start dialogue immediately.
-                    if (data.missions.length === 1 && finalRoleType !== 'quest_master' && finalRoleType !== 'master') {
+
+                    // AUTO-SELECT MISSION: exactly one mission and NOT a board NPC →
+                    // skip the selection menu and start its dialogue immediately.
+                    if (data.missions.length === 1 && !isBoardNpc) {
                         console.log("[NPCDialogue] Auto-selecting single mission:", data.missions[0].id);
                         setSelectedMissionId(data.missions[0].id);
                     }
-                    
-                    // Also update npcType state if needed for rendering
-                    // We can use a local variable or update a state if we had one for it
                 } else if (Array.isArray(data)) {
                     console.log("[NPCDialogue] Fallback Array. Setting availableMissions:", data.length);
                     setAvailableMissions(data);
@@ -257,6 +283,8 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 }
             } catch (err) {
                 console.error("[NPCDialogue] Error fetching NPC missions:", err);
+            } finally {
+                setMissionsLoading(false);
             }
         };
 
@@ -269,7 +297,11 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 detail: { templateId: npcData.templateId }
             }));
         };
-    }, [user, npcData.templateId]);
+        // Depend only on the user's stable identity, NOT the whole user object.
+        // A conversational purchase syncs gold into authStore.user (new reference);
+        // depending on `user` would re-run this effect and reset the conversation
+        // back to the greeting mid-flow (wiping the "now say thank you" step).
+    }, [user?.id, npcData.templateId]);
 
     const handleSelectMission = async (mission) => {
         stopAudio();
@@ -317,8 +349,15 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
     const stopAudio = () => {
         if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
+            const a = audioRef.current;
+            a.pause();
+            try { a.currentTime = 0; } catch (_) {}
+            // Abort any in-flight load and detach handlers so a superseded clip
+            // can't fire a late 'canplaythrough' and start ghost playback.
+            a.oncanplaythrough = null;
+            a.onended = null;
+            a.onerror = null;
+            a.src = '';
             audioRef.current = null;
         }
         if (window.speechSynthesis) {
@@ -329,6 +368,9 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
     const handleListen = async (text, language = 'en', isManual = false) => {
         if (!text) return;
+        // Voice gets an emoji-free copy; the displayed bubble keeps the original.
+        const spokenText = stripEmojisForSpeech(text);
+        if (!spokenText) return; // nothing pronounceable (e.g. an emoji-only line)
         const startTtsTotal = performance.now();
         console.log(`\n[Performance] === Frontend: TTS Request Start ===`);
         console.log(`[Performance] Text: "${text}" | Language: ${language} | Manual: ${isManual}`);
@@ -360,7 +402,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
                 const startTtsGeneration = performance.now();
                 console.log(`[Performance] Frontend: Sending generateTTS request to Voice Backend (Voice: ${npcVoice})...`);
-                const tts = await generateTTS(text, npcVoice);
+                const tts = await generateTTS(spokenText, npcVoice);
                 const generationDuration = performance.now() - startTtsGeneration;
                 console.log(`[Performance] Frontend: generateTTS response received. Took ${generationDuration.toFixed(2)} ms.`);
 
@@ -376,23 +418,18 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             }
 
             console.log(`[Performance] Frontend: Initializing Audio object with URL: ${url}`);
-            const audio = new Audio(url);
+            const audio = new Audio();
+            audio.preload = 'auto';
             audioRef.current = audio;
             audio.onended = () => {
                 console.log("[Performance] Frontend: TTS Audio playback finished naturally");
                 setIsTtsPlaying(false);
             };
-            
-            const startAudioLoad = performance.now();
-            audio.oncanplaythrough = () => {
-                const loadTime = performance.now() - startAudioLoad;
-                console.log(`[Performance] Frontend: Audio binary loaded and ready to play. Load took ${loadTime.toFixed(2)} ms.`);
-            };
 
             audio.onerror = (e) => {
                 console.error("[Performance] Frontend: Audio element playback error, falling back to Web Speech API:", e);
                 if ('speechSynthesis' in window) {
-                    const utterance = new SpeechSynthesisUtterance(text);
+                    const utterance = new SpeechSynthesisUtterance(spokenText);
                     utterance.lang = language === 'es' ? 'es-ES' : 'en-US';
                     utterance.onend = () => {
                         console.log("[Performance] Frontend: Web Speech API playback complete");
@@ -404,13 +441,32 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 }
             };
 
-            audio.play().then(() => {
-                const totalTtsDuration = performance.now() - startTtsTotal;
-                console.log(`[Performance] Frontend: TTS Audio playback started successfully. Total latency: ${totalTtsDuration.toFixed(2)} ms\n`);
-            }).catch(err => {
-                console.error("[Performance] Frontend: Audio.play() failed:", err);
-                setIsTtsPlaying(false);
-            });
+            // Start playback ONLY once the clip is buffered enough to play through,
+            // and always from the very start. Calling play() on a not-yet-loaded
+            // element made the browser begin mid-clip (the clock advanced while data
+            // was still downloading), cutting off the first 2-4 seconds. Waiting for
+            // 'canplaythrough' guarantees the beginning is available before we play.
+            let started = false;
+            const startPlayback = () => {
+                // Bail if already started or this clip was superseded by a newer one.
+                if (started || audioRef.current !== audio) return;
+                started = true;
+                try { audio.currentTime = 0; } catch (_) {}
+                audio.play().then(() => {
+                    const totalTtsDuration = performance.now() - startTtsTotal;
+                    console.log(`[Performance] Frontend: TTS Audio playback started successfully. Total latency: ${totalTtsDuration.toFixed(2)} ms\n`);
+                }).catch(err => {
+                    console.error("[Performance] Frontend: Audio.play() failed:", err);
+                    setIsTtsPlaying(false);
+                });
+            };
+            audio.addEventListener('canplaythrough', startPlayback, { once: true });
+            // Safety net: if 'canplaythrough' is slow/never fires for this stream,
+            // start anyway after a short wait (the guard prevents double playback).
+            setTimeout(startPlayback, 2500);
+
+            audio.src = url;
+            audio.load();
         } catch (err) {
             console.error("[Performance] Frontend: TTS setup failed:", err);
             setIsTtsPlaying(false);
@@ -476,6 +532,10 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                     item: data.item_gift,
                     quantity: data.gift_quantity || 1
                 });
+                // A conversational purchase/gift changed gold and inventory on the
+                // server; resync the wallet so the shop header and HUD stay correct.
+                useGameStore.getState().fetchPlayerStats();
+                useGameStore.getState().fetchInventory();
                 // Auto-clear gift info after 5 seconds
                 setTimeout(() => setGiftInfo(null), 5000);
             }
@@ -718,9 +778,9 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                         )}
 
                         {giftInfo && (
-                            <div className="absolute top-[-40px] left-1/2 -translate-x-1/2 flex items-center gap-4 px-6 py-3 bg-gradient-to-r from-yellow-700 to-yellow-500 text-black border-4 border-yellow-900 shadow-2xl animate-bounce z-50 font-medieval uppercase">
+                            <div className="fixed top-24 left-1/2 -translate-x-1/2 flex items-center gap-4 px-6 py-3 bg-gradient-to-r from-yellow-700 to-yellow-500 text-black border-4 border-yellow-900 shadow-2xl animate-bounce z-[300] font-medieval uppercase pointer-events-none">
                                 <ItemIcon iconKey={giftInfo.item.icon_key} type={giftInfo.item.item_type} size={32} className="pixelated" />
-                                <span className="font-black italic text-sm">RECOMPENSA: {giftInfo.quantity}x {giftInfo.item.name}</span>
+                                <span className="font-black italic text-sm">{t('npc.dialogue.purchased', { quantity: giftInfo.quantity, name: giftInfo.item.name })}</span>
                             </div>
                         )}
 
@@ -732,8 +792,16 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                     {(resolvedType || npcType) === 'quest_master' ? t('npc.dialogue.mission_board') : t('npc.dialogue.how_can_i_help')}
                                 </h3>
                                 <div className="grid grid-cols-1 gap-4 w-full max-w-xl pb-10">
-                                    {/* Empty State for Portals */}
-                                    {(resolvedType || npcType) === 'quest_master' && availableMissions.length === 0 && (
+                                    {/* Loading state: board is shown instantly from the NPC type, but the
+                                        missions list is still being fetched — show a spinner, not "no missions". */}
+                                    {(resolvedType || npcType) === 'quest_master' && availableMissions.length === 0 && missionsLoading && (
+                                        <div className="p-10 border-4 border-dashed border-gray-400 bg-gray-100/50 rounded-lg flex flex-col items-center gap-3">
+                                            <Loader2 className="animate-spin text-gray-500" size={32} />
+                                            <p className="text-lg font-serif text-gray-600">{t('npc.dialogue.loading_missions')}</p>
+                                        </div>
+                                    )}
+                                    {/* Empty State for Portals (only once the fetch has finished). */}
+                                    {(resolvedType || npcType) === 'quest_master' && availableMissions.length === 0 && !missionsLoading && (
                                         <div className="p-10 border-4 border-dashed border-gray-400 bg-gray-100/50 rounded-lg">
                                             <p className="text-xl font-serif text-gray-600">{t('npc.dialogue.no_missions')}</p>
                                             <p className="text-sm text-gray-400 mt-2 italic">{t('npc.dialogue.no_missions_desc')}</p>
@@ -883,6 +951,28 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                 )
                             )}
                             
+                            {/* "Thinking" indicator while the backend prepares the NPC reply */}
+                            {isProcessing && (
+                                <div className="flex items-center gap-3 text-[var(--color-accent-blue)] animate-in fade-in duration-300">
+                                    <Loader2 size={22} className="animate-spin" />
+                                    <span className="text-lg font-serif italic">{t('npc.dialogue.thinking')}</span>
+                                    <span className="flex gap-1 ml-1">
+                                        <span className="w-2 h-2 rounded-full bg-[var(--color-accent-blue)] animate-bounce [animation-delay:-0.3s]"></span>
+                                        <span className="w-2 h-2 rounded-full bg-[var(--color-accent-blue)] animate-bounce [animation-delay:-0.15s]"></span>
+                                        <span className="w-2 h-2 rounded-full bg-[var(--color-accent-blue)] animate-bounce"></span>
+                                    </span>
+                                </div>
+                            )}
+
+                            {/* "Loading missions" indicator: shown while the greeting plays and the
+                                (often slow, remote-DB) missions fetch is still in flight. */}
+                            {missionsLoading && !isProcessing && !isKaraokeTask && (
+                                <div className="flex items-center gap-3 text-[var(--color-accent-blue)]/80 animate-in fade-in duration-300">
+                                    <Loader2 size={18} className="animate-spin" />
+                                    <span className="text-base font-serif italic">{t('npc.dialogue.loading_missions')}</span>
+                                </div>
+                            )}
+
                             <div className="flex items-start justify-between gap-6">
                                 <div className="flex-1 flex flex-col gap-3">
                                     <p className="text-2xl text-[var(--color-base-dark)] font-medieval leading-tight tracking-tight drop-shadow-sm">

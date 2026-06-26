@@ -319,3 +319,46 @@ func extractJSON(raw string) string {
 	}
 	return raw
 }
+
+// WarmMission pre-translates a mission and its tasks into the given languages and
+// caches the results (MissionTranslation / TaskTranslation), so a player's first
+// dialogue open doesn't pay the per-mission/per-task LLM cost. English langs are
+// skipped (canonical). Safe to run in a goroutine.
+func (s *TranslationService) WarmMission(missionID uint, langs []string) {
+	var m models.Mission
+	if err := database.DB.First(&m, missionID).Error; err != nil {
+		return
+	}
+	var tasks []models.MissionTask
+	database.DB.Where("mission_id = ?", missionID).Find(&tasks)
+	for _, lang := range langs {
+		lang = utils.NormalizeLang(lang)
+		if utils.IsEnglish(lang) {
+			continue
+		}
+		s.GetMissionTranslation(&m, lang)
+		for i := range tasks {
+			s.GetTaskTranslation(&tasks[i], lang)
+		}
+	}
+}
+
+// WarmAllActiveMissions warms every active mission's translations into langs. Run
+// once at startup (in a goroutine) so EXISTING missions are ready before the first
+// player opens them. Idempotent: GetMissionTranslation/GetTaskTranslation no-op on
+// a cache hit, so re-running is cheap.
+func (s *TranslationService) WarmAllActiveMissions(langs []string) {
+	if len(langs) == 0 {
+		return
+	}
+	var missions []models.Mission
+	if err := database.DB.Where("status = ?", "active").Find(&missions).Error; err != nil {
+		fmt.Printf("[TranslationWarmer] could not list missions: %v\n", err)
+		return
+	}
+	fmt.Printf("[TranslationWarmer] Warming %d active missions into %v...\n", len(missions), langs)
+	for _, m := range missions {
+		s.WarmMission(m.ID, langs)
+	}
+	fmt.Printf("[TranslationWarmer] Done warming missions.\n")
+}

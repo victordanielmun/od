@@ -8,7 +8,7 @@ import { ItemIcon } from './ItemIcon';
 
 export default function ShopModal({ npcId, onClose, shopName, initialData }) {
     const { t } = useTranslation();
-    const { buyItem } = useGameStore();
+    const { buyItem, fetchPlayerStats } = useGameStore();
     const { user } = useAuthStore();
     
     // Type colors mapping with localized labels
@@ -30,6 +30,11 @@ export default function ShopModal({ npcId, onClose, shopName, initialData }) {
     const [purchaseStatus, setPurchaseStatus] = useState(null); // { id, status: 'success' | 'error' }
 
     useEffect(() => {
+        // Refresh the player's gold from the server so the wallet shown in the
+        // header reflects reality (conversational purchases deduct gold without
+        // updating the local authStore copy, which otherwise reads stale/0).
+        fetchPlayerStats();
+
         if (initialData) {
             console.log("[ShopModal] Rendering with initialData:", initialData);
             setItems(initialData.items || []);

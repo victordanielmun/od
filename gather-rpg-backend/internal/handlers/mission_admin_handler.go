@@ -25,11 +25,23 @@ func normalizeDifficulty(raw models.DifficultyLevel) models.DifficultyLevel {
 }
 
 type MissionAdminHandler struct {
-	Service *services.MissionService
+	Service       *services.MissionService
+	Translation   *services.TranslationService
+	PrecacheLangs []string
 }
 
-func NewMissionAdminHandler(service *services.MissionService) *MissionAdminHandler {
-	return &MissionAdminHandler{Service: service}
+func NewMissionAdminHandler(service *services.MissionService, translation *services.TranslationService, precacheLangs []string) *MissionAdminHandler {
+	return &MissionAdminHandler{Service: service, Translation: translation, PrecacheLangs: precacheLangs}
+}
+
+// warmMission pre-translates a mission + its tasks into the configured languages in
+// the background, so the first player to open it after an edit doesn't pay the LLM
+// cost. No-op when no translation service / languages are configured.
+func (h *MissionAdminHandler) warmMission(missionID uint) {
+	if h.Translation == nil || len(h.PrecacheLangs) == 0 || missionID == 0 {
+		return
+	}
+	go h.Translation.WarmMission(missionID, h.PrecacheLangs)
 }
 
 func (h *MissionAdminHandler) ListMissions(c *fiber.Ctx) error {
@@ -51,6 +63,7 @@ func (h *MissionAdminHandler) CreateMission(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	h.warmMission(mission.ID)
 	return c.Status(fiber.StatusCreated).JSON(mission)
 }
 
@@ -67,6 +80,7 @@ func (h *MissionAdminHandler) UpdateMission(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	h.warmMission(mission.ID)
 	return c.JSON(mission)
 }
 
@@ -99,6 +113,7 @@ func (h *MissionAdminHandler) CreateTask(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	h.warmMission(task.MissionID)
 	return c.Status(fiber.StatusCreated).JSON(task)
 }
 
@@ -114,6 +129,7 @@ func (h *MissionAdminHandler) UpdateTask(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	h.warmMission(task.MissionID)
 	return c.JSON(task)
 }
 

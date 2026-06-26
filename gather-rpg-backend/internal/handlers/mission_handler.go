@@ -197,6 +197,65 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 	// and recognize which missions are more advanced. We intentionally do NOT filter/hide
 	// missions by the player's level (see GetMissionsByScene for the rationale).
 
+	// ── Batch preload (avoid N+1 against a possibly-remote DB) ──────────────────
+	// The loops below need each active mission's tasks, the player's progress, and
+	// (for non-English players) cached translations. Fetching these per-mission meant
+	// ~4 round-trips × N missions (≈5s for a quest master with many missions on a
+	// remote DB). We load them all up front in a handful of queries and look them up
+	// from maps instead.
+	activeMissionIDs := make([]uint, 0, len(missions))
+	for _, m := range missions {
+		if m.Status == "active" {
+			activeMissionIDs = append(activeMissionIDs, m.ID)
+		}
+	}
+
+	// Tasks grouped by mission (one query).
+	tasksByMission := make(map[uint][]models.MissionTask)
+	if len(activeMissionIDs) > 0 {
+		var allTasks []models.MissionTask
+		database.DB.Where("mission_id IN ?", activeMissionIDs).Order("\"order\" ASC").Find(&allTasks)
+		for _, t := range allTasks {
+			tasksByMission[t.MissionID] = append(tasksByMission[t.MissionID], t)
+		}
+	}
+
+	// Player progress per mission (one query). Resolve the internal player id first.
+	progressByMission := make(map[uint]*models.PlayerMissionProgress)
+	var pstats models.PlayerStats
+	if perr := database.DB.Select("id").First(&pstats, "user_id = ?", userID).Error; perr == nil && len(activeMissionIDs) > 0 {
+		var progresses []models.PlayerMissionProgress
+		database.DB.Where("player_id = ? AND mission_id IN ?", pstats.ID, activeMissionIDs).Find(&progresses)
+		for i := range progresses {
+			progressByMission[progresses[i].MissionID] = &progresses[i]
+		}
+	}
+
+	// Cached translations (non-English only): mission + task, keyed by id. The warmer
+	// pre-populates these, so this is normally 2 reads instead of 2×N find-or-creates.
+	missionTrByID := make(map[uint]models.MissionTranslation)
+	taskTrByID := make(map[uint]models.TaskTranslation)
+	if !utils.IsEnglish(userLang) && len(activeMissionIDs) > 0 {
+		var mtrs []models.MissionTranslation
+		database.DB.Where("mission_id IN ? AND lang = ?", activeMissionIDs, userLang).Find(&mtrs)
+		for _, tr := range mtrs {
+			missionTrByID[tr.MissionID] = tr
+		}
+		var taskIDs []uint
+		for _, ts := range tasksByMission {
+			for _, t := range ts {
+				taskIDs = append(taskIDs, t.ID)
+			}
+		}
+		if len(taskIDs) > 0 {
+			var ttrs []models.TaskTranslation
+			database.DB.Where("task_id IN ? AND lang = ?", taskIDs, userLang).Find(&ttrs)
+			for _, tr := range ttrs {
+				taskTrByID[tr.TaskID] = tr
+			}
+		}
+	}
+
 	type MissionSummary struct {
 		ID                    uint            `json:"id"`
 		Title                 string          `json:"title"`
@@ -229,8 +288,8 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 			continue
 		}
 
-		progress, _ := h.Service.GetProgressReadOnly(userID, m.ID, nil)
-		tasks, _ := h.Service.GetTasks(m.ID)
+		progress := progressByMission[m.ID]
+		tasks := tasksByMission[m.ID]
 
 		var completedMap map[string]bool
 		if progress != nil && progress.TasksCompleted != nil {
@@ -330,8 +389,16 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		title, descr, objective := m.Title, m.DescriptionEn, m.ObjectiveEn
 		instruction := currentInstruction
 		if !utils.IsEnglish(userLang) {
-			mcopy := m
-			mt := h.Translation.GetMissionTranslation(&mcopy, userLang)
+			// Use the preloaded translation; fall back to generate-on-miss (rare once
+			// the warmer has run) so correctness never depends on the cache being warm.
+			var mt *models.MissionTranslation
+			if cached, ok := missionTrByID[m.ID]; ok {
+				c := cached
+				mt = &c
+			} else {
+				mcopy := m
+				mt = h.Translation.GetMissionTranslation(&mcopy, userLang)
+			}
 			title, descr, objective = mt.Title, mt.Description, mt.Objective
 
 			// The instruction is usually a task description; translate it via its task.
@@ -339,8 +406,12 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 			instruction = mt.Description
 			for _, t := range tasks {
 				if currentInstruction == t.DescriptionEn {
-					tcopy := t
-					instruction = h.Translation.GetTaskTranslation(&tcopy, userLang).Description
+					if ctr, ok := taskTrByID[t.ID]; ok {
+						instruction = ctr.Description
+					} else {
+						tcopy := t
+						instruction = h.Translation.GetTaskTranslation(&tcopy, userLang).Description
+					}
 					break
 				}
 			}
@@ -373,13 +444,13 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		}
 		hasNPCMissions = true
 
-		progress, _ := h.Service.GetProgressReadOnly(userID, m.ID, nil)
+		progress := progressByMission[m.ID]
 		if progress != nil && progress.Status == models.StatusCompleted {
 			isMissionCompletedForPlayer = true
 			continue
 		}
 
-		tasks, _ := h.Service.GetTasks(m.ID)
+		tasks := tasksByMission[m.ID]
 		var completedMap map[string]bool
 		if progress != nil && progress.TasksCompleted != nil {
 			json.Unmarshal(progress.TasksCompleted, &completedMap)

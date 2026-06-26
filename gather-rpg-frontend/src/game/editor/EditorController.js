@@ -26,7 +26,7 @@ export class EditorController {
     this.tiles = new Map();
 
     this.buildScale = 2.5;
-    this.buildMetadata = { portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '' };
+    this.buildMetadata = { portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '', missionIds: [] };
     this.npcMetadata = null;
     this.enemyMetadata = null;
     this.pickupMetadata = null;

@@ -416,7 +416,9 @@
       "controls_auto": "Automatic (Touch Screens)",
       "controls_always": "Always Enabled",
       "controls_never": "Disabled (Hide)",
-      "controls_desc": "Allows you to force or disable the display of touch controls on screen in case they were activated by mistake."
+      "controls_desc": "Allows you to force or disable the display of touch controls on screen in case they were activated by mistake.",
+      "language": "Language",
+      "language_desc": "Your native language. It sets the language of the translated helper text shown under each NPC line. Saved to your account."
     },
     "character_selector": {
       "title": "Choose your Hero",
@@ -532,6 +534,8 @@
       "character_def": "Character Definition",
       "role": "Role / Function",
       "associated_mission": "Associated Mission (Optional)",
+      "portal_mission_gate": "Show only during mission (Optional)",
+      "portal_mission_gate_hint": "If you check one or more missions, this portal only appears while the player is on them. Empty = always visible.",
       "none": "None",
       "npc_placement_hint": "The NPC will be saved with this configuration when placed.",
       "item_config": "Item Config",
@@ -616,6 +620,9 @@
       "weapon": "Weapon",
       "armor": "Armor",
       "quest": "Mission Item",
+      "mission_item": "Mission Item",
+      "scroll": "Scroll",
+      "throwable": "Throwable",
       "material": "Material"
     }
   },
@@ -681,10 +688,13 @@
       "passed": "You nailed it!",
       "failed": "You needed an average of {{score}}. Give it another go!",
       "retry": "Try again",
-      "done": "Done"
+      "done": "Done",
+      "analyze_failed": "Couldn't analyze your recording. Please try again.",
+      "mic_denied": "Couldn't access the microphone. Enable the permission and try again."
     },
     "dialogue": {
-      "default_greeting": "Hello {{username}}! How can I help you today?",
+      "default_greeting": "Hello, {{username}}!",
+      "merchant_greeting": "Hello, {{username}}! How can I help you today?",
       "teleport_msg": "Excellent choice! I will send you to {{scene}} immediately. Good luck on your adventure!",
       "mission_completed": "Mission Completed!",
       "mission_completed_desc": "You have shown great courage and skill in completing:",
@@ -708,6 +718,9 @@
       "location": "Location: {{scene}}",
       "speaks": "{{name}} speaks...",
       "you_responded": "You responded:",
+      "thinking": "Thinking...",
+      "loading_missions": "Loading missions...",
+      "purchased": "Purchased! {{quantity}}x {{name}}",
       "silence_req": "SILENCE REQ.",
       "completed": "Completed",
       "in_progress": "In Progress",

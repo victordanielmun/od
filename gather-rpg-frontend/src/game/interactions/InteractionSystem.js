@@ -136,7 +136,10 @@ export class InteractionSystem {
           this.scene.player.x, this.scene.player.y, doorX, doorY
         );
 
-        if (dist < 90 && !foundBuild) {
+        // Skip portals hidden by a mission gate (missionIds set + player not on that
+        // mission): no prompt and no teleport while invisible.
+        const gatedHidden = build.visible === false || build.data?.get?.('missionGatedHidden');
+        if (dist < 90 && !foundBuild && !gatedHidden) {
           foundBuild = build;
         }
       });

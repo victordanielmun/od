@@ -136,7 +136,7 @@ export class TilePlacer {
     sprite.setScale(renderedScale);
     sprite.data = new Phaser.Data.DataManager(sprite);
     if (metadata) {
-      const keys = ['targetMap', 'targetRoute', 'targetX', 'targetY', 'interactionText', 'portalType'];
+      const keys = ['targetMap', 'targetRoute', 'targetX', 'targetY', 'interactionText', 'portalType', 'missionIds'];
       keys.forEach(k => { if (metadata[k] !== undefined) sprite.data.set(k, metadata[k]); });
     }
     sprite.data.set('buildScale', originalScale);
@@ -159,7 +159,7 @@ export class TilePlacer {
     sprite.data = new Phaser.Data.DataManager(sprite);
     sprite.data.set('isExit', true);
     if (metadata) {
-      const keys = ['targetMap', 'targetRoute', 'targetX', 'targetY', 'interactionText', 'portalType'];
+      const keys = ['targetMap', 'targetRoute', 'targetX', 'targetY', 'interactionText', 'portalType', 'missionIds'];
       keys.forEach(k => { if (metadata[k] !== undefined) sprite.data.set(k, metadata[k]); });
     }
     sprite.data.set('buildScale', s);

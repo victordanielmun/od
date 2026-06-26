@@ -33,6 +33,7 @@ export const KaraokeOverlay = ({ lines, missionId, taskId, roomId, minScore = 80
     const [isPlaying, setIsPlaying] = useState(false);
     const [lastLineScore, setLastLineScore] = useState(null);
     const [result, setResult] = useState(null);
+    const [errorMsg, setErrorMsg] = useState(null); // user-visible mic / analysis errors
 
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
@@ -41,7 +42,15 @@ export const KaraokeOverlay = ({ lines, missionId, taskId, roomId, minScore = 80
 
     const stopAudio = () => {
         if (audioRef.current) {
-            audioRef.current.pause();
+            const a = audioRef.current;
+            a.pause();
+            try { a.currentTime = 0; } catch (_) {}
+            // Abort any in-flight load + detach handlers so a superseded clip can't
+            // fire a late 'canplaythrough' and start ghost playback.
+            a.oncanplaythrough = null;
+            a.onended = null;
+            a.onerror = null;
+            a.src = '';
             audioRef.current = null;
         }
         if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -67,7 +76,8 @@ export const KaraokeOverlay = ({ lines, missionId, taskId, roomId, minScore = 80
             const tts = await generateTTS(text, npcVoice);
             let url = tts.audio_url || getTTSAudioUrl(tts.cache_key);
             if (url.includes('/audio/')) url += `?t=${Date.now()}`;
-            const audio = new Audio(url);
+            const audio = new Audio();
+            audio.preload = 'auto';
             audioRef.current = audio;
             audio.onended = () => setIsPlaying(false);
             audio.onerror = () => {
@@ -80,7 +90,19 @@ export const KaraokeOverlay = ({ lines, missionId, taskId, roomId, minScore = 80
                     setIsPlaying(false);
                 }
             };
-            audio.play().catch(() => setIsPlaying(false));
+            // Play only once buffered enough to play through, from the very start,
+            // so the model line is never cut off at the beginning.
+            let started = false;
+            const startPlayback = () => {
+                if (started || audioRef.current !== audio) return;
+                started = true;
+                try { audio.currentTime = 0; } catch (_) {}
+                audio.play().catch(() => setIsPlaying(false));
+            };
+            audio.addEventListener('canplaythrough', startPlayback, { once: true });
+            setTimeout(startPlayback, 2500); // safety net if canplaythrough is slow
+            audio.src = url;
+            audio.load();
         } catch {
             setIsPlaying(false);
         }
@@ -98,6 +120,7 @@ export const KaraokeOverlay = ({ lines, missionId, taskId, roomId, minScore = 80
             return;
         }
         stopAudio();
+        setErrorMsg(null);
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const recorder = new MediaRecorder(stream);
@@ -125,6 +148,7 @@ export const KaraokeOverlay = ({ lines, missionId, taskId, roomId, minScore = 80
                     }
                 } catch (err) {
                     console.error('[Karaoke] line analysis failed:', err);
+                    setErrorMsg(t('npc.karaoke.analyze_failed'));
                 } finally {
                     setIsProcessing(false);
                 }
@@ -140,6 +164,8 @@ export const KaraokeOverlay = ({ lines, missionId, taskId, roomId, minScore = 80
             }, 15000);
         } catch (err) {
             console.error('[Karaoke] microphone access denied:', err);
+            setIsRecording(false);
+            setErrorMsg(t('npc.karaoke.mic_denied'));
         }
     };
 
@@ -253,6 +279,11 @@ export const KaraokeOverlay = ({ lines, missionId, taskId, roomId, minScore = 80
                         <p className="text-center text-xs font-serif italic text-gray-500">
                             {isProcessing ? t('npc.karaoke.analyzing') : isRecording ? t('npc.karaoke.recording') : t('npc.karaoke.hint')}
                         </p>
+                        {errorMsg && (
+                            <p className="text-center text-sm font-bold text-red-600 bg-red-50 border border-red-200 rounded-md py-2 px-3 animate-in fade-in">
+                                {errorMsg}
+                            </p>
+                        )}
                         {avgSoFar > 0 && (
                             <p className="text-center text-sm font-medieval text-gray-600">
                                 {t('npc.karaoke.avg_so_far')}: <span className="text-pink-600 font-bold">{avgSoFar}</span>

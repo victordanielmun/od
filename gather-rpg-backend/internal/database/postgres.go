@@ -2,6 +2,7 @@ package database
 
 import (
 	"log"
+	"time"
 
 	"gather-rpg-backend/internal/config"
 	"gorm.io/driver/postgres"
@@ -17,5 +18,16 @@ func ConnectPostgres(cfg *config.Config) {
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
+
+	// Connection pool tuning. Matters a lot for a REMOTE DB: keeping idle connections
+	// warm avoids paying the TCP+TLS handshake latency on every query, and bounding
+	// open connections prevents a request burst from thrashing the remote server.
+	if sqlDB, e := DB.DB(); e == nil {
+		sqlDB.SetMaxOpenConns(25)
+		sqlDB.SetMaxIdleConns(10)
+		sqlDB.SetConnMaxIdleTime(10 * time.Minute)
+		sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	}
+
 	log.Println("Connected to PostgreSQL")
 }

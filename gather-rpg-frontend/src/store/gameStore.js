@@ -773,6 +773,26 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
         }
     },
 
+    // Pull the player's current stats (gold, HP, etc.) from the server and sync
+    // them into authStore so any wallet display (shop header, HUD) shows the real
+    // balance. Conversational purchases deduct gold server-side without returning
+    // the new total, so call this to refresh after opening the shop.
+    fetchPlayerStats: async () => {
+        try {
+            const response = await api.get('/player/stats');
+            if (response.data) {
+                const { user } = useAuthStore.getState();
+                if (user) {
+                    useAuthStore.setState({ user: { ...user, stats: response.data } });
+                }
+            }
+            return response.data;
+        } catch (err) {
+            console.error('Failed to fetch player stats:', err);
+            return null;
+        }
+    },
+
     fetchInventory: async () => {
         try {
             const response = await api.get('/inventory');

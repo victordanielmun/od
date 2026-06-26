@@ -137,6 +137,7 @@ export const LobbyLayout = () => {
   const currentRoomId = useGameStore(state => state.currentRoomId);
   const currentRoomScene = useGameStore(state => state.currentRoomScene);
   const acceptedMissionRef = useRef(null);
+  const fetchedMissionSceneRef = useRef(null);
   const currentInviteCode = useGameStore(state => state.currentInviteCode);
   const rooms = useRoomStore.getState().rooms;
   const currentRoom = rooms.find(r => r.id === currentRoomId);
@@ -293,6 +294,12 @@ export const LobbyLayout = () => {
 
   useEffect(() => {
     if (currentRoomId && currentSceneKey) {
+      // Dedupe per scene: during a teleport scene_key updates before room_id, and
+      // React StrictMode double-invokes effects in dev, so this fired twice and
+      // showed the "mission mode" notification twice. The fetch is scene-based, so
+      // one fetch per distinct scene is enough.
+      if (fetchedMissionSceneRef.current === currentSceneKey) return;
+      fetchedMissionSceneRef.current = currentSceneKey;
       console.log(`[LobbyLayout] Fetching mission for scene: ${currentSceneKey}`);
       fetchActiveMission(currentSceneKey);
     }

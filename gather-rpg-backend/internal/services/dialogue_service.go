@@ -20,6 +20,7 @@ type DialogueService struct {
 	MissionRepo *repository.MissionRepository
 	MissionSvc  *MissionService
 	AIClient    LLMClient
+	Translation *TranslationService
 }
 
 func NewDialogueService(
@@ -27,12 +28,14 @@ func NewDialogueService(
 	missionRepo *repository.MissionRepository,
 	missionSvc *MissionService,
 	aiClient LLMClient,
+	translation *TranslationService,
 ) *DialogueService {
 	return &DialogueService{
 		NPCRepo:     npcRepo,
 		MissionRepo: missionRepo,
 		MissionSvc:  missionSvc,
 		AIClient:    aiClient,
+		Translation: translation,
 	}
 }
 
@@ -195,9 +198,17 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 	var fromCache bool
 
 	normalizedInput := normalizeInput(req.PlayerInput)
-	// Scope the cache key by native language so the cached npc_response_native is never
-	// served to a learner who speaks a different language.
-	cacheInput := nativeLang + "|" + normalizedInput
+	// Hash the prior PLAYER turns into the cache key so it captures the conversation
+	// PATH, not just the current phrase. This makes later-turn replies cacheable
+	// safely: the same scripted path (these mission NPCs dictate the exact phrases,
+	// so players converge) reuses the cached line across players, while a different
+	// path yields a different key — so a context-dependent line ("yes", "thank you",
+	// a merchant step) is never served in the wrong place. First turn = empty path =
+	// a fixed hash shared by all openings.
+	contextHash := conversationPathHash(history)
+	// Scope the cache key by native language too, so the cached npc_response_native
+	// is never served to a learner who speaks a different language.
+	cacheInput := nativeLang + "|" + contextHash + "|" + normalizedInput
 	var taskID *uint
 	if currentTask != nil {
 		taskID = &currentTask.ID
@@ -243,6 +254,14 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 		}
 	}
 	fmt.Printf("[DialogueService] Parsed AI Response: %+v\n", aiResp)
+
+	// Strip Markdown emphasis (**bold**, *italic*, `code`, etc.) from the spoken
+	// text. The model sometimes wraps item names in asterisks; those are read
+	// literally by the TTS ("asterisk asterisk Pet food bag") and shown raw in the
+	// bubble, which confuses learners. Do this before caching so cached lines are
+	// clean too.
+	aiResp.NPCResponse = stripChatMarkdown(aiResp.NPCResponse)
+	aiResp.NPCResponseNative = stripChatMarkdown(aiResp.NPCResponseNative)
 
 	// Set Shop Trigger - Only if the NPC is explicitly a Merchant
 	if isMerchant && npcDef.ShopID != nil {
@@ -296,10 +315,10 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 						fmt.Printf("[DialogueService] Conversational Purchase DB error: %v\n", dbErr)
 					}
 				} else {
-					// Overwrite NPC response conversational message to state not enough gold
+					// Overwrite NPC response conversational message to state not enough gold.
 					aiResp.NPCResponse = fmt.Sprintf("Sorry, you need %d gold to buy %d %s, but you only have %d gold.", totalCost, qty, item.Name, stats.Gold)
-					// Native helper omitted here: this is a fixed system message and the
-					// English line above already conveys it without a per-language translation.
+					// Clear the stale AI translation; the native-helper fallback below
+					// re-translates this fixed English line for non-English learners.
 					aiResp.NPCResponseNative = ""
 					aiResp.ItemGift = nil
 					aiResp.GiftQuantity = 0
@@ -323,13 +342,28 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 		}
 	}
 
-	// Save to Cache if it was a Cache Miss and the score was good.
-	// Skip caching for transactional (purchase) turns: those responses depend on
-	// live per-player state (gold, inventory, item availability) that the cache key
-	// (the input phrase) doesn't capture, so a cached line can contradict the real
-	// outcome on replay (e.g. "you don't have enough gold" shown while the item is
-	// actually granted). Informational dialogue (greetings, lore, mission hints) is
-	// still cached normally.
+	// Native-helper fallback. The translation can be missing in two ways: the model
+	// dropped the "npc_response_native" field, or we replaced the line with a fixed
+	// system message (e.g. "not enough gold", "I don't carry that item") that has no
+	// translation. For non-English learners, fill it by translating the English line
+	// so the merchant — and every NPC — always shows the helper. Cached by text+lang.
+	if !utils.IsEnglish(nativeLang) && strings.TrimSpace(aiResp.NPCResponseNative) == "" && strings.TrimSpace(aiResp.NPCResponse) != "" && s.Translation != nil {
+		if translated, _, err := s.Translation.TranslateInfo(aiResp.NPCResponse, nativeLang); err == nil {
+			aiResp.NPCResponseNative = stripChatMarkdown(translated)
+		} else {
+			fmt.Printf("[DialogueService] WARN: native fallback translation failed: %v\n", err)
+		}
+	}
+
+	// Save to Cache on a miss with good pronunciation. The key now includes the
+	// conversation-path hash (contextHash), so caching later turns is safe — a line
+	// is only replayed when the SAME path + same input recurs. We still skip
+	// transactional (purchase) turns: those depend on live per-player state (gold,
+	// inventory) the key can't capture, so a cached "you don't have enough gold"
+	// could contradict the real outcome on replay.
+	// NOTE: completion turns are safe to cache because the cached value is only TEXT
+	// + flags; the per-player progress mutation (UpdateTaskProgress / deliverRewards)
+	// runs live below on every turn, cache hit or not — so nothing double-grants.
 	isPurchaseTurn := aiResp.BuyItemID != nil && *aiResp.BuyItemID != ""
 	if !fromCache && req.PronunciationScore >= 80 && !isPurchaseTurn {
 		// Convert the clean response struct back to JSON to strip formatting issues
@@ -502,13 +536,19 @@ func (s *DialogueService) buildSystemPrompt(
 		for _, item := range npc.Shop.Items {
 			extraInfo += fmt.Sprintf("  * Item ID: \"%s\", Name: \"%s\", Price: %d Gold, Description: \"%s\"\n", item.ID.String(), item.Name, item.Price, item.Description)
 		}
-		extraInfo += `- RULES FOR SELLING ITEMS:
-1. You MUST operate as a voice/chat-based shopkeeper. The user CANNOT buy items with a mouse click.
-2. If the user asks to buy or expresses interest in an item (e.g. "I want a health potion"), check if you sell it. Respond in character, correct any English or pronunciation errors, state the price, and ask the user to confirm the purchase (e.g. "A health potion costs 50 gold. Would you like to buy it?").
-3. DO NOT set "buy_item_id" or "buy_quantity" yet in this stage. Keep them null or empty.
-4. If the user confirms (e.g. "Yes", "I confirm", "Yes please"), respond amigablemente and set "buy_item_id" to the corresponding item's ID string and "buy_quantity" to the quantity (default to 1) in your JSON output.
-5. If the user asks for something you do not sell, politely decline.
-6. The user has to speak/write in English. If they speak another language, politely remind them they need to ask in English.
+		extraInfo += `- RULES FOR SELLING ITEMS (you are also a friendly ENGLISH TEACHER for shopping):
+GOLDEN RULE — ONE STEP PER REPLY: Do ONLY ONE step each turn. Keep every reply to 1-2 SHORT sentences, then STOP and wait for the player's next message. NEVER combine steps (do not state the price AND ask to confirm AND sell in the same message). Teach in English; if the player writes in another language, gently ask them to use English and give them the exact English phrase to say.
+
+Walk the player through this purchase, ONE step at a time, advancing only when their message matches the step:
+STEP 1 — player greets or asks generally (e.g. "I want dog food"): Greet briefly and list ONLY the matching items you sell, by name, WITHOUT prices yet. Ask which one they want. Then STOP. Keep "buy_item_id" null.
+STEP 2 — player names an item but rudely/incorrectly (e.g. "I want a pet food bag", "give me bag food"): Do NOT sell. Warmly give them the polite sentence to repeat, e.g.: "Here we ask politely. Please say: 'Can I have a pet food bag, please?'". Then STOP. Keep "buy_item_id" null.
+STEP 3 — player asks politely and correctly (e.g. "Can I have a pet food bag, please?"): Praise them briefly, state the price, and ask them to REPEAT THE NUMBER in English, e.g.: "Great! It costs five gold. Can you say 'five'?". Then STOP. Keep "buy_item_id" null.
+STEP 4 — player says/repeats the price number (e.g. "five", "5"): NOW complete the sale — set "buy_item_id" to that item's ID string and "buy_quantity" (default 1). Hand them the item and teach the closing courtesy, e.g.: "Here you go! Now say 'thank you'.". Then STOP.
+STEP 5 — player says "thank you": Reply warmly, e.g.: "You're welcome! Come back soon.". Keep "buy_item_id" null.
+
+Other rules:
+- Only EVER set "buy_item_id" at STEP 4 (after a polite request AND the player repeating the price number). Never set it before STEP 4.
+- If the player asks for an item you do not sell, politely say you don't have it and list what you do have. Keep "buy_item_id" null.
 `
 	}
 
@@ -562,7 +602,8 @@ BEHAVIOR RULES:
 5. If Condition Met is true AND the task requires an item or enemy kill, acknowledge it and complete the task.
 6. Use the Pronunciation Analysis to give helpful, pedagogical feedback. If they made specific mistakes, point them out kindly.
 7. If the player is just chatting and not doing a mission, be friendly.
-8. RESPOND ONLY IN JSON.
+8. PLAIN TEXT ONLY in "npc_response" and "npc_response_native": never use Markdown or special formatting (no asterisks **, no underscores, no backticks, no bullet symbols). The text is read aloud by text-to-speech, so write item names and numbers as plain words.
+9. RESPOND ONLY IN JSON.
 
 JSON FORMAT:
 {
@@ -593,6 +634,39 @@ func normalizeInput(input string) string {
 	s = strings.Join(strings.Fields(s), " ")
 
 	return s
+}
+
+// conversationPathHash returns a stable hash of the prior PLAYER inputs in this
+// conversation, used as part of the dialogue cache key so it reflects the path
+// taken (not just the latest phrase). Only player inputs are hashed (normalized):
+// they are what the player controls and what converges across players in scripted
+// flows; the NPC's replies are deterministic given that path. An empty history
+// (first turn) hashes to a fixed value shared by all conversation openings.
+func conversationPathHash(history []models.ConversationMessage) string {
+	if len(history) == 0 {
+		return "0"
+	}
+	var b strings.Builder
+	// GetMessages returns newest-first; walk it backwards for chronological order.
+	for i := len(history) - 1; i >= 0; i-- {
+		b.WriteString(normalizeInput(history[i].PlayerInput))
+		b.WriteString("\n")
+	}
+	return hashText(b.String())
+}
+
+// markdownEmphasisRe matches runs of Markdown emphasis markers (*, _, ~) that the
+// LLM sometimes emits around words. They are stripped from spoken NPC text so the
+// TTS doesn't read them aloud and the chat bubble doesn't show them raw.
+var markdownEmphasisRe = regexp.MustCompile(`[*_~]+`)
+
+func stripChatMarkdown(s string) string {
+	if s == "" {
+		return s
+	}
+	s = strings.ReplaceAll(s, "`", "")
+	s = markdownEmphasisRe.ReplaceAllString(s, "")
+	return strings.TrimSpace(s)
 }
 
 func sanitizeJSON(input string) string {
