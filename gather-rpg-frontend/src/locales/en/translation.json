@@ -376,6 +376,7 @@
       "no_room": "No room"
     },
     "loading_world": "LOADING WORLD...",
+    "loading_assets": "Loading resources",
     "challenge": {
       "title": "Challenge",
       "joining": "Joining...",

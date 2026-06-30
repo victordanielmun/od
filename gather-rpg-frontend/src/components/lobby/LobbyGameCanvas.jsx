@@ -56,6 +56,22 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
   // Listen for map teleport events dispatched by LobbyScene
   const [isLoading, setIsLoading] = useState(true);
 
+  // Background asset streaming (NPC sprites, music) — non-blocking indicator.
+  // null = hidden; 0..1 = fraction loaded. Only shown on a cold cache, since
+  // loadDeferredLobbyAssets only emits these events when there's something to fetch.
+  const [assetProgress, setAssetProgress] = useState(null);
+
+  useEffect(() => {
+    const onProgress = (e) => setAssetProgress(e.detail?.progress ?? 0);
+    const onComplete = () => setAssetProgress(null);
+    window.addEventListener('lobby-assets-progress', onProgress);
+    window.addEventListener('lobby-assets-complete', onComplete);
+    return () => {
+      window.removeEventListener('lobby-assets-progress', onProgress);
+      window.removeEventListener('lobby-assets-complete', onComplete);
+    };
+  }, []);
+
   useEffect(() => {
     const handleGameReady = () => setIsLoading(false);
     window.addEventListener('game-ready', handleGameReady);
@@ -320,6 +336,26 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
           <h2 className="text-xl font-bold text-white tracking-widest animate-pulse">{t('lobby.loading_world')}</h2>
         </div>
       )}
+      {/* Non-blocking background-loading pill (NPCs/music). Only on cold cache. */}
+      {!isLoading && !isMapLoading && assetProgress !== null && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[90] pointer-events-none">
+          <div className="flex items-center gap-3 bg-black/70 backdrop-blur-md border border-yellow-500/30 rounded-full pl-3 pr-4 py-2 shadow-xl">
+            <div className="w-4 h-4 border-2 border-gray-600 border-t-yellow-500 rounded-full animate-spin shrink-0"></div>
+            <div className="flex flex-col">
+              <span className="text-[11px] font-semibold text-gray-200 tracking-wide">
+                {t('lobby.loading_assets')} {Math.round(assetProgress * 100)}%
+              </span>
+              <div className="mt-1 h-1 w-36 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-yellow-500 rounded-full transition-all duration-200"
+                  style={{ width: `${Math.round(assetProgress * 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div id="phaser-lobby" className="w-full h-full" />
     </div>
   );

@@ -133,12 +133,26 @@ export function loadDeferredLobbyAssets(scene, onComplete) {
     if (!scene.cache.audio.exists(key)) scene.load.audio(key, path);
   });
 
-  // Nothing new to fetch (warm cache / restart) → run the callback now.
+  // Nothing new to fetch (warm cache / restart) → run the callback now and emit
+  // no UI events: there's nothing to notify about.
   if (scene.load.list.size === 0 && !scene.load.isLoading()) {
     onComplete?.();
     return;
   }
 
-  scene.load.once('complete', () => onComplete?.());
+  // Drive a non-blocking "still loading resources" indicator in the UI. The map
+  // is already interactive; this only tells the player NPCs/music are streaming.
+  window.dispatchEvent(new CustomEvent('lobby-assets-progress', { detail: { progress: 0 } }));
+
+  const onProgress = (value) => {
+    window.dispatchEvent(new CustomEvent('lobby-assets-progress', { detail: { progress: value } }));
+  };
+  scene.load.on('progress', onProgress);
+
+  scene.load.once('complete', () => {
+    scene.load.off('progress', onProgress);
+    window.dispatchEvent(new CustomEvent('lobby-assets-complete'));
+    onComplete?.();
+  });
   scene.load.start();
 }

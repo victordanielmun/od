@@ -383,6 +383,7 @@
       "no_room": "Sin sala"
     },
     "loading_world": "CARGANDO MUNDO...",
+    "loading_assets": "Cargando recursos",
     "challenge": {
       "title": "Reto",
       "joining": "Uniéndose...",
