@@ -139,7 +139,7 @@ export class PlayerManager {
       true
     );
 
-    console.log(`[PlayerManager] Created self PlayerSprite (ID: ${this.myPlayerId}) at (${startX}, ${startY})`);
+    console.log(`[PlayerManager] Created self PlayerSprite (ID: ${this.myPlayerId}, character: ${user?.character_id || '1'}) at (${startX}, ${startY})`);
     this.scene.add.existing(this.scene.player);
 
     this.scene.cameras.main.centerOn(startX, startY);
@@ -196,7 +196,22 @@ export class PlayerManager {
     players.forEach((player, id) => {
       const strId = String(id);
       const isMe = (myIdStr && strId === myIdStr) || (currentUserIdStr && strId === currentUserIdStr);
-      if (isMe) return;
+      if (isMe) {
+        // Keep the local player's sprite in sync with the chosen character.
+        // createMyPlayer() can run before the character-selection round-trip
+        // settles (the map now loads faster), which left the self sprite stuck
+        // on a stale/default character until a page reload. This reconcile runs
+        // ~once per second (driven by the scene's periodic sync), so the right
+        // character is picked up shortly after spawn without a reload.
+        const chosen = currentUser?.character_id;
+        const selfSprite = this.scene.player;
+        if (chosen && selfSprite && selfSprite.characterId !== String(chosen)) {
+          console.log(`[PlayerManager] Self character out of sync — updating sprite to ${chosen}.`);
+          selfSprite.characterId = String(chosen);
+          selfSprite.updateSpriteTexture(String(chosen));
+        }
+        return;
+      }
 
       if (!this.sprites.has(strId)) {
         console.log(`[PlayerManager] Found new player in store: ${strId} (${player.username}). Creating sprite...`);

@@ -21,7 +21,9 @@ const SEMI_TRANSPARENT_TILES = new Set(['tile-npc', 'tile-item', 'tile-collider'
 
 // Map atlases — [textureKey, imagePath, jsonPath]. Always loaded so the map
 // editor and runtime stay stable regardless of which map is active.
-const ATLASES = [
+// Exported so the dashboard preloader (assetManifest.js) can warm the same
+// files into the browser HTTP cache before the lobby scene boots.
+export const ATLASES = [
   ['terrain', '/terrain/terrain-spritesheet_extruido.png', '/terrain/terrain-sprites_extruido.json'],
   ['walls', '/wall/wall-spritesheet.png', '/wall/wall-sprites.json'],
   ['forest', '/forest/forest-spritesheet.png', '/forest/forest-sprites.json'],
@@ -33,7 +35,8 @@ const ATLASES = [
 ];
 
 // Background music tracks — [cacheKey, path].
-const AUDIO_KEYS = [
+// Exported for the dashboard preloader (see ATLASES note above).
+export const AUDIO_KEYS = [
   ['bgm_pixelated_prelude', '/music/Pixelated_Prelude.mp3'],
   ['bgm_serene_village', '/music/Serene_Village.mp3'],
   ['bgm_whispering_woods', '/music/Whispering_Woods.mp3'],

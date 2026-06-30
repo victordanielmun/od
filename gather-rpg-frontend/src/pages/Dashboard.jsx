@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { CharacterIdleRenderer } from '../components/dashboard/CharacterIdleRenderer';
 import { CHARACTER_CONFIG } from '../game/config/CharacterConfig';
+import { useAssetPreloader } from '../hooks/useAssetPreloader';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { 
@@ -106,6 +107,13 @@ export const Dashboard = () => {
   const [activationMessage, setActivationMessage] = useState('');
 
   const guestStatus = isGuest();
+
+  // Warm the lobby's assets into the browser HTTP cache while the user reviews
+  // their adventurer card, so the lobby map paints instantly on arrival. Critical
+  // assets (atlases + character/enemy/boss sheets) finish first; the heavy NPC +
+  // music set keeps streaming in the background afterwards.
+  const { loaded, total, criticalDone, done } = useAssetPreloader();
+  const preloadPct = total ? Math.round((loaded / total) * 100) : 100;
 
   useEffect(() => {
     // Show selector if not guest and hasn't chosen sprite
@@ -760,14 +768,36 @@ export const Dashboard = () => {
         </div>
 
         {/* Action Button: Play/Enter Lobby */}
-        <div className="flex justify-center mt-10">
+        <div className="flex flex-col items-center mt-10 gap-3">
           <button
             onClick={() => navigate('/lobby')}
             className="group relative flex items-center gap-3 px-12 py-5 rounded-2xl bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 text-black font-extrabold text-lg uppercase font-medieval tracking-widest shadow-[0_0_30px_rgba(245,158,11,0.3)] transition-all hover:scale-105 active:scale-95 border-2 border-yellow-300 hover:shadow-[0_0_40px_rgba(245,158,11,0.5)] cursor-pointer"
           >
-            <Gamepad2 className="w-6 h-6 text-black group-hover:rotate-12 transition-transform" />
-            <span>Enter Lobby Realm</span>
+            {criticalDone ? (
+              <Gamepad2 className="w-6 h-6 text-black group-hover:rotate-12 transition-transform" />
+            ) : (
+              <Loader2 className="w-6 h-6 text-black animate-spin" />
+            )}
+            <span>{criticalDone ? 'Enter Lobby Realm' : 'Preparing Realm…'}</span>
           </button>
+
+          {/* Cache-warming progress: shown until every asset is in the browser
+              cache. Non-blocking — the button works at any point. */}
+          {!done && (
+            <div className="w-full max-w-sm flex flex-col items-center gap-1.5">
+              <div className="w-full h-1.5 bg-gray-900 rounded-full border border-white/5 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-yellow-600 to-amber-400 transition-all duration-300"
+                  style={{ width: `${preloadPct}%` }}
+                ></div>
+              </div>
+              <span className="text-[10px] uppercase tracking-widest text-gray-500 font-mono">
+                {criticalDone
+                  ? `Lobby ready · caching extras ${loaded}/${total}`
+                  : `Caching world assets ${loaded}/${total}`}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Leaderboard (collapsed by default to avoid clutter) */}
