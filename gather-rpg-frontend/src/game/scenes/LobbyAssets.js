@@ -94,12 +94,22 @@ function createTileTextures(scene) {
   }
 }
 
-// Loads every asset the LobbyScene needs. Called from LobbyScene.preload().
-// All loads are guarded with exists() checks so scene restarts (e.g. map
-// portal transitions) don't trigger "frame already exists" warnings.
+// Loads the CRITICAL assets the lobby needs before the map can be painted.
+// Called from LobbyScene.preload() — Phaser blocks create() (and therefore the
+// first frame) until everything queued here finishes downloading, so we keep
+// this set as small as possible: map atlases, tile textures, the player's
+// character sheets and the combat sheets used by enemy spawns on some maps.
+//
+// The heavy NPC sprites (~43MB) and music (~7MB) are NOT loaded here — they are
+// deferred to loadDeferredLobbyAssets() and streamed in AFTER the map is already
+// visible. Loading them inside preload() left the canvas blank on the first
+// (cold-cache) visit until all of them downloaded; a page reload "fixed" it only
+// because the browser HTTP cache made the second load instant.
+//
+// All loads are guarded with exists() checks so scene restarts (e.g. map portal
+// transitions) don't trigger "frame already exists" warnings.
 export function preloadLobbyAssets(scene) {
   loadCharacterSprites(scene);
-  loadNPCSprites(scene);
   loadEnemySprites(scene);
   loadBossSprites(scene);
 
@@ -108,8 +118,27 @@ export function preloadLobbyAssets(scene) {
   ATLASES.forEach(([key, image, json]) => {
     if (!scene.textures.exists(key)) scene.load.atlas(key, image, json);
   });
+}
+
+// Loads the HEAVY, non-critical assets in the background once the lobby map is
+// already on screen. Queues a fresh loader pass and starts it, invoking
+// onComplete when the textures/audio are ready (or immediately if everything is
+// already cached, e.g. on a warm scene restart). The caller is responsible for
+// building NPC animations and (re)spawning NPCs from inside onComplete, since
+// those depend on these textures.
+export function loadDeferredLobbyAssets(scene, onComplete) {
+  loadNPCSprites(scene);
 
   AUDIO_KEYS.forEach(([key, path]) => {
     if (!scene.cache.audio.exists(key)) scene.load.audio(key, path);
   });
+
+  // Nothing new to fetch (warm cache / restart) → run the callback now.
+  if (scene.load.list.size === 0 && !scene.load.isLoading()) {
+    onComplete?.();
+    return;
+  }
+
+  scene.load.once('complete', () => onComplete?.());
+  scene.load.start();
 }

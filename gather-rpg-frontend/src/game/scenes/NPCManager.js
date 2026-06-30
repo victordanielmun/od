@@ -27,6 +27,16 @@ export class NPCManager {
 
   async loadNPCs() {
     const scene = this.scene;
+
+    // NPC spritesheets are streamed in after the map paints. Spawning before they
+    // land would render textureless/animationless NPCs and (worse) lock the
+    // dedupe guard with broken sprites. The deferred-load completion handler in
+    // LobbyScene re-invokes loadNPCs() once npcTexturesReady flips to true.
+    if (!scene.npcTexturesReady) {
+      console.log('[NPCManager] NPC textures not ready yet; deferring spawn until they finish loading.');
+      return;
+    }
+
     const roomId = scene.initData?.roomId || useGameStore.getState().currentRoomId;
     if (!roomId) return;
 

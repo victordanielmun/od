@@ -16,7 +16,7 @@ import { EditorController } from '../editor/EditorController';
 import { PlayerManager } from '../players/PlayerManager';
 import { InteractionSystem } from '../interactions/InteractionSystem';
 import { MinigameOverlayManager } from '../interactions/MinigameOverlayManager';
-import { preloadLobbyAssets } from './LobbyAssets';
+import { preloadLobbyAssets, loadDeferredLobbyAssets } from './LobbyAssets';
 import { ChatBubbleManager } from './ChatBubbleManager';
 import { NPCManager } from './NPCManager';
 import { PickupManager } from './PickupManager';
@@ -188,6 +188,9 @@ export class LobbyScene extends Phaser.Scene {
     this.isDead = false;
     this.isSpectating = false;
     this.spectatorTarget = null;
+    // NPC sprites are streamed in after the map paints (see loadDeferredLobbyAssets).
+    // Until they finish, NPCManager must not spawn NPCs (they'd render textureless).
+    this.npcTexturesReady = false;
     this.playerHp = 100;
     this.playerMaxHp = 100;
     this.playerMp = 100;
@@ -209,8 +212,10 @@ export class LobbyScene extends Phaser.Scene {
     this.enemySystem = new EnemySystem(this);
     this.combatSystem = new CombatSystem(this, this.enemySystem);
 
-    // 0. Animations
-    this.createAnimations();
+    // 0. Animations — only the player's character anims (plus the lightweight
+    // enemy/boss sheets) are needed up front. NPC anims are built later, once
+    // their deferred textures finish downloading (see end of create()).
+    createCharacterAnimations(this);
     createEnemyAnimations(this);
     createBossAnimations(this);
 
@@ -328,6 +333,19 @@ export class LobbyScene extends Phaser.Scene {
     // 7. Window CustomEvent listeners (chat, NPC, camera zoom, spectate, etc.)
     this.eventBridge.setup();
 
+    // 8. Stream in the heavy assets (NPC sprites ~43MB, music ~7MB) in the
+    // background now that the map is visible. Once they're ready we build NPC
+    // animations, unlock NPC spawning, load the NPCs for this room, and (re)start
+    // the map's BGM in case playBGM() fired before the track was cached.
+    loadDeferredLobbyAssets(this, () => {
+      createNPCAnimations(this);
+      this.npcTexturesReady = true;
+      this.npcManager.loadNPCs();
+      if (this.currentBgmTrackId && this.currentBgmTrackId !== 'none') {
+        this.playBGM(this.currentBgmTrackId);
+      }
+    });
+
     // Cleanup when scene is destroyed or stopped
     this.events.on('shutdown', this._cleanupListeners, this);
     this.events.on('destroy', this._cleanupListeners, this);
@@ -384,7 +402,12 @@ export class LobbyScene extends Phaser.Scene {
   // this.playerManager (src/game/players/PlayerManager.js).
 
   playBGM(trackId) {
-    if (this.currentBgmTrackId === trackId) return;
+    // Only skip if this track is already actually playing. We can't return early
+    // just because currentBgmTrackId matches: when music is still being streamed
+    // in (deferred load), playBGM() runs once with the track uncached (nothing
+    // plays) and is called again on load-complete with the same id — that second
+    // call must be allowed through so the BGM finally starts.
+    if (this.currentBgmTrackId === trackId && this.currentBgm && this.currentBgm.isPlaying) return;
 
     if (this.currentBgm) {
       this.currentBgm.stop();
