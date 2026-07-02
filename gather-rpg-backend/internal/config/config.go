@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -39,6 +40,17 @@ type Config struct {
 	PiperExePath    string
 	PiperModelsDir  string
 	PiperCacheDir   string
+
+	// Wompi billing (membership subscriptions charged via reusable payment sources).
+	WompiBaseURL         string // https://production.wompi.co/v1 (or sandbox)
+	WompiPublicKey       string // pub_...  (safe to expose to the frontend for card tokenization)
+	WompiPrivateKey      string // prv_...  (server-side only)
+	WompiEventsSecret    string // used to verify webhook checksums
+	WompiIntegritySecret string // used to build the transaction integrity signature
+	// Membership pricing/period.
+	MembershipAmountCents int64  // e.g. 2000000 = $20.000 COP
+	MembershipCurrency    string // "COP"
+	MembershipPeriodDays  int    // 30
 
 	// PrecacheLangs are the player languages whose mission/task translations are
 	// warmed at startup and on mission edit, so the first dialogue open is fast.
@@ -90,6 +102,15 @@ func LoadConfig() *Config {
 
 		PrecacheLangs:   parseCSVLangs(getEnv("PRECACHE_LANGS", "es")),
 		AutoMigrate:     getEnv("AUTO_MIGRATE", "true") != "false",
+
+		WompiBaseURL:         getEnv("WOMPI_BASE_URL", "https://production.wompi.co/v1"),
+		WompiPublicKey:       getEnv("WOMPI_PUBLIC_KEY", ""),
+		WompiPrivateKey:      getEnv("WOMPI_PRIVATE_KEY", ""),
+		WompiEventsSecret:    getEnv("WOMPI_EVENTS_SECRET", ""),
+		WompiIntegritySecret: getEnv("WOMPI_INTEGRITY_SECRET", ""),
+		MembershipAmountCents: getEnvInt64("MEMBERSHIP_AMOUNT_CENTS", 2000000),
+		MembershipCurrency:    getEnv("MEMBERSHIP_CURRENCY", "COP"),
+		MembershipPeriodDays:  int(getEnvInt64("MEMBERSHIP_PERIOD_DAYS", 30)),
 	}
 
 	log.Printf("Config Loaded: DB_HOST=%s, DB_PORT=%s, DB_NAME=%s", cfg.DBHost, cfg.DBPort, cfg.DBName)
@@ -113,6 +134,17 @@ func parseCSVLangs(csv string) []string {
 func getEnv(key, fallback string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
+	}
+	return fallback
+}
+
+// getEnvInt64 reads an integer env var, falling back to `fallback` when unset or
+// unparseable. Used for membership pricing/period knobs.
+func getEnvInt64(key string, fallback int64) int64 {
+	if value, exists := os.LookupEnv(key); exists {
+		if n, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil {
+			return n
+		}
 	}
 	return fallback
 }

@@ -117,7 +117,10 @@ func (h *Hub) processEnemyKill(killerUUID uuid.UUID, enemyTemplateID uuid.UUID, 
 	// Un boss es una pelea compartida: el crédito (kill_boss) va a TODOS los
 	// jugadores del room. Un mob normal solo acredita al que lo mató.
 	killCreditIDs := []uuid.UUID{killerUUID}
-	if isBoss {
+	isCoopRoom := room.Type == "cooperative"
+	if isBoss || isCoopRoom {
+		// Sala cooperativa: cualquier kill acredita a todo el equipo (el filtro
+		// de asistencia en UpdateKillProgress limita eso a misiones coop).
 		room.mu.RLock()
 		killCreditIDs = make([]uuid.UUID, 0, len(room.Clients))
 		for c := range room.Clients {
@@ -126,7 +129,10 @@ func (h *Hub) processEnemyKill(killerUUID uuid.UUID, enemyTemplateID uuid.UUID, 
 		room.mu.RUnlock()
 	}
 	for _, cid := range killCreditIDs {
-		progressResults, err := h.MissionService.UpdateKillProgress(cid, enemyTemplateID, sceneKey, isBoss)
+		// Un boss sigue siendo pelea compartida en cualquier sala (isAssist=false
+		// para todos); en coop, los no-killers son asistentes.
+		isAssist := cid != killerUUID && !isBoss
+		progressResults, err := h.MissionService.UpdateKillProgress(cid, enemyTemplateID, sceneKey, isBoss, isAssist)
 		if err != nil {
 			log.Printf("[Combat] UpdateKillProgress ERROR for user %s: %v", cid, err)
 		}

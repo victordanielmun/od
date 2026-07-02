@@ -70,6 +70,7 @@ export const AdminMissions = () => {
         status: 'active',
         mode: 'individual',
         difficulty: 'beginner',
+        is_premium: false,
         reward_item_id: '',
         reward_quantity: 0,
         reward_gold: 0,
@@ -330,6 +331,7 @@ export const AdminMissions = () => {
                             status: 'active',
                             mode: 'individual',
                             difficulty: 'beginner',
+                            is_premium: false,
                             reward_item_id: '',
                             reward_quantity: 0,
                             reward_gold: 0,
@@ -442,6 +444,7 @@ export const AdminMissions = () => {
                                             reward_item_id: mission.reward_item_id || '',
                                             mode: mission.mode || 'individual',
                                             difficulty: mission.difficulty || 'beginner',
+                                            is_premium: mission.is_premium || false,
                                             reward_quantity: mission.reward_quantity || 0,
                                             reward_gold: mission.reward_gold || 0,
                                             reward_xp: mission.reward_xp || 0,
@@ -647,6 +650,17 @@ export const AdminMissions = () => {
                                             <option value="intermediate">{t('admin.missions.form.difficulty_intermediate')}</option>
                                             <option value="advanced">{t('admin.missions.form.difficulty_advanced')}</option>
                                         </select>
+
+                                        {/* Premium gate: when checked, only members can accept this mission. */}
+                                        <label className="flex items-center gap-3 bg-gray-950 border border-amber-800/50 rounded-2xl px-5 py-3.5 text-amber-400 cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
+                                                checked={!!missionFormData.is_premium}
+                                                onChange={e => setMissionFormData({...missionFormData, is_premium: e.target.checked})}
+                                                className="w-4 h-4 accent-amber-500"
+                                            />
+                                            <span className="text-xs font-bold uppercase tracking-wide">{t('admin.missions.form.premium')}</span>
+                                        </label>
 
                                         <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 rounded-2xl px-5 text-orange-400">
                                             <span className="text-[10px] font-bold uppercase">{t('admin.missions.form.gold')}:</span>

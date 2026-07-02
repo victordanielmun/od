@@ -3,10 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
 import { useGameStore } from '../../store/gameStore';
 import { useNotificationStore } from '../../store/notificationStore';
-import { LogOut, Settings, MessageSquare, Users, ChevronLeft, ChevronRight, User, Send, X, UserPlus, MapPin, Phone, Pin, PinOff, Coins, Mail } from 'lucide-react';
+import { LogOut, Settings, MessageSquare, Users, ChevronLeft, ChevronRight, User, Send, X, UserPlus, MapPin, Phone, Pin, PinOff, Coins, Mail, Ban } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import SettingsMenu from '../common/SettingsMenu';
+import { BlockUserModal } from '../common/BlockUserModal';
 
 export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }) => {
     const { t } = useTranslation();
@@ -27,7 +28,7 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
     // Derived Open State
     const isOpen = isPinned || isHovered;
 
-    const { players, movePlayer, activeChat, sendPrivateMessage, closeChat, chatRequests, acceptChatRequest, rejectChatRequest, sendChatRequest, teleportToFriend, sendRoomInvite } = useGameStore();
+    const { players, movePlayer, activeChat, sendPrivateMessage, closeChat, chatRequests, acceptChatRequest, rejectChatRequest, sendChatRequest, teleportToFriend, sendRoomInvite, blockUser } = useGameStore();
     const { addNotification } = useNotificationStore();
 
     const [chatInput, setChatInput] = useState("");
@@ -119,6 +120,14 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
         return () => window.removeEventListener('friend-request-update', handleFriendUpdate);
     }, [refreshFriends]);
 
+    // "Invitar amigos" del MissionTracker (misiones cooperativas): abre y fija
+    // el sidebar para que el jugador use el botón de invitación por amigo.
+    useEffect(() => {
+        const handleOpenFriendsPanel = () => setIsPinned(true);
+        window.addEventListener('open-friends-panel', handleOpenFriendsPanel);
+        return () => window.removeEventListener('open-friends-panel', handleOpenFriendsPanel);
+    }, []);
+
     const handleSendChat = (e) => {
         e.preventDefault();
         if (chatInput.trim()) {
@@ -160,6 +169,18 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
     const handleInviteFriend = (friend) => {
         sendRoomInvite(friend.id);
         addNotification('success', `¡Invitación enviada a ${friend.username}!`);
+    };
+
+    // Bloqueo con motivo (moderación). blockTarget = { id, username } abre el modal.
+    const [blockTarget, setBlockTarget] = useState(null);
+    const handleConfirmBlock = async (reason, details) => {
+        await blockUser(blockTarget.id, reason, details);
+        addNotification('success', t('lobby.block.blocked_notice', { name: blockTarget.username, defaultValue: `Has bloqueado a ${blockTarget.username}` }));
+        // Si estábamos chateando con esa persona, cerrar el chat.
+        if (activeChat && String(activeChat.partner_id) === String(blockTarget.id)) {
+            closeChat();
+        }
+        refreshFriends();
     };
     const handleCallFriend = async (id) => {
         const myId = String(user?.id || '');
@@ -343,6 +364,11 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
                                         {!isGuest && (
                                             <button onClick={handleAddFriendFromChat} className="text-gray-400 hover:text-yellow-400 transition-colors cursor-pointer" title={t('lobby.sidebar.add_to_guild')}><UserPlus size={16} /></button>
                                         )}
+                                        <button
+                                            onClick={() => setBlockTarget({ id: activeChat.partner_id, username: activeChat.partner_name })}
+                                            className="text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
+                                            title={t('lobby.block.title', 'Bloquear usuario')}
+                                        ><Ban size={16} /></button>
                                         <button onClick={closeChat} className="text-gray-400 hover:text-white transition-colors cursor-pointer"><X size={16} /></button>
                                     </div>
                                 </div>
@@ -432,6 +458,7 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
                                             <button disabled={!f.is_online} onClick={() => handleInviteFriend(f)} className="text-gray-400 hover:text-yellow-400 disabled:opacity-10 transition-colors cursor-pointer" title={t('lobby.sidebar.invite_to_room') || "Invite to room"}><Mail size={14} /></button>
                                             <button onClick={() => sendChatRequest(f.id)} className="text-gray-400 hover:text-yellow-400 transition-colors cursor-pointer" title={t('lobby.sidebar.chat_request')}><MessageSquare size={14} /></button>
                                             <button onClick={() => handleCallFriend(f.id)} className="text-gray-400 hover:text-white transition-colors cursor-pointer" title={t('lobby.sidebar.call_friend')}><Phone size={14} /></button>
+                                            <button onClick={() => setBlockTarget({ id: f.id, username: f.username })} className="text-gray-400 hover:text-red-400 transition-colors cursor-pointer" title={t('lobby.block.title', 'Bloquear usuario')}><Ban size={14} /></button>
                                             <button onClick={() => handleRemoveFriend(f.id)} className="text-red-400 hover:text-red-300 transition-colors cursor-pointer"><X size={14} /></button>
                                         </div>
                                     </li>
@@ -454,6 +481,15 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
             {/* Settings Overlay */}
             {showSettings && (
                 <SettingsMenu initialTab="config" onClose={() => setShowSettings(false)} />
+            )}
+
+            {/* Block User Modal (moderación) */}
+            {blockTarget && (
+                <BlockUserModal
+                    target={blockTarget}
+                    onConfirm={handleConfirmBlock}
+                    onClose={() => setBlockTarget(null)}
+                />
             )}
         </>
     );

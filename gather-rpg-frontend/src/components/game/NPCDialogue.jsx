@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronRight, ShoppingBag, MapPin, Compass, ShieldCheck, Map, CheckCircle, Loader2 } from 'lucide-react';
+import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronRight, ShoppingBag, MapPin, Compass, ShieldCheck, Map, CheckCircle, Loader2, Lock, Crown } from 'lucide-react';
 import api from '../../services/api';
 import { analyzeDialogueAudio, generateTTS, getTTSAudioUrl } from '../../services/voiceApi';
 import ShopModal from '../common/ShopModal';
@@ -119,6 +119,15 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
     const mediaRecorderRef = useRef(null);
     const audioRef = useRef(null);
+    // Web Audio playback: a single persistent AudioContext kept alive (via a silent
+    // keep-alive source) so the OS audio device never idles between clips. A cold
+    // HTMLAudioElement lets the output device sleep during silence and drops the
+    // first ~1s when it wakes; a warm AudioContext starts sample-accurate.
+    const audioCtxRef = useRef(null);
+    const audioSourceRef = useRef(null);
+    // Monotonic token: bumped on each new TTS request so async work from a superseded
+    // clip (fetch/decode) can bail instead of playing over the newer one.
+    const playTokenRef = useRef(0);
     const audioChunksRef = useRef([]);
     const scrollRef = useRef(null);
     const recordingTimeoutRef = useRef(null);
@@ -292,6 +301,11 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
         return () => {
             stopAudio();
+            // Tear down the persistent AudioContext + keep-alive when leaving this NPC.
+            if (audioCtxRef.current) {
+                try { audioCtxRef.current.close(); } catch (_) {}
+                audioCtxRef.current = null;
+            }
             if (taskBannerTimeoutRef.current) clearTimeout(taskBannerTimeoutRef.current);
             window.dispatchEvent(new CustomEvent('npc-interaction-end', {
                 detail: { templateId: npcData.templateId }
@@ -306,8 +320,21 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const handleSelectMission = async (mission) => {
         stopAudio();
         if (loadingMissionId) return;
+
+        // Premium gate: a locked mission needs a membership. Point the player to the
+        // membership page (new tab so they keep the game session) instead of accepting.
+        if (mission.locked) {
+            setMessages(prev => [...prev, {
+                sender: 'npc',
+                text: t('npc.dialogue.premium_locked'),
+                timestamp: new Date()
+            }]);
+            window.open('/membership', '_blank');
+            return;
+        }
+
         setLoadingMissionId(mission.id);
-        
+
         const currentScene = useGameStore.getState().currentMapKey;
         const joinRoom = useGameStore.getState().joinRoom;
         
@@ -342,12 +369,68 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
         // Normal logic for same-scene missions: the player is already in this
         // instance, so accept the mission now (binds progress to this room).
-        useGameStore.getState().acceptMission(mission.id);
+        const res = await useGameStore.getState().acceptMission(mission.id);
+        if (res && res.premiumRequired) {
+            setMessages(prev => [...prev, {
+                sender: 'npc',
+                text: t('npc.dialogue.premium_locked'),
+                timestamp: new Date()
+            }]);
+            window.open('/membership', '_blank');
+            setLoadingMissionId(null);
+            return;
+        }
         setSelectedMissionId(mission.id);
         setLoadingMissionId(null);
     };
 
+    // Lazily create (and resume) one shared AudioContext, plus a zero-gain silent
+    // keep-alive source so the OS output device stays awake between clips. Must be
+    // called from a user gesture the first time (dialogue is opened by a click/key,
+    // so that's satisfied). Returns null if Web Audio is unavailable.
+    const getWarmAudioContext = () => {
+        try {
+            if (!audioCtxRef.current) {
+                const Ctx = window.AudioContext || window.webkitAudioContext;
+                if (!Ctx) return null;
+                const ctx = new Ctx();
+                // Silent keep-alive: a looping near-zero buffer through a muted gain
+                // node keeps the audio graph (and the physical device) active, so the
+                // next real clip doesn't pay a wake-up delay that eats its first second.
+                const gain = ctx.createGain();
+                gain.gain.value = 0;
+                gain.connect(ctx.destination);
+                const buffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+                const keepAlive = ctx.createBufferSource();
+                keepAlive.buffer = buffer;
+                keepAlive.loop = true;
+                keepAlive.connect(gain);
+                keepAlive.start(0);
+                audioCtxRef.current = ctx;
+            }
+            if (audioCtxRef.current.state === 'suspended') {
+                audioCtxRef.current.resume().catch(() => {});
+            }
+            return audioCtxRef.current;
+        } catch (_) {
+            return null;
+        }
+    };
+
+    // Stop any Web Audio clip currently playing (the persistent context + keep-alive
+    // stay alive so the device doesn't idle).
+    const stopWebAudioSource = () => {
+        if (audioSourceRef.current) {
+            const src = audioSourceRef.current;
+            audioSourceRef.current = null;
+            try { src.onended = null; } catch (_) {}
+            try { src.stop(); } catch (_) {}
+            try { src.disconnect(); } catch (_) {}
+        }
+    };
+
     const stopAudio = () => {
+        stopWebAudioSource();
         if (audioRef.current) {
             const a = audioRef.current;
             a.pause();
@@ -358,6 +441,8 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             a.onended = null;
             a.onerror = null;
             a.src = '';
+            // Free the in-memory Blob URL for the superseded clip (no-op if streaming).
+            if (typeof a._revokeObjectUrl === 'function') a._revokeObjectUrl();
             audioRef.current = null;
         }
         if (window.speechSynthesis) {
@@ -385,7 +470,10 @@ export const NPCDialogue = ({ npcData, onClose }) => {
         // Always stop previous before starting new
         stopAudio();
         setIsTtsPlaying(true);
-        
+        // Claim this playback; any older in-flight request becomes superseded.
+        const myToken = ++playTokenRef.current;
+        const isSuperseded = () => playTokenRef.current !== myToken;
+
         try {
             let url = lastTtsUrl;
             // If the text is different from last cached TTS, fetch new
@@ -417,16 +505,81 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 console.log("[Performance] Frontend: Using cached local TTS URL from last turn");
             }
 
-            console.log(`[Performance] Frontend: Initializing Audio object with URL: ${url}`);
+            console.log(`[Performance] Frontend: Fetching TTS clip: ${url}`);
+            // Download the whole clip once (bytes reused by both playback paths).
+            let arrayBuf = null;
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error(`TTS fetch HTTP ${resp.status}`);
+                arrayBuf = await resp.arrayBuffer();
+            } catch (fetchErr) {
+                console.warn("[Performance] Frontend: TTS prefetch failed:", fetchErr);
+            }
+            if (isSuperseded()) return; // a newer clip took over while downloading
+
+            // --- Preferred path: Web Audio via the warm, persistent AudioContext ---
+            // A cold HTMLAudioElement lets the OS output device sleep during silence and
+            // drops the first ~1s on wake. The kept-alive AudioContext stays active, so a
+            // decoded AudioBuffer starts sample-accurate with no clipped opening.
+            const ctx = getWarmAudioContext();
+            if (ctx && arrayBuf) {
+                try {
+                    // decodeAudioData may detach the ArrayBuffer, so hand it a copy and
+                    // keep the original for the HTMLAudio fallback.
+                    const decoded = await ctx.decodeAudioData(arrayBuf.slice(0));
+                    if (isSuperseded()) return;
+                    stopWebAudioSource();
+                    const source = ctx.createBufferSource();
+                    source.buffer = decoded;
+                    source.connect(ctx.destination);
+                    source.onended = () => {
+                        if (audioSourceRef.current === source) {
+                            audioSourceRef.current = null;
+                            console.log("[Performance] Frontend: TTS Audio playback finished naturally (WebAudio)");
+                            setIsTtsPlaying(false);
+                        }
+                    };
+                    audioSourceRef.current = source;
+                    source.start(0);
+                    const totalTtsDuration = performance.now() - startTtsTotal;
+                    console.log(`[Performance] Frontend: TTS Audio playback started successfully (WebAudio). Total latency: ${totalTtsDuration.toFixed(2)} ms\n`);
+                    return;
+                } catch (decodeErr) {
+                    console.warn("[Performance] Frontend: WebAudio decode failed, falling back to HTMLAudio:", decodeErr);
+                }
+            }
+
+            // --- Fallback path: HTMLAudioElement from a fully-buffered Blob URL ---
             const audio = new Audio();
             audio.preload = 'auto';
             audioRef.current = audio;
+
+            let objectUrl = null;
+            try {
+                const blob = arrayBuf ? new Blob([arrayBuf]) : await (await fetch(url)).blob();
+                if (audioRef.current !== audio) return;
+                objectUrl = URL.createObjectURL(blob);
+            } catch (blobErr) {
+                console.warn("[Performance] Frontend: Blob build failed, streaming direct URL:", blobErr);
+                objectUrl = null;
+            }
+            const playbackUrl = objectUrl || url;
+            const revokeObjectUrl = () => {
+                if (objectUrl) {
+                    URL.revokeObjectURL(objectUrl);
+                    objectUrl = null;
+                }
+            };
+            audio._revokeObjectUrl = revokeObjectUrl;
+
             audio.onended = () => {
                 console.log("[Performance] Frontend: TTS Audio playback finished naturally");
+                revokeObjectUrl();
                 setIsTtsPlaying(false);
             };
 
             audio.onerror = (e) => {
+                revokeObjectUrl();
                 console.error("[Performance] Frontend: Audio element playback error, falling back to Web Speech API:", e);
                 if ('speechSynthesis' in window) {
                     const utterance = new SpeechSynthesisUtterance(spokenText);
@@ -441,11 +594,6 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 }
             };
 
-            // Start playback ONLY once the clip is buffered enough to play through,
-            // and always from the very start. Calling play() on a not-yet-loaded
-            // element made the browser begin mid-clip (the clock advanced while data
-            // was still downloading), cutting off the first 2-4 seconds. Waiting for
-            // 'canplaythrough' guarantees the beginning is available before we play.
             let started = false;
             const startPlayback = () => {
                 // Bail if already started or this clip was superseded by a newer one.
@@ -461,11 +609,11 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 });
             };
             audio.addEventListener('canplaythrough', startPlayback, { once: true });
-            // Safety net: if 'canplaythrough' is slow/never fires for this stream,
-            // start anyway after a short wait (the guard prevents double playback).
+            // Safety net: if 'canplaythrough' is slow/never fires, start anyway after a
+            // short wait (the guard prevents double playback).
             setTimeout(startPlayback, 2500);
 
-            audio.src = url;
+            audio.src = playbackUrl;
             audio.load();
         } catch (err) {
             console.error("[Performance] Frontend: TTS setup failed:", err);
@@ -854,6 +1002,16 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                                         {m.status === 'in_progress' && (
                                                             <span className="text-[10px] bg-blue-700 text-white px-3 py-1 font-bold uppercase tracking-widest border border-blue-500 rounded-sm">
                                                                 {t('npc.dialogue.status_in_progress')}
+                                                            </span>
+                                                        )}
+                                                        {m.is_premium && (
+                                                            <span className={`flex items-center gap-1 text-[10px] px-3 py-1 font-bold uppercase tracking-widest border rounded-sm ${
+                                                                m.locked
+                                                                    ? 'bg-amber-100 text-amber-800 border-amber-500'
+                                                                    : 'bg-amber-500 text-white border-amber-600'
+                                                            }`}>
+                                                                {m.locked ? <Lock size={11} /> : <Crown size={11} />}
+                                                                {t('npc.dialogue.premium_badge')}
                                                             </span>
                                                         )}
                                                         {loadingMissionId === m.id && (

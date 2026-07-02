@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"gather-rpg-backend/internal/config"
 	"gather-rpg-backend/internal/database"
@@ -73,6 +74,9 @@ func main() {
 			&models.MapPickup{},
 			&models.MapPickupClaim{},
 			&models.PlayerNPCGift{},
+			&models.UserBlock{}, // bloqueos entre usuarios (moderación)
+			// ── Membership / Billing (Stripe) ────────────────────────────────
+			&models.Subscription{},
 			&models.InfoTranslation{}, // cache de traducción de letreros de info (por hash de texto)
 			// ── WhatsApp Integration System ──────────────────────────────────
 			&models.WhatsAppContact{},
@@ -111,6 +115,7 @@ func main() {
 	missionRepo := repository.NewMissionRepository()
 	npcService := services.NewNPCService(npcRepo, missionRepo)
 	missionService := services.NewMissionService(missionRepo, inventoryRepo)
+	subscriptionService := services.NewSubscriptionService(cfg)
 
 	// AI Factory
 	var aiApiKey, aiModel string
@@ -150,9 +155,11 @@ func main() {
 	friendHandler := handlers.NewFriendHandler(friendService, hub)
 	learningHandler := handlers.NewLearningHandler(learningService, translationService)
 	dialogueHandler := handlers.NewDialogueHandler(dialogueService, hub)
-	missionHandler := handlers.NewMissionHandler(missionService, translationService, hub)
+	missionHandler := handlers.NewMissionHandler(missionService, translationService, hub, subscriptionService)
 	npcHandler := handlers.NewNPCHandler(npcService, llmClient)
 	missionAdminHandler := handlers.NewMissionAdminHandler(missionService, translationService, cfg.PrecacheLangs)
+	blockHandler := handlers.NewBlockHandler(hub)
+	paymentHandler := handlers.NewPaymentHandler(subscriptionService, cfg)
 
 	// Warm mission/task translations for the configured player languages in the
 	// background, so the first dialogue open (especially a quest master with many
@@ -162,6 +169,19 @@ func main() {
 	// Warm the map-config cache so teleports/map entries serve from memory and never
 	// wait on the remote DB (a transient stall there made one map load take ~20s).
 	go handlers.WarmMapConfigCache()
+
+	// Membership renewals: Wompi has no native subscriptions, so we charge each due
+	// payment source ourselves. A daily tick is enough since periods are in days;
+	// the first pass runs shortly after boot to catch anything already overdue.
+	go func() {
+		time.Sleep(1 * time.Minute)
+		subscriptionService.ChargeDueSubscriptions()
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			subscriptionService.ChargeDueSubscriptions()
+		}
+	}()
 	inventoryService := services.NewInventoryService(inventoryRepo)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	shopHandler := handlers.NewShopHandler(inventoryService)
@@ -230,8 +250,18 @@ func main() {
 	friends.Post("/requests/:id/accept", friendHandler.AcceptRequest)
 	friends.Post("/requests/:id/reject", friendHandler.RejectRequest)
 
+	// User Blocks (moderación): bloquear/desbloquear usuarios con motivo
+	blocks := app.Group("/blocks", middleware.Protected(cfg))
+	blocks.Get("/", blockHandler.ListMyBlocks)
+	blocks.Post("/", blockHandler.CreateBlock)
+	blocks.Delete("/:userId", blockHandler.DeleteBlock)
+
 	// Admin Routes
 	admin := app.Group("/admin", middleware.Protected(cfg), middleware.AdminOnly())
+	// Moderación: registro de bloqueos + acciones sobre cuentas
+	admin.Get("/blocks", blockHandler.AdminListBlocks)
+	admin.Put("/users/:id/active", blockHandler.AdminSetUserActive)
+	admin.Post("/users/:id/notify", blockHandler.AdminNotifyUser)
 	admin.Get("/maps", adminHandler.ListMapConfigs)
 	admin.Post("/maps", adminHandler.SaveMapConfig)
 	admin.Put("/maps/:id", adminHandler.UpdateMapConfig)
@@ -342,6 +372,15 @@ func main() {
 	shop := app.Group("/shop", middleware.Protected(cfg))
 	shop.Post("/buy", shopHandler.BuyItem)
 	shop.Get("/npc/:id/items", shopHandler.GetNPCItems)
+
+	// Billing / Membership (Wompi). The webhook is PUBLIC (Wompi calls it) and
+	// verifies its own checksum; the rest require an authenticated user.
+	app.Post("/billing/webhook", paymentHandler.Webhook)
+	billing := app.Group("/billing", middleware.Protected(cfg))
+	billing.Get("/config", paymentHandler.Config)     // public key + acceptance tokens + price
+	billing.Post("/subscribe", paymentHandler.Subscribe) // register card + first charge
+	billing.Post("/cancel", paymentHandler.Cancel)
+	billing.Get("/status", paymentHandler.Status)
 
 	// WhatsApp Public Webhook Route (no auth required for third party)
 	app.Post("/whatsapp/webhook", whatsAppHandler.ReceiveWebhook)

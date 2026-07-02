@@ -22,6 +22,9 @@ type User struct {
 	HasChosenSprite bool          `gorm:"not null;default:false" json:"has_chosen_sprite"`
 	CompanionNPCID *uint          `gorm:"type:integer" json:"companion_npc_id,omitempty"`
 	TermsAccepted  bool           `gorm:"not null;default:false" json:"terms_accepted"`
+	// IsActive: cuentas desactivadas por el admin (por acumulación de bloqueos)
+	// no pueden iniciar sesión y son desconectadas del WS al desactivarse.
+	IsActive       bool           `gorm:"not null;default:true" json:"is_active"`
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
 	DeletedAt      gorm.DeletedAt `gorm:"index" json:"-"`

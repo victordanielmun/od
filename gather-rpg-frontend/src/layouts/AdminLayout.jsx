@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore';
-import { LayoutDashboard, Map as MapIcon, Settings, LogOut, Gamepad2, Users, Terminal, ScrollText, Package, ShoppingBag, Swords, Brain, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Map as MapIcon, Settings, LogOut, Gamepad2, Users, Terminal, ScrollText, Package, ShoppingBag, Swords, Brain, MessageSquare, Ban } from 'lucide-react';
 import { LanguageSwitcher } from '../components/common/LanguageSwitcher';
 
 export const AdminLayout = () => {
@@ -46,6 +46,7 @@ export const AdminLayout = () => {
         { path: '/admin/ai-test', label: t('admin.nav.ai_test'), icon: Terminal },
         { path: '/admin/characters', label: t('admin.nav.characters'), icon: Gamepad2 },
         { path: '/admin/whatsapp', label: 'WhatsApp', icon: MessageSquare },
+        { path: '/admin/blocks', label: t('admin.nav.blocks', 'Bloqueos'), icon: Ban },
     ];
 
     return (

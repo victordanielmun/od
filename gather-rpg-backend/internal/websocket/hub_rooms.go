@@ -202,6 +202,10 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 			if existingClient == client {
 				continue
 			}
+			// Moderación: un par bloqueado no se conecta ni en el audio de reunión coop.
+			if client.HasBlocked(existingClient.ID.String()) || existingClient.HasBlocked(client.ID.String()) {
+				continue
+			}
 			// Register the peer connection on both sides
 			h.PeerService.Manager.AddPeerConnection(client.ID.String(), existingClient.ID.String(), sessionID, roomID)
 			h.PeerService.Manager.AddPeerConnection(existingClient.ID.String(), client.ID.String(), sessionID, roomID)
@@ -558,6 +562,11 @@ func generatePIN() string {
 	return fmt.Sprintf("%04d", rand.Intn(9000)+1000)
 }
 
+// maxCoopPlayers is the hard cap for cooperative room instances (balance):
+// applies both to matchmaking into existing coop rooms and to MaxUsers of
+// newly created ones.
+const maxCoopPlayers = 4
+
 // handleRequestMapJoin resolves the room a client should join for a given map.
 //
 // PUBLIC maps:
@@ -590,9 +599,22 @@ func (h *Hub) handleRequestMapJoin(client *Client, sceneKey, roomType, inviteCod
 		log.Printf("[Hub] No DB metadata for %s, treating as public: %v", sceneKey, err)
 	}
 
+	// El backend decide si la sala es cooperativa según el Mode de la misión de
+	// la escena (definido en el admin), NO según el hint del cliente: el hint se
+	// perdió con el "Bug 2 fix" (el frontend siempre manda 'public') y confiar
+	// en él dejaba todo el pipeline coop inalcanzable.
+	isCoopScene := h.MissionService != nil && h.MissionService.SceneHasCooperativeMission(sceneKey)
+
 	effectiveRoomType := "public"
 	if !isPublic {
 		effectiveRoomType = "mission"
+	}
+	if isCoopScene {
+		effectiveRoomType = "cooperative"
+		if maxUsers > maxCoopPlayers {
+			maxUsers = maxCoopPlayers
+		}
+		log.Printf("[Hub] Scene %s has a cooperative mission → room type 'cooperative' (max %d players)", sceneKey, maxUsers)
 	}
 
 	var selectedRoom *Room
@@ -600,8 +622,9 @@ func (h *Hub) handleRequestMapJoin(client *Client, sceneKey, roomType, inviteCod
 	h.mu.RLock()
 
 	// ─ COOPERATIVE LOGIC: Find active room for same mission with < 60% progress ─────
-	if roomType == "cooperative" {
-		maxCoopPlayers := 4 // Hard limit for coop balance
+	// Solo en mapas públicos y sin PIN: el flujo privado por PIN conserva su
+	// semántica (unirse exactamente a la sala del código, nunca auto-match).
+	if (isCoopScene || roomType == "cooperative") && isPublic && inviteCode == "" {
 		for _, room := range h.Rooms {
 			if room.SceneKey == sceneKey && room.Type == "cooperative" && len(room.Clients) < maxCoopPlayers {
 				// Calculate progress based on enemies

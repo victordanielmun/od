@@ -62,7 +62,12 @@ const COUNTRY_CODES = [
 export const Dashboard = () => {
   const { t } = useTranslation();
   const { user, logout, isGuest } = useAuthStore();
+  const isPremium = useAuthStore(s => s.isPremium);
+  const fetchBillingStatus = useAuthStore(s => s.fetchBillingStatus);
   const navigate = useNavigate();
+
+  // Load membership status so the header reflects premium state.
+  useEffect(() => { fetchBillingStatus(); }, [fetchBillingStatus]);
 
   // RPG stats state
   const [rpgStats, setRpgStats] = useState(null);
@@ -435,6 +440,14 @@ export const Dashboard = () => {
           </div>
           
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/membership')}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-all hover:scale-105"
+            >
+              <Crown size={18} />
+              <span>{isPremium ? t('membership.active_title') : t('membership.title')}</span>
+            </button>
+
             <button
               onClick={() => navigate('/learn')}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/30 transition-all hover:scale-105"

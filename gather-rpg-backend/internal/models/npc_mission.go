@@ -153,6 +153,10 @@ type Mission struct {
 	// items, where RewardGold is only paid on completion). 0 = no advance.
 	AdvanceGold    int             `gorm:"default:0" json:"advance_gold"`
 	Difficulty    DifficultyLevel `gorm:"type:varchar(20);not null;default:'beginner'" json:"difficulty"`
+	// IsPremium gates the mission behind an active membership. Free missions
+	// (default) are available to everyone; premium missions can only be accepted
+	// by users with an active subscription (see SubscriptionService.IsUserPremium).
+	IsPremium     bool            `gorm:"not null;default:false" json:"is_premium"`
 	CreatedAt     time.Time       `json:"created_at"`
 }
 

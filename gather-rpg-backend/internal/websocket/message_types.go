@@ -82,4 +82,7 @@ const (
 	MsgTeleportToFriend   = "teleport_to_friend"
 	MsgSendRoomInvite     = "send_room_invite"
 	MsgRoomInviteReceived = "room_invite_received"
+
+	// Moderación: aviso del admin al usuario (advertencia por bloqueos)
+	MsgAdminNotice = "admin_notice"
 )

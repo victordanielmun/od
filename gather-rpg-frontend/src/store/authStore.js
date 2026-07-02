@@ -40,6 +40,23 @@ export const useAuthStore = create((set, get) => ({
   error: null,
   isLoading: false,
 
+  // Membership state (Wompi). isPremium gates premium missions in the UI; the
+  // backend enforces it authoritatively on accept.
+  isPremium: false,
+  subscription: null,
+
+  // Pull the current membership status from the backend. Safe for guests (returns free).
+  fetchBillingStatus: async () => {
+    try {
+      const { data } = await api.get('/billing/status');
+      set({ isPremium: !!data.is_premium, subscription: data });
+      return data;
+    } catch (e) {
+      set({ isPremium: false });
+      return null;
+    }
+  },
+
   isGuest: () => {
     const user = get().user;
     return user?.is_guest ?? (user?.username?.startsWith('Guest_') || false);

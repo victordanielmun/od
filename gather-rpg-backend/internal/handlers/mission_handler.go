@@ -18,10 +18,11 @@ type MissionHandler struct {
 	Service     *services.MissionService
 	Translation *services.TranslationService
 	Hub         *websocket.Hub
+	Sub         *services.SubscriptionService
 }
 
-func NewMissionHandler(service *services.MissionService, translation *services.TranslationService, hub *websocket.Hub) *MissionHandler {
-	return &MissionHandler{Service: service, Translation: translation, Hub: hub}
+func NewMissionHandler(service *services.MissionService, translation *services.TranslationService, hub *websocket.Hub, sub *services.SubscriptionService) *MissionHandler {
+	return &MissionHandler{Service: service, Translation: translation, Hub: hub, Sub: sub}
 }
 
 func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
@@ -66,9 +67,15 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 		SceneKey      string           `json:"scene_key"`
 		Mode          string           `json:"mode"`
 		Difficulty    string           `json:"difficulty"` // informative label only (beginner/intermediate/advanced)
+		IsPremium     bool             `json:"is_premium"` // mission requires membership
+		Locked        bool             `json:"locked"`     // premium AND this player is not a member
 		Tasks         []TaskWithStatus `json:"tasks"`
 		OverallStatus string           `json:"status"`
 	}
+
+	// Resolve membership once for this request so premium missions can be flagged
+	// as locked for non-members (informative; accept is enforced server-side).
+	isPremiumUser := h.Sub != nil && h.Sub.IsUserPremium(userID)
 
 	result := make([]MissionWithStatus, 0)
 	for _, m := range missions {
@@ -146,6 +153,8 @@ func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
 			SceneKey:      m.SceneKey,
 			Mode:          string(m.Mode),
 			Difficulty:    string(m.Difficulty),
+			IsPremium:     m.IsPremium,
+			Locked:        m.IsPremium && !isPremiumUser,
 			OverallStatus: overallStatus,
 			Tasks:         taskStatuses,
 		})
@@ -256,6 +265,9 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		}
 	}
 
+	// Membership resolved once for this request (see GetMissionsByScene).
+	isPremiumUser := h.Sub != nil && h.Sub.IsUserPremium(userID)
+
 	type MissionSummary struct {
 		ID                    uint            `json:"id"`
 		Title                 string          `json:"title"`
@@ -264,6 +276,8 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		Status                string          `json:"status"`
 		SceneKey              string          `json:"scene_key"`
 		Difficulty            string          `json:"difficulty"` // informative label only
+		IsPremium             bool            `json:"is_premium"`
+		Locked                bool            `json:"locked"`
 		PlayerInstruction     string          `json:"player_instruction"`
 		CurrentTaskID         uint            `json:"current_task_id"`
 		CurrentTaskType       string          `json:"current_task_type"`
@@ -425,6 +439,8 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 			Status:                summaryStatus,
 			SceneKey:              m.SceneKey,
 			Difficulty:            string(m.Difficulty),
+			IsPremium:             m.IsPremium,
+			Locked:                m.IsPremium && !isPremiumUser,
 			PlayerInstruction:     instruction,
 			CurrentTaskID:         currentTaskID,
 			CurrentTaskType:       currentTaskType,
@@ -545,6 +561,16 @@ func (h *MissionHandler) AcceptMission(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 	}
 	userID, _ := uuid.Parse(userIDStr)
+
+	// Premium gate: a premium mission can only be accepted by an active member.
+	// This is the authoritative check; the `locked` flag in the listings is only a
+	// UI hint. 402 Payment Required signals the client to show the upsell.
+	var mission models.Mission
+	if err := database.DB.Select("id", "is_premium").First(&mission, "id = ?", uint(mID)).Error; err == nil {
+		if mission.IsPremium && (h.Sub == nil || !h.Sub.IsUserPremium(userID)) {
+			return c.Status(fiber.StatusPaymentRequired).JSON(fiber.Map{"error": "premium_required"})
+		}
+	}
 
 	var roomID *uuid.UUID
 	if rstr := c.Query("room_id"); rstr != "" {

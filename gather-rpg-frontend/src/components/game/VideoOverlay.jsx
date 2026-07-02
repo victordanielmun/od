@@ -23,7 +23,7 @@ export const VideoOverlay = () => {
   const players              = useGameStore(state => state.players);
   const activeChallengeId    = useGameStore(state => state.activeChallengeId);
   const currentRoomId        = useGameStore(state => state.currentRoomId);
-  const activeMission        = useGameStore(state => state.activeMission);
+  const currentRoomType      = useGameStore(state => state.currentRoomType);
 
   const getUsername = (userId) => {
     const player = players.get(userId);
@@ -32,7 +32,11 @@ export const VideoOverlay = () => {
 
   // ── Determine active session and room type ────────────────────────────────
   const roomSessionId    = currentRoomId ? `room:${currentRoomId}` : null;
-  const isCooperative    = activeMission?.mode === 'cooperative';
+  // El tipo de sala autoritativo viene del backend (map_join_approved): es el
+  // mismo criterio con el que el hub crea las conexiones full-mesh, así el
+  // panel de reunión nunca aparece sin peers conectados (antes se decidía por
+  // mission.mode y podía divergir del estado real de la sala).
+  const isCooperative    = currentRoomType === 'cooperative';
   const activeSessionId  = activeChallengeId || roomSessionId;
 
   // ── Cooperative room → dedicated CoopAudioPanel ──────────────────────────

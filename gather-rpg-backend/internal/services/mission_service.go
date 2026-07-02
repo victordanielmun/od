@@ -550,9 +550,29 @@ func (s *MissionService) activeMissionProgresses(playerID uuid.UUID, sceneKey st
 	return progresses
 }
 
-func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uuid.UUID, sceneKey string, isBoss bool) ([]KillProgressResult, error) {
+// SceneHasCooperativeMission reports whether the scene has at least one ACTIVE
+// mission with cooperative mode. The hub uses it to decide the room Type at
+// creation time: scenes with a coop mission produce "cooperative" room
+// instances (4-player matchmaking + meeting-room audio + shared kill credit),
+// so the mode defined in the admin is what drives the whole coop pipeline.
+func (s *MissionService) SceneHasCooperativeMission(sceneKey string) bool {
+	if database.DB == nil {
+		return false
+	}
+	var count int64
+	database.DB.Model(&models.Mission{}).
+		Where("scene_key = ? AND mode = ? AND status = ?", sceneKey, "cooperative", "active").
+		Count(&count)
+	return count > 0
+}
+
+// isAssist=true significa que este jugador NO dio el golpe final (crédito
+// compartido de sala cooperativa). Los asistentes solo progresan misiones con
+// Mode == "cooperative"; una misión individual activa en la misma escena sigue
+// exigiendo kills propios. El killer real (isAssist=false) progresa todas.
+func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uuid.UUID, sceneKey string, isBoss bool, isAssist bool) ([]KillProgressResult, error) {
 	fmt.Printf("\n[KillProgress] ============ INICIO UpdateKillProgress ============\n")
-	fmt.Printf("[KillProgress] userID=%s | enemyTemplateID=%s | sceneKey=%s\n", userID, enemyTemplateID, sceneKey)
+	fmt.Printf("[KillProgress] userID=%s | enemyTemplateID=%s | sceneKey=%s | assist=%v\n", userID, enemyTemplateID, sceneKey, isAssist)
 
 	// 1. Obtener playerStats (playerID interno)
 	var stats models.PlayerStats
@@ -590,6 +610,15 @@ func (s *MissionService) UpdateKillProgress(userID uuid.UUID, enemyTemplateID uu
 
 	for _, p := range progresses {
 		fmt.Printf("[KillProgress] --- Procesando missionID=%d (status=%s) ---\n", p.MissionID, p.Status)
+
+		// Crédito de asistencia: solo aplica a misiones cooperativas.
+		if isAssist {
+			mission, merr := s.Repo.GetMissionByID(p.MissionID)
+			if merr != nil || mission.Mode != "cooperative" {
+				fmt.Printf("[KillProgress]   SKIP misión %d (assist pero mode≠cooperative)\n", p.MissionID)
+				continue
+			}
+		}
 
 		tasks, err := s.GetTasks(p.MissionID)
 		if err != nil {

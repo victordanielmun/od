@@ -3,8 +3,10 @@ package websocket
 import (
 	"encoding/json"
 	"log"
+	"sync"
 	"time"
 
+	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 
 	"github.com/gofiber/contrib/websocket"
@@ -52,6 +54,56 @@ type Client struct {
 	// compartida con el inventario (pociones de maná) y la barra del HUD/Sidebar.
 	MP    int
 	MPMax int
+
+	// blocked: usuarios que ESTE cliente bloqueó (moderación). Se carga de la
+	// tabla user_blocks antes de registrar el cliente y se actualiza en caliente
+	// desde el handler HTTP de bloqueo. Protegido porque lo leen los loops de
+	// proximidad y los handlers sociales desde goroutines distintas.
+	blockedMu sync.RWMutex
+	blocked   map[string]bool
+}
+
+// HasBlocked reporta si este cliente bloqueó al usuario dado.
+func (c *Client) HasBlocked(userID string) bool {
+	c.blockedMu.RLock()
+	defer c.blockedMu.RUnlock()
+	return c.blocked[userID]
+}
+
+// SetBlocked actualiza en caliente el estado de bloqueo hacia un usuario
+// (lo llama el hub cuando el handler HTTP crea/elimina un bloqueo).
+func (c *Client) SetBlocked(userID string, blocked bool) {
+	c.blockedMu.Lock()
+	defer c.blockedMu.Unlock()
+	if c.blocked == nil {
+		c.blocked = make(map[string]bool)
+	}
+	if blocked {
+		c.blocked[userID] = true
+	} else {
+		delete(c.blocked, userID)
+	}
+}
+
+// LoadBlocks carga desde la DB el set de usuarios bloqueados por este cliente.
+// Se llama de forma síncrona en HandleWS ANTES de registrar el cliente en el
+// hub, así no hay carrera con los lectores (aún nadie conoce al cliente).
+func (c *Client) LoadBlocks() {
+	if database.DB == nil {
+		return
+	}
+	var blocks []models.UserBlock
+	if err := database.DB.Where("blocker_id = ?", c.ID).Find(&blocks).Error; err != nil {
+		log.Printf("[Blocks] Failed to load blocks for user %s: %v", c.ID, err)
+		return
+	}
+	m := make(map[string]bool, len(blocks))
+	for _, b := range blocks {
+		m[b.BlockedID.String()] = true
+	}
+	c.blockedMu.Lock()
+	c.blocked = m
+	c.blockedMu.Unlock()
 }
 
 func NewClient(hub *Hub, conn *websocket.Conn, id uuid.UUID, username string) *Client {

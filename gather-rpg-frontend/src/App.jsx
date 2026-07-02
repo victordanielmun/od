@@ -24,8 +24,10 @@ import { AdminEnemies } from './pages/admin/AdminEnemies';
 import { AdminEnemyDefinitions } from './pages/admin/AdminEnemyDefinitions';
 import { AdminChallenges } from './pages/admin/AdminChallenges';
 import { AdminWhatsApp } from './pages/admin/AdminWhatsApp';
+import { AdminBlocks } from './pages/admin/AdminBlocks';
 import PracticePage from './pages/PracticePage';
 import { Dashboard } from './pages/Dashboard';
+import { Membership } from './pages/Membership';
 import { useAuthStore } from './store/authStore';
 
 
@@ -80,6 +82,12 @@ function App() {
           </PrivateRoute>
         } />
 
+        <Route path="/membership" element={
+          <PrivateRoute>
+            <Membership />
+          </PrivateRoute>
+        } />
+
         <Route path="/lobby" element={
           <PrivateRoute>
             <LobbyLayout />
@@ -106,6 +114,7 @@ function App() {
           <Route path="ai-test" element={<AdminAITester />} />
           <Route path="challenges" element={<AdminChallenges />} />
           <Route path="whatsapp" element={<AdminWhatsApp />} />
+          <Route path="blocks" element={<AdminBlocks />} />
           {/* Unknown /admin/* subpath -> admin home instead of a blank Outlet */}
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>

@@ -85,6 +85,12 @@ func (h *Hub) handleChatRequest(client *Client, payload models.ChatRequestPayloa
 		return
 	}
 
+	// Moderación: un par bloqueado (cualquier dirección) no puede iniciar chats.
+	// Drop silencioso: no se revela al emisor que fue bloqueado.
+	if h.blockedBetweenDB(client.ID, targetID) {
+		return
+	}
+
 	if database.DB == nil {
 		targetClient := h.findClientByID(targetID.String())
 
@@ -346,6 +352,12 @@ func (h *Hub) handlePrivateMessage(client *Client, payload models.PrivateMessage
 		return
 	}
 
+	// Moderación: si hay bloqueo en cualquier dirección, el mensaje no se
+	// persiste ni se entrega. Drop silencioso (no revelar el bloqueo).
+	if h.blockedBetweenDB(client.ID, targetID) {
+		return
+	}
+
 	// Persist the message so it survives reconnects and is delivered as history
 	// even when the recipient is currently offline.
 	if database.DB != nil {
@@ -383,6 +395,13 @@ func (h *Hub) handleTeleportToFriend(client *Client, targetUserID string) {
 
 	if !h.areFriends(client.ID, targetUUID) {
 		client.SendError("Solo puedes teletransportarte hacia tus amigos")
+		return
+	}
+
+	// Moderación: no permitir teletransportarse hacia alguien con quien hay
+	// bloqueo. Mensaje opaco para no revelar el bloqueo.
+	if h.blockedBetweenDB(client.ID, targetUUID) {
+		client.SendError("El amigo no está conectado")
 		return
 	}
 
@@ -444,6 +463,11 @@ func (h *Hub) handleSendRoomInvite(client *Client, targetUserID string) {
 
 	if !h.areFriends(client.ID, targetUUID) {
 		client.SendError("Solo puedes invitar a tus amigos")
+		return
+	}
+
+	// Moderación: invitaciones entre usuarios bloqueados se descartan en silencio.
+	if h.blockedBetweenDB(client.ID, targetUUID) {
 		return
 	}
 

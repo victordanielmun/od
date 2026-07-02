@@ -54,6 +54,26 @@ const MissionTracker = ({ mission }) => {
 
       {!isCollapsed && (
         <div className="mt-3">
+          {mission.mode === 'cooperative' && (
+            <div className="mb-3 flex items-center justify-between gap-2 bg-emerald-900/30 border border-emerald-700/40 rounded-lg px-2 py-1.5">
+              <span className="text-emerald-300 text-[10px] font-semibold">
+                {t('lobby.mission.cooperative_badge', '🤝 Misión cooperativa')}
+              </span>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('open-friends-panel'))}
+                className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-2 py-0.5 rounded transition-colors shrink-0"
+              >
+                {t('lobby.mission.invite_friends', 'Invitar amigos')}
+              </button>
+            </div>
+          )}
+          {mission.mode === 'competitive' && (
+            <div className="mb-3 bg-red-900/30 border border-red-700/40 rounded-lg px-2 py-1.5">
+              <span className="text-red-300 text-[10px] font-semibold">
+                {t('lobby.mission.competitive_badge', '⚔️ Misión competitiva')}
+              </span>
+            </div>
+          )}
           <p className="text-gray-300 text-xs mb-4">
             {!i18n.language.startsWith('en')
               ? (mission.description || mission.description_en)
@@ -63,6 +83,13 @@ const MissionTracker = ({ mission }) => {
           <div className="space-y-3">
             {mission.tasks?.map((task, idx) => {
               const isCompleted = task.completed || task.is_completed;
+              // Solo las tareas de combate muestran la barra "enemigos eliminados".
+              // El resto (comprar/hablar/entregar/karaoke) son tareas normales cuyo
+              // avance es el propio checkmark; el conteo de kills no aplica aunque el
+              // backend traiga required_kills por defecto.
+              const isCombatTask = task.type === 'defeat_enemy'
+                || task.type === 'kill_all'
+                || task.type === 'kill_boss';
               return (
                 <div key={idx} className="flex items-start gap-2">
                   <div className={`mt-1 w-3 h-3 rounded-sm border ${
@@ -74,7 +101,7 @@ const MissionTracker = ({ mission }) => {
                     }`}>
                       {(!i18n.language.startsWith('en') ? task.description : task.description_en) || task.description}
                     </span>
-                    {task.required_kills > 0 && !isCompleted && (
+                    {isCombatTask && task.required_kills > 0 && !isCompleted && (
                       <div className="mt-1.5 flex flex-col gap-1 w-full min-w-[160px] pointer-events-none">
                         <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden border border-gray-700/30">
                           <div

@@ -127,14 +127,27 @@ func (h *Hub) checkUserProximity(roomID, userID string, x, y float64) {
 		connectedPeers[c.PeerID] = true
 	}
 
-	inRangeMap := make(map[string]services.UserDistance)
-	for _, u := range inRangeUsers {
-		inRangeMap[u.UserID] = u
-	}
-
 	client := h.findClientInRoom(room, userID)
 	if client == nil {
 		return
+	}
+
+	// Moderación: un par bloqueado (en cualquier dirección) se trata como "fuera
+	// de rango": nunca se conecta (loop A) y, si ya estaba conectado cuando se
+	// creó el bloqueo, cae en el teardown estándar del loop B.
+	filtered := inRangeUsers[:0]
+	for _, u := range inRangeUsers {
+		tc := h.findClientInRoom(room, u.UserID)
+		if tc != nil && (client.HasBlocked(u.UserID) || tc.HasBlocked(userID)) {
+			continue
+		}
+		filtered = append(filtered, u)
+	}
+	inRangeUsers = filtered
+
+	inRangeMap := make(map[string]services.UserDistance)
+	for _, u := range inRangeUsers {
+		inRangeMap[u.UserID] = u
 	}
 
 	// A. Connect / Update Volume

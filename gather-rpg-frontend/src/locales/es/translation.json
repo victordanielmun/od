@@ -1,4 +1,30 @@
 {
+  "membership": {
+    "title": "Membresía Premium",
+    "subtitle": "Desbloquea todas las misiones premium y saca el máximo provecho de tu aventura.",
+    "price_suffix": "/ mes",
+    "benefit_missions": "Acceso a todas las misiones premium",
+    "benefit_content": "Contenido y retos exclusivos",
+    "benefit_support": "Apoyas el desarrollo del juego",
+    "active_title": "Tu membresía está activa",
+    "renews_on": "Se renueva el {{date}}",
+    "cancel_scheduled": "Se cancelará al final del periodo actual ({{date}}).",
+    "past_due": "Tu último cobro falló. Actualiza tu método de pago para no perder el acceso.",
+    "subscribe_cta": "Suscribirme",
+    "cancel_cta": "Cancelar membresía",
+    "processing": "Procesando...",
+    "card_number": "Número de tarjeta",
+    "card_holder": "Nombre en la tarjeta",
+    "exp_month": "Mes (MM)",
+    "exp_year": "Año (AA)",
+    "cvc": "CVC",
+    "pay_with": "Pago seguro con tarjeta vía Wompi",
+    "guest_blocked": "Regístrate con una cuenta completa para poder suscribirte.",
+    "success": "¡Listo! Tu membresía premium está activa.",
+    "error_generic": "No se pudo procesar el pago. Verifica los datos e inténtalo de nuevo.",
+    "cancel_confirm": "¿Seguro que quieres cancelar? Mantendrás el acceso hasta el final del periodo.",
+    "back": "Volver"
+  },
   "admin": {
     "dashboard": {
       "title": "Panel de Control",
@@ -30,7 +56,33 @@
         "ai_test": "IA Test",
         "characters": "Personajes",
         "back_to_game": "Volver al Juego",
-        "logout": "Cerrar Sesión"
+        "logout": "Cerrar Sesión",
+        "blocks": "Bloqueos"
+    },
+    "blocks": {
+      "title": "Registro de bloqueos",
+      "refresh": "Actualizar",
+      "loading": "Cargando…",
+      "empty": "Ningún usuario ha sido bloqueado todavía.",
+      "times_blocked": "{{n}} bloqueo(s)",
+      "account_active": "Cuenta activa",
+      "account_disabled": "Cuenta desactivada",
+      "notify": "Notificar",
+      "deactivate": "Desactivar",
+      "activate": "Reactivar",
+      "confirm_deactivate": "¿Desactivar la cuenta de {{name}}? Será expulsado y no podrá iniciar sesión.",
+      "confirm_activate": "¿Reactivar la cuenta de {{name}}?",
+      "deactivated": "Cuenta desactivada",
+      "activated": "Cuenta reactivada",
+      "notify_delivered": "Advertencia entregada",
+      "notify_offline": "Usuario offline: no se entregó la advertencia",
+      "notify_title": "Advertencia para {{name}}",
+      "notify_placeholder": "Ej: Has recibido reportes por mensajes inapropiados. Modera tu comportamiento o tu cuenta será desactivada.",
+      "notify_send": "Enviar advertencia",
+      "col_blocker": "Bloqueado por",
+      "col_reason": "Motivo",
+      "col_details": "Detalles",
+      "col_date": "Fecha"
     },
     "missions": {
       "title": "Gestión de Misiones",
@@ -86,7 +138,8 @@
         "difficulty_advanced": "Avanzado",
         "xp": "XP",
         "advance_gold": "Anticipo",
-        "advance_gold_hint": "Oro entregado al aceptar la misión (para misiones de compra). 0 = sin anticipo."
+        "advance_gold_hint": "Oro entregado al aceptar la misión (para misiones de compra). 0 = sin anticipo.",
+        "premium": "Misión Premium (requiere membresía)"
       },
       "tasks": {
         "technical_config": "Configuración de Objetivo Técnico",
@@ -617,7 +670,28 @@
       "task_objective_badge": "⚔️ Objetivo",
       "enemies_defeated": "Enemigos eliminados: {{done}}/{{req}}",
       "return_lobby": "Volver al Lobby",
-      "stay_here": "Seguir aquí"
+      "stay_here": "Seguir aquí",
+      "cooperative_badge": "🤝 Misión cooperativa",
+      "competitive_badge": "⚔️ Misión competitiva",
+      "invite_friends": "Invitar amigos"
+    },
+    "block": {
+      "title": "Bloquear usuario",
+      "subtitle": "¿Por qué quieres bloquear a",
+      "reasons": {
+        "inappropriate_name": "Nombre inapropiado",
+        "inappropriate_message": "Mensaje inapropiado",
+        "harassment": "Acoso",
+        "spam": "Spam",
+        "other": "Otro"
+      },
+      "details_placeholder": "Detalles (opcional)",
+      "details_required": "Describe el motivo del bloqueo",
+      "effect": "Dejarás de ver a este usuario y de recibir sus mensajes, llamadas e invitaciones.",
+      "cancel": "Cancelar",
+      "confirm": "Bloquear",
+      "error": "No se pudo bloquear al usuario",
+      "blocked_notice": "Has bloqueado a {{name}}"
     }
   },
   "items": {
@@ -718,6 +792,8 @@
       "view_goods_desc": "Explora los tesoros y suministros de mi tienda.",
       "status_completed": "✓ Completada",
       "status_in_progress": "↻ En Progreso",
+      "premium_badge": "Premium",
+      "premium_locked": "Esta es una misión premium. Necesitas una membresía activa para aceptarla. Te abrí la página de membresía en otra pestaña.",
       "loading": "Cargando...",
       "status_new": "★ Nueva",
       "difficulty_beginner": "Principiante",

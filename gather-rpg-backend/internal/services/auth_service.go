@@ -169,6 +169,11 @@ func (s *AuthService) Login(req models.LoginRequest) (*models.AuthResponse, erro
 		return nil, errors.New("invalid credentials")
 	}
 
+	// Cuentas desactivadas por el admin (moderación por bloqueos) no entran.
+	if !user.IsActive {
+		return nil, errors.New("account disabled")
+	}
+
 	token, err := utils.GenerateToken(user.ID.String(), user.Username, user.Role)
 	if err != nil {
 		return nil, err

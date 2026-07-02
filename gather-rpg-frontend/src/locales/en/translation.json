@@ -1,4 +1,30 @@
 {
+  "membership": {
+    "title": "Premium Membership",
+    "subtitle": "Unlock every premium mission and get the most out of your adventure.",
+    "price_suffix": "/ month",
+    "benefit_missions": "Access to all premium missions",
+    "benefit_content": "Exclusive content and challenges",
+    "benefit_support": "You support the game's development",
+    "active_title": "Your membership is active",
+    "renews_on": "Renews on {{date}}",
+    "cancel_scheduled": "Will cancel at the end of the current period ({{date}}).",
+    "past_due": "Your last charge failed. Update your payment method to keep access.",
+    "subscribe_cta": "Subscribe",
+    "cancel_cta": "Cancel membership",
+    "processing": "Processing...",
+    "card_number": "Card number",
+    "card_holder": "Name on card",
+    "exp_month": "Month (MM)",
+    "exp_year": "Year (YY)",
+    "cvc": "CVC",
+    "pay_with": "Secure card payment via Wompi",
+    "guest_blocked": "Register a full account to be able to subscribe.",
+    "success": "Done! Your premium membership is active.",
+    "error_generic": "We couldn't process the payment. Check your details and try again.",
+    "cancel_confirm": "Are you sure you want to cancel? You'll keep access until the end of the period.",
+    "back": "Back"
+  },
   "admin": {
     "dashboard": {
       "title": "Admin Dashboard",
@@ -30,7 +56,33 @@
         "ai_test": "AI Test",
         "characters": "Characters",
         "back_to_game": "Back to Game",
-        "logout": "Logout"
+        "logout": "Logout",
+        "blocks": "Blocks"
+    },
+    "blocks": {
+      "title": "Block registry",
+      "refresh": "Refresh",
+      "loading": "Loading…",
+      "empty": "No user has been blocked yet.",
+      "times_blocked": "{{n}} block(s)",
+      "account_active": "Active account",
+      "account_disabled": "Deactivated account",
+      "notify": "Notify",
+      "deactivate": "Deactivate",
+      "activate": "Reactivate",
+      "confirm_deactivate": "Deactivate {{name}}'s account? They will be kicked and unable to log in.",
+      "confirm_activate": "Reactivate {{name}}'s account?",
+      "deactivated": "Account deactivated",
+      "activated": "Account reactivated",
+      "notify_delivered": "Warning delivered",
+      "notify_offline": "User offline: warning was not delivered",
+      "notify_title": "Warning for {{name}}",
+      "notify_placeholder": "E.g.: You have received reports for inappropriate messages. Moderate your behavior or your account will be deactivated.",
+      "notify_send": "Send warning",
+      "col_blocker": "Blocked by",
+      "col_reason": "Reason",
+      "col_details": "Details",
+      "col_date": "Date"
     },
     "missions": {
       "title": "Mission Management",
@@ -86,7 +138,8 @@
         "difficulty_advanced": "Advanced",
         "xp": "XP",
         "advance_gold": "Advance",
-        "advance_gold_hint": "Gold granted when the mission is accepted (for shopping missions). 0 = no advance."
+        "advance_gold_hint": "Gold granted when the mission is accepted (for shopping missions). 0 = no advance.",
+        "premium": "Premium mission (requires membership)"
       },
       "tasks": {
         "technical_config": "Technical Objective Configuration",
@@ -610,7 +663,28 @@
       "task_objective_badge": "⚔️ Objective",
       "enemies_defeated": "Enemies defeated: {{done}}/{{req}}",
       "return_lobby": "Return to Lobby",
-      "stay_here": "Stay here"
+      "stay_here": "Stay here",
+      "cooperative_badge": "🤝 Cooperative mission",
+      "competitive_badge": "⚔️ Competitive mission",
+      "invite_friends": "Invite friends"
+    },
+    "block": {
+      "title": "Block user",
+      "subtitle": "Why do you want to block",
+      "reasons": {
+        "inappropriate_name": "Inappropriate name",
+        "inappropriate_message": "Inappropriate message",
+        "harassment": "Harassment",
+        "spam": "Spam",
+        "other": "Other"
+      },
+      "details_placeholder": "Details (optional)",
+      "details_required": "Describe the reason for the block",
+      "effect": "You will stop seeing this user and receiving their messages, calls and invitations.",
+      "cancel": "Cancel",
+      "confirm": "Block",
+      "error": "Could not block the user",
+      "blocked_notice": "You have blocked {{name}}"
     }
   },
   "items": {
@@ -711,6 +785,8 @@
       "view_goods_desc": "Explore the treasures and supplies of my shop.",
       "status_completed": "✓ Completed",
       "status_in_progress": "↻ In Progress",
+      "premium_badge": "Premium",
+      "premium_locked": "This is a premium mission. You need an active membership to accept it. I opened the membership page in another tab.",
       "loading": "Loading...",
       "status_new": "★ New",
       "difficulty_beginner": "Beginner",

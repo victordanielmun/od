@@ -32,6 +32,9 @@ func (h *WSHandler) HandleWS(c *websocket.Conn) {
 	}
 
 	client := gameWS.NewClient(h.Hub, c, userID, username)
+	// Cargar el set de usuarios bloqueados ANTES de registrar: una vez en el hub,
+	// el set lo leen los loops de proximidad y los handlers sociales.
+	client.LoadBlocks()
 	h.Hub.Register <- client
 
 	go client.WritePump()

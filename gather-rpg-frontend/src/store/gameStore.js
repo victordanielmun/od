@@ -14,6 +14,11 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     listenersInitialized: false,
     currentRoomId: null,
     currentRoomScene: null, // scene_key that the current room actually belongs to
+    currentRoomType: null,  // room type from map_join_approved ('cooperative' activa el audio de reunión)
+    // IDs de usuarios que YO bloqueé (moderación): se cargan de GET /blocks al
+    // conectar y filtran a esos jugadores de todos los handlers de posiciones,
+    // así el bloqueador deja de verlos y de recibir sus actualizaciones.
+    blockedIds: new Set(),
     currentSceneKey: 'lobby',
     currentInviteCode: null,
     activeChallengeId: null,
@@ -89,6 +94,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                     if (myId && id === myId) {
                         return; // Ignore self-join in players map
                     }
+                    if (get().blockedIds.has(id)) return; // usuario bloqueado: invisible
 
                     console.log(`[gameStore] Remote player joined: ${player.username} (ID: ${id}) at (${player.x}, ${player.y})`);
 
@@ -112,10 +118,14 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                     // scene_key, so we use the value captured at map_join_approved for
                     // this same room_id (set _pendingRoomScene below).
                     const pending = get()._pendingRoomScene;
-                    const roomScene = (pending && pending.roomId === payload.room_id) ? pending.sceneKey : get().currentRoomScene;
+                    const isPending = pending && pending.roomId === payload.room_id;
+                    const roomScene = isPending ? pending.sceneKey : get().currentRoomScene;
                     set({
                         currentRoomId: payload.room_id,
                         currentRoomScene: roomScene,
+                        // El tipo autoritativo viene de map_join_approved; un join directo
+                        // (p. ej. lobby) no pasa por ahí y queda como sala normal (null).
+                        currentRoomType: isPending ? (pending.roomType || null) : null,
                         currentInviteCode: payload.invite_code || null,
                         players: new Map() // Clear players from previous room
                     });
@@ -129,7 +139,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                     // can tag currentRoomScene accurately (room_joined lacks scene_key).
                     set({
                         currentInviteCode: payload.invite_code || null,
-                        _pendingRoomScene: { roomId: payload.room_id, sceneKey: payload.scene_key }
+                        _pendingRoomScene: { roomId: payload.room_id, sceneKey: payload.scene_key, roomType: payload.type || null }
                     });
                     // Server has found/created a room for us. Now join it.
                     // Payload: { room_id, scene_key, type, x?, y?, invite_code? }
@@ -150,6 +160,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                                 // CRITICAL: never put ourselves into the players map
                                 // to prevent ghost sprites from stale server data
                                 if (myId && id === myId) return;
+                                if (state.blockedIds.has(id)) return; // usuario bloqueado: invisible
 
                                 const x = Number(pos.x);
                                 const y = Number(pos.y);
@@ -201,6 +212,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                     const id = String(user_id);
                     const myId = String(useAuthStore.getState().user?.id || '');
                     if (myId && id === myId) return;
+                    if (get().blockedIds.has(id)) return; // usuario bloqueado: invisible
 
                     set(state => {
                         const newPlayers = new Map(state.players);
@@ -249,6 +261,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                             if (myId && id === myId) {
                                 return;
                             }
+                            if (state.blockedIds.has(id)) return; // usuario bloqueado: invisible
 
                             const existing = newPlayers.get(id);
                             const name = existing ? existing.username : (pos.username || 'Unknown');
@@ -448,7 +461,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                 });
 
                 wsClient.on('room_invite_received', (payload) => {
-                    const { inviter_name, scene_key, invite_code } = payload;
+                    const { inviter_id, inviter_name, scene_key } = payload;
                     const { addNotification } = useNotificationStore.getState();
                     addNotification(
                         'info',
@@ -459,14 +472,11 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                                 label: 'Aceptar',
                                 primary: true,
                                 onClick: () => {
-                                    window.dispatchEvent(new CustomEvent('lobby-change-map', {
-                                        detail: { 
-                                            targetMap: scene_key,
-                                            targetX: 1000,
-                                            targetY: 350,
-                                            pin: invite_code
-                                        }
-                                    }));
+                                    // Teletransporte al amigo: garantiza caer en SU instancia de
+                                    // sala exacta (crítico en coop, donde hay varias instancias
+                                    // de la misma escena). Un join por scene_key podía aterrizar
+                                    // en cualquier instancia pública, separando al equipo.
+                                    get().teleportToFriend(inviter_id);
                                 }
                             },
                             {
@@ -476,6 +486,12 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                             }
                         ]
                     );
+                });
+
+                // Aviso de moderación enviado por un admin (advertencia por bloqueos).
+                wsClient.on('admin_notice', (payload) => {
+                    const { addNotification } = useNotificationStore.getState();
+                    addNotification('warning', `⚠️ Moderación: ${payload?.message || ''}`, 20000);
                 });
 
                 wsClient.on('emoji_broadcast', (payload) => {
@@ -567,6 +583,9 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
             }
 
             wsClient.connect(token);
+            // Cargar mi lista de bloqueados para que el filtrado de jugadores
+            // (positions/player_joined) aplique desde el primer frame.
+            get().loadBlockedUsers();
         }
     },
 
@@ -582,6 +601,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
             players: new Map(),
             currentRoomId: null,
             currentRoomScene: null,
+            currentRoomType: null,
             currentInviteCode: null,
             activeChallengeId: null,
             challengeParticipants: [],
@@ -711,14 +731,22 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     },
 
     fetchActiveMission: async (sceneKey, silent = false) => {
-        if (!silent) set({ activeMission: null }); // Clear previous mission state
+        // No se limpia la misión activa de entrada: una misión puede abarcar varias
+        // escenas (p. ej. la de Amy manda a comprar ítems a la pet_store). Si al
+        // teletransportarte a una escena sin misión propia borráramos activeMission,
+        // el MissionTracker desaparecería y el jugador olvidaría qué comprar. La
+        // misión debe mantenerse hasta que otra escena aporte SU propia misión, o
+        // hasta que se complete (evento WS mission_completed limpia activeMission).
         try {
             // El progreso es room-agnostic (una fila por player+mission, scoped por
             // escena), así que no hace falta room_id aquí.
             const response = await api.get(`/missions/scene/${sceneKey}`);
-            if (response.data && response.data.length > 0) {
-                const mission = response.data.find(m => m?.status !== 'completed') || null;
+            const mission = (response.data && response.data.length > 0)
+                ? (response.data.find(m => m?.status !== 'completed') || null)
+                : null;
 
+            if (mission) {
+                // La escena tiene su propia misión activa: reemplaza la anterior.
                 set({ activeMission: mission });
 
                 if (!silent) {
@@ -737,12 +765,20 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                     }
                 }
             } else {
-
-                set({ activeMission: null });
+                // La escena no tiene misión activa. Solo se limpia el tracker si la
+                // misión activa PERTENECE a esta escena (se completó/quitó aquí). Si
+                // pertenece a otra escena (p. ej. la de Amy mientras visitas la
+                // pet_store), se conserva para no borrar las tareas al comprar.
+                set(state => (
+                    state.activeMission && state.activeMission.scene_key === sceneKey
+                        ? { activeMission: null }
+                        : {}
+                ));
             }
         } catch (err) {
             console.error("Failed to fetch missions:", err);
-            if (!silent) set({ activeMission: null });
+            // Ante un error transitorio se conserva la misión activa para no
+            // hacerla parpadear/desaparecer del tracker.
         }
     },
 
@@ -768,8 +804,15 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                 }
                 useNotificationStore.getState().addNotification('success', `+${advance} de oro de anticipo para la misión`);
             }
+            return { ok: true };
         } catch (err) {
+            // 402 = premium mission and the player is not a member. Signal the caller
+            // so it can route the player to the membership page instead of failing silently.
+            if (err?.response?.status === 402) {
+                return { ok: false, premiumRequired: true };
+            }
             console.error('Failed to accept mission:', err);
+            return { ok: false };
         }
     },
 
@@ -946,5 +989,40 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
 
     sendRoomInvite: (friendId) => {
         wsClient.send('send_room_invite', { target_user_id: friendId });
+    },
+
+    // ── Bloqueos (moderación) ────────────────────────────────────────────────
+    loadBlockedUsers: async () => {
+        try {
+            const res = await api.get('/blocks');
+            const ids = new Set((res.data?.blocks || []).map(b => String(b.blocked_id)));
+            set({ blockedIds: ids });
+        } catch (err) {
+            console.error('[gameStore] Failed to load blocked users:', err);
+        }
+    },
+
+    // Bloquea a un usuario con motivo. Lo elimina de inmediato del mapa de
+    // jugadores (deja de verse) y el backend corta chat/audio/invitaciones.
+    blockUser: async (userId, reason, details = '') => {
+        const id = String(userId);
+        await api.post('/blocks', { blocked_id: id, reason, details });
+        set(state => {
+            const newBlocked = new Set(state.blockedIds);
+            newBlocked.add(id);
+            const newPlayers = new Map(state.players);
+            newPlayers.delete(id);
+            return { blockedIds: newBlocked, players: newPlayers };
+        });
+    },
+
+    unblockUser: async (userId) => {
+        const id = String(userId);
+        await api.delete(`/blocks/${id}`);
+        set(state => {
+            const newBlocked = new Set(state.blockedIds);
+            newBlocked.delete(id);
+            return { blockedIds: newBlocked };
+        });
     }
 })));

@@ -44,6 +44,19 @@ func (h *MissionAdminHandler) warmMission(missionID uint) {
 	go h.Translation.WarmMission(missionID, h.PrecacheLangs)
 }
 
+// refreshMissionTranslations invalidates the cached native translations for a mission
+// and its tasks, then re-warms them. Call after editing English source text: the
+// translation cache is read-through (a cache hit never regenerates), so without the
+// invalidation an edit would keep serving the stale translation. Runs the re-warm in
+// the background. No-op when no translation service is configured.
+func (h *MissionAdminHandler) refreshMissionTranslations(missionID uint) {
+	if h.Translation == nil || missionID == 0 {
+		return
+	}
+	h.Translation.InvalidateMissionAndTaskTranslations(missionID)
+	h.warmMission(missionID)
+}
+
 func (h *MissionAdminHandler) ListMissions(c *fiber.Ctx) error {
 	missions, err := h.Service.GetAllMissions()
 	if err != nil {
@@ -80,7 +93,10 @@ func (h *MissionAdminHandler) UpdateMission(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	h.warmMission(mission.ID)
+	// Editing the mission's English text invalidates its cached translations (and, to
+	// be safe, its tasks') so the read-through cache regenerates instead of serving
+	// the stale rows.
+	h.refreshMissionTranslations(mission.ID)
 	return c.JSON(mission)
 }
 
@@ -129,6 +145,11 @@ func (h *MissionAdminHandler) UpdateTask(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	// Editing the task's English description invalidates its cached translations so the
+	// read-through cache regenerates from the new text instead of serving the stale row.
+	if h.Translation != nil {
+		h.Translation.InvalidateTaskTranslations(task.ID)
+	}
 	h.warmMission(task.MissionID)
 	return c.JSON(task)
 }

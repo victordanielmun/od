@@ -222,6 +222,50 @@ func (s *TranslationService) GetTaskTranslation(t *models.MissionTask, lang stri
 	return tr
 }
 
+// InvalidateMissionTranslations drops every cached native translation for a mission
+// (all languages). Call this after the mission's English source text (title /
+// description / objective) is edited so the read-through cache regenerates from the
+// new text instead of serving the stale rows. English is canonical and not cached, so
+// there is nothing to drop for it.
+func (s *TranslationService) InvalidateMissionTranslations(missionID uint) {
+	if missionID == 0 {
+		return
+	}
+	if err := database.DB.Where("mission_id = ?", missionID).Delete(&models.MissionTranslation{}).Error; err != nil {
+		fmt.Printf("[TranslationService] invalidate mission translations (%d): %v\n", missionID, err)
+	}
+}
+
+// InvalidateTaskTranslations drops every cached native translation for a task (all
+// languages), so an edit to the task's English description regenerates instead of
+// serving the stale cached row.
+func (s *TranslationService) InvalidateTaskTranslations(taskID uint) {
+	if taskID == 0 {
+		return
+	}
+	if err := database.DB.Where("task_id = ?", taskID).Delete(&models.TaskTranslation{}).Error; err != nil {
+		fmt.Printf("[TranslationService] invalidate task translations (%d): %v\n", taskID, err)
+	}
+}
+
+// InvalidateMissionAndTaskTranslations drops the cached translations for a mission and
+// all of its tasks. Used when a mission edit may have touched task text too, or to be
+// safe on a mission-level save.
+func (s *TranslationService) InvalidateMissionAndTaskTranslations(missionID uint) {
+	if missionID == 0 {
+		return
+	}
+	s.InvalidateMissionTranslations(missionID)
+	var taskIDs []uint
+	if err := database.DB.Model(&models.MissionTask{}).Where("mission_id = ?", missionID).Pluck("id", &taskIDs).Error; err != nil {
+		fmt.Printf("[TranslationService] list tasks for invalidation (%d): %v\n", missionID, err)
+		return
+	}
+	for _, id := range taskIDs {
+		s.InvalidateTaskTranslations(id)
+	}
+}
+
 // translateText is a small helper for single-string fields (e.g. a task description).
 func (s *TranslationService) translateText(text, lang string) (string, error) {
 	if strings.TrimSpace(text) == "" {
