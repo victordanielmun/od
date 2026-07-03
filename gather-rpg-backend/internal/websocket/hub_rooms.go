@@ -64,6 +64,16 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 	// Always broadcast user_left to the CURRENT room before rejoining, even when it's the same room.
 	// This ensures other clients remove the stale ghost sprite for this user on reconnect.
 	if client.RoomID != "" {
+		if client.RoomID != roomID {
+			// Cerrar la voz de la sala anterior antes de cambiar: las conexiones
+			// WebRTC son P2P y sobreviven al cambio de mapa. Sin esto el jugador
+			// seguiría oyéndose con la sala vieja — en coop no hay loop de
+			// proximidad que las desmonte, y en salas normales el guard de dedupe
+			// (userID > peerID) deja viva la pareja cuando el que queda tiene ID mayor.
+			h.mu.RLock()
+			h.closeRoomVoicePeersLocked(client, client.RoomID, "room_switch")
+			h.mu.RUnlock()
+		}
 		h.mu.RLock()
 		oldRoom, exists := h.Rooms[client.RoomID]
 		h.mu.RUnlock()

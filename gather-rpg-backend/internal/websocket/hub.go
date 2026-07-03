@@ -151,45 +151,7 @@ func (h *Hub) handleUnregister(client *Client) {
 	if _, ok := h.Clients[client]; ok {
 		h.leaveChallengeLocked(client, client.ChallengeID, "disconnected")
 		if client.RoomID != "" {
-			sessionID := "room:" + client.RoomID
-			conns := h.PeerService.Manager.GetPeerConnectionsForSession(client.ID.String(), sessionID)
-			for _, conn := range conns {
-				h.PeerService.Manager.RemovePeerConnection(client.ID.String(), conn.PeerID, sessionID)
-				h.PeerService.Manager.RemovePeerConnection(conn.PeerID, client.ID.String(), sessionID)
-
-				peerUUID, err := uuid.Parse(conn.PeerID)
-				if err != nil {
-					peerUUID = uuid.Nil
-				}
-				var targetClient *Client
-				for c := range h.Clients {
-					if c.ID.String() == conn.PeerID {
-						targetClient = c
-						break
-					}
-				}
-				if targetClient == nil {
-					continue
-				}
-				targetClient.SendJSON(&models.WSMessage{
-					Type: MsgClosePeerConnection,
-					Payload: models.ClosePeerConnectionPayload{
-						PeerUserID: client.ID,
-						Reason:     "disconnected",
-						SessionID:  sessionID,
-					},
-				})
-				if peerUUID != uuid.Nil {
-					client.SendJSON(&models.WSMessage{
-						Type: MsgClosePeerConnection,
-						Payload: models.ClosePeerConnectionPayload{
-							PeerUserID: peerUUID,
-							Reason:     "disconnected",
-							SessionID:  sessionID,
-						},
-					})
-				}
-			}
+			h.closeRoomVoicePeersLocked(client, client.RoomID, "disconnected")
 
 			if room, ok := h.Rooms[client.RoomID]; ok {
 				room.RemoveClient(client)
@@ -392,6 +354,43 @@ func parsePayload(input interface{}, output interface{}) {
 }
 
 // WebRTC Handlers
+
+// closeRoomVoicePeersLocked cierra todas las conexiones de voz que el cliente
+// tenga en la sesión de la sala dada ("room:"+roomID) y avisa a ambos lados con
+// close_peer_connection. Las conexiones WebRTC son P2P: sobreviven a un cambio
+// de sala si nadie las cierra, así que esto corre tanto al desconectarse como al
+// cambiar de sala. Requiere h.mu tomado (basta lectura: solo consulta clientsByID).
+func (h *Hub) closeRoomVoicePeersLocked(client *Client, roomID, reason string) {
+	sessionID := "room:" + roomID
+	conns := h.PeerService.Manager.GetPeerConnectionsForSession(client.ID.String(), sessionID)
+	for _, conn := range conns {
+		h.PeerService.Manager.RemovePeerConnection(client.ID.String(), conn.PeerID, sessionID)
+		h.PeerService.Manager.RemovePeerConnection(conn.PeerID, client.ID.String(), sessionID)
+
+		peerUUID, err := uuid.Parse(conn.PeerID)
+		if err != nil {
+			continue
+		}
+		client.SendJSON(&models.WSMessage{
+			Type: MsgClosePeerConnection,
+			Payload: models.ClosePeerConnectionPayload{
+				PeerUserID: peerUUID,
+				Reason:     reason,
+				SessionID:  sessionID,
+			},
+		})
+		if targetClient := h.clientsByID[peerUUID]; targetClient != nil {
+			targetClient.SendJSON(&models.WSMessage{
+				Type: MsgClosePeerConnection,
+				Payload: models.ClosePeerConnectionPayload{
+					PeerUserID: client.ID,
+					Reason:     reason,
+					SessionID:  sessionID,
+				},
+			})
+		}
+	}
+}
 
 func (h *Hub) findClientByID(userID string) *Client {
 	parsedID, err := uuid.Parse(userID)

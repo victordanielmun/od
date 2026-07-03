@@ -144,13 +144,19 @@ export interface TTSResponse {
 export async function generateTTS(text: string, voice?: string): Promise<TTSResponse> {
     // Call the Go backend directly using gatherApi (which targets /api via Vite proxy)
     const { data } = await gatherApi.post<TTSResponse>('/tts/generate', { text, voice });
+    // The backend returns a relative "/api/..." audio_url, which only resolves when
+    // the frontend and the API share a host (dev proxy). In production they live on
+    // different domains, so rebuild the URL against the real API base instead.
+    data.audio_url = getTTSAudioUrl(data.cache_key);
     console.log('[VoiceApi] Generated TTS (Piper local):', data);
     return data;
 }
 
 export function getTTSAudioUrl(cacheKey: string): string {
-    // Route through the Go backend TTS serving endpoint via Vite proxy (/api)
-    return `/api/tts/audio/${cacheKey}`;
+    // Serve the clip from the same base the API client uses (VITE_API_URL), so it
+    // works both behind the dev proxy (/api) and cross-domain in production.
+    const base = (gatherApi.defaults.baseURL || '/api').replace(/\/+$/, '');
+    return `${base}/tts/audio/${cacheKey}`;
 }
 
 /* ─── Learning Progress (Go Backend) ──────────────────── */

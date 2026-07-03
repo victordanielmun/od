@@ -159,6 +159,92 @@ func TestWebRTCSignalingRoomSessionAllowsOnlyPairedPeers(t *testing.T) {
 	}
 }
 
+// drainMessageTypes vacía el canal de salida de un cliente y devuelve los tipos
+// de mensaje recibidos, para poder afirmar presencia/ausencia de eventos.
+func drainMessageTypes(t *testing.T, c *Client) []string {
+	t.Helper()
+	var types []string
+	for {
+		select {
+		case raw := <-c.send:
+			var msg models.WSMessage
+			assert.NoError(t, json.Unmarshal(raw, &msg))
+			types = append(types, msg.Type)
+		default:
+			return types
+		}
+	}
+}
+
+func TestRoomSwitchClosesOldRoomVoicePeers(t *testing.T) {
+	hub := &Hub{
+		Clients:    make(map[*Client]bool),
+		Rooms:      make(map[string]*Room),
+		Challenges: make(map[string]map[*Client]bool),
+		PeerService: &services.PeerService{
+			Manager: webrtc.NewPeerManager(),
+		},
+	}
+
+	roomID := uuid.NewString()
+	room := NewRoom(roomID, nil)
+	hub.Rooms[roomID] = room
+
+	client1 := &Client{Hub: hub, ID: uuid.New(), Username: "User1", RoomID: roomID, send: make(chan []byte, 10)}
+	client2 := &Client{Hub: hub, ID: uuid.New(), Username: "User2", RoomID: roomID, send: make(chan []byte, 10)}
+	hub.trackClient(client1)
+	hub.trackClient(client2)
+	room.AddClient(client1)
+	room.AddClient(client2)
+
+	sessionID := "room:" + roomID
+	hub.PeerService.Manager.AddPeerConnection(client1.ID.String(), client2.ID.String(), sessionID, roomID)
+	hub.PeerService.Manager.AddPeerConnection(client2.ID.String(), client1.ID.String(), sessionID, roomID)
+
+	hub.closeRoomVoicePeersLocked(client1, roomID, "room_switch")
+
+	assert.False(t, hub.PeerService.Manager.IsConnected(client1.ID.String(), client2.ID.String(), sessionID))
+	assert.False(t, hub.PeerService.Manager.IsConnected(client2.ID.String(), client1.ID.String(), sessionID))
+	assert.Contains(t, drainMessageTypes(t, client1), MsgClosePeerConnection)
+	assert.Contains(t, drainMessageTypes(t, client2), MsgClosePeerConnection)
+}
+
+func TestChallengeJoinSkipsBlockedPairs(t *testing.T) {
+	hub := &Hub{
+		Clients:    make(map[*Client]bool),
+		Rooms:      make(map[string]*Room),
+		Challenges: make(map[string]map[*Client]bool),
+		PeerService: &services.PeerService{
+			Manager: webrtc.NewPeerManager(),
+		},
+	}
+
+	roomID := uuid.NewString()
+	room := NewRoom(roomID, nil)
+	hub.Rooms[roomID] = room
+
+	client1 := &Client{Hub: hub, ID: uuid.New(), Username: "User1", RoomID: roomID, send: make(chan []byte, 10)}
+	client2 := &Client{Hub: hub, ID: uuid.New(), Username: "User2", RoomID: roomID, send: make(chan []byte, 10)}
+	hub.trackClient(client1)
+	hub.trackClient(client2)
+	room.AddClient(client1)
+	room.AddClient(client2)
+
+	challengeID := "challenge-1"
+	hub.Challenges[challengeID] = map[*Client]bool{client1: true}
+	client1.ChallengeID = challengeID
+	client1.SetBlocked(client2.ID.String(), true)
+
+	hub.handleJoinChallenge(client2, models.JoinChallengePayload{ChallengeID: challengeID})
+
+	// Ambos quedan en la sesión (chat/juego), pero sin voz entre ellos.
+	assert.True(t, hub.Challenges[challengeID][client2])
+	assert.False(t, hub.PeerService.Manager.IsConnected(client1.ID.String(), client2.ID.String(), challengeID))
+	assert.False(t, hub.PeerService.Manager.IsConnected(client2.ID.String(), client1.ID.String(), challengeID))
+	assert.NotContains(t, drainMessageTypes(t, client1), MsgStartPeerConnection)
+	assert.NotContains(t, drainMessageTypes(t, client2), MsgStartPeerConnection)
+}
+
 func TestWebRTCSignalingChallengeSessionAllowsOnlyPairedMembers(t *testing.T) {
 	hub := &Hub{
 		Clients:    make(map[*Client]bool),

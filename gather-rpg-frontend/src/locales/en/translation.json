@@ -838,6 +838,8 @@
       "title": "Begin your Odyssey",
       "subtitle": "Create your linguistic avatar to enter the realm of Gather RPG.",
       "error_all_fields": "Please complete all fields.",
+      "error_invalid_email": "Enter a valid email (e.g. name@domain.com).",
+      "error_password_short": "Password must be at least 8 characters.",
       "error_mismatch": "Passwords do not match.",
       "error_generic": "Error registering account. Try again.",
       "language": "Your Native Language",

@@ -62,19 +62,21 @@ const NPCPortrait = ({ npcId, state, size = 'small' }) => {
     if (!NPC_CONFIG.hasAssets(cleanId)) return null;
     if (!frameInfo) return <div className="w-12 h-12 rounded-full bg-gray-800 animate-pulse" />;
 
-    const isLarge = size === 'large';
-    const containerH = isLarge ? 400 : 48;
+    const SIZES = { large: 400, medium: 220, small: 48 };
+    const containerH = SIZES[size] || SIZES.small;
     const scale = containerH / frameInfo.h;
     const atlasW = atlasData.meta.size.w;
     const atlasH = atlasData.meta.size.h;
 
+    const CLASSES = {
+        large: "w-[400px] h-[400px] animate-float animate-slide-in-left transition-all duration-700 hover:scale-105 drop-shadow-[0_20px_40px_rgba(0,0,0,0.6)]",
+        medium: "w-[220px] h-[220px] animate-float drop-shadow-[0_12px_24px_rgba(0,0,0,0.6)]",
+        small: "w-12 h-12 rounded-none border-2 border-[var(--color-gold)] overflow-hidden bg-[var(--color-base-dark)] shadow-inner"
+    };
 
     return (
-        <div 
-            className={isLarge 
-                ? "w-[400px] h-[400px] animate-float animate-slide-in-left transition-all duration-700 hover:scale-105 drop-shadow-[0_20px_40px_rgba(0,0,0,0.6)]" 
-                : "w-12 h-12 rounded-none border-2 border-[var(--color-gold)] overflow-hidden bg-[var(--color-base-dark)] shadow-inner"
-            }
+        <div
+            className={CLASSES[size] || CLASSES.small}
             style={{
                 backgroundImage: `url(/npcs/${cleanId}a.png)`,
                 backgroundPosition: `-${frameInfo.x * scale}px -${frameInfo.y * scale}px`,
@@ -793,7 +795,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end items-center pb-20 pointer-events-none bg-black/20 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex flex-col justify-end items-center pb-4 lg:pb-20 pointer-events-none bg-black/20 backdrop-blur-sm">
             {/* Karaoke Overlay — replaces the chat while a karaoke task is current */}
             {isKaraokeTask && showKaraoke && !isMissionComplete && (
                 <KaraokeOverlay
@@ -812,7 +814,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             {/* Mission Complete Overlay */}
             {isMissionComplete && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto p-4 animate-in fade-in duration-500">
-                    <div className="relative w-full max-w-2xl bg-[var(--color-parchment)] border-8 border-double border-[var(--color-gold)] p-12 text-center shadow-[0_0_100px_rgba(255,191,0,0.3)] animate-in zoom-in-95 duration-500">
+                    <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-[var(--color-parchment)] border-4 lg:border-8 border-double border-[var(--color-gold)] p-6 lg:p-12 text-center shadow-[0_0_100px_rgba(255,191,0,0.3)] animate-in zoom-in-95 duration-500">
                         {/* Decorative corners */}
                         <div className="absolute -top-4 -left-4 w-12 h-12 border-t-8 border-l-8 border-[var(--color-gold)]"></div>
                         <div className="absolute -top-4 -right-4 w-12 h-12 border-t-8 border-r-8 border-[var(--color-gold)]"></div>
@@ -820,25 +822,25 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                         <div className="absolute -bottom-4 -right-4 w-12 h-12 border-b-8 border-r-8 border-[var(--color-gold)]"></div>
 
                         <div className="mb-8">
-                            <ShieldCheck size={80} className="mx-auto text-green-700 mb-4 animate-bounce" />
-                            <h2 className="text-5xl font-medieval text-[var(--color-base-dark)] uppercase tracking-widest drop-shadow-md">
+                            <ShieldCheck size={60} className="mx-auto text-green-700 mb-4 animate-bounce" />
+                            <h2 className="text-3xl lg:text-5xl font-medieval text-[var(--color-base-dark)] uppercase tracking-widest drop-shadow-md">
                                 {t('npc.dialogue.mission_completed')}
                             </h2>
                             <div className="h-1 w-48 bg-gradient-to-r from-transparent via-[var(--color-gold)] to-transparent mx-auto mt-4"></div>
                         </div>
 
-                        <div className="mb-10 space-y-4">
-                            <p className="text-2xl font-serif italic text-gray-700">
+                        <div className="mb-6 lg:mb-10 space-y-4">
+                            <p className="text-lg lg:text-2xl font-serif italic text-gray-700">
                                 {t('npc.dialogue.mission_completed_desc')}
                             </p>
-                            <p className="text-3xl font-medieval text-[var(--color-orange-vibrant)] font-black uppercase">
+                            <p className="text-2xl lg:text-3xl font-medieval text-[var(--color-orange-vibrant)] font-black uppercase">
                                 {completedMissionData?.title || t('lobby.mission.mysterious_adventure')}
                             </p>
                         </div>
 
-                        <div className="bg-white/50 border-2 border-[var(--color-gold-dark)]/30 p-6 rounded-lg mb-10 shadow-inner">
+                        <div className="bg-white/50 border-2 border-[var(--color-gold-dark)]/30 p-4 lg:p-6 rounded-lg mb-6 lg:mb-10 shadow-inner">
                             <h4 className="text-sm font-medieval uppercase tracking-tighter text-gray-500 mb-4">{t('npc.dialogue.rewards_obtained')}</h4>
-                            <div className="flex items-center justify-center gap-12">
+                            <div className="flex items-center justify-center flex-wrap gap-6 lg:gap-12">
                                 {completedMissionData?.reward_gold > 0 && (
                                     <div className="flex flex-col items-center gap-2">
                                         <div className="w-16 h-16 bg-yellow-400 rounded-full border-4 border-yellow-600 flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform">
@@ -869,7 +871,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
                         <button
                             onClick={handleAcceptMissionComplete}
-                            className="group relative px-12 py-5 bg-[var(--color-orange-vibrant)] text-white font-medieval text-2xl uppercase tracking-[0.2em] border-4 border-[var(--color-gold)] shadow-[0_10px_0_rgb(180,60,0)] hover:shadow-[0_5px_0_rgb(180,60,0)] hover:translate-y-[5px] active:translate-y-[10px] active:shadow-none transition-all overflow-hidden"
+                            className="group relative px-6 py-4 lg:px-12 lg:py-5 bg-[var(--color-orange-vibrant)] text-white font-medieval text-lg lg:text-2xl uppercase tracking-[0.2em] border-4 border-[var(--color-gold)] shadow-[0_10px_0_rgb(180,60,0)] hover:shadow-[0_5px_0_rgb(180,60,0)] hover:translate-y-[5px] active:translate-y-[10px] active:shadow-none transition-all overflow-hidden"
                         >
                             <span className="relative z-10">{t('npc.dialogue.claim_and_lobby')}</span>
                             <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500"></div>
@@ -885,7 +887,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 a visible way back to the map, regardless of dialogue/mission state. */}
             <button
                 onClick={handleClose}
-                className="fixed top-6 right-6 z-[210] p-3 bg-[var(--color-orange-vibrant)] text-white border-2 border-[var(--color-gold)] shadow-2xl hover:bg-[var(--color-accent-blue)] transition-colors pointer-events-auto"
+                className="fixed top-3 right-3 lg:top-6 lg:right-6 z-[210] p-3 bg-[var(--color-orange-vibrant)] text-white border-2 border-[var(--color-gold)] shadow-2xl hover:bg-[var(--color-accent-blue)] transition-colors pointer-events-auto"
             >
                 <X size={24} />
             </button>
@@ -893,33 +895,40 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             {/* Main Dialogue UI */}
             <div className="relative w-full max-w-5xl px-4 pointer-events-auto">
 
-                {/* NPC Portrait (Izquierda) */}
-                <div className="absolute left-[-40px] bottom-[-40px] z-20 pointer-events-none drop-shadow-2xl">
+                {/* NPC Portrait (Izquierda) — lado a lado desde md; escalado en md para
+                    dejar espacio al globo, tamaño completo en lg+. En móvil (<md) se
+                    muestra una versión mediana sobre el globo. */}
+                <div className="hidden md:block absolute left-[-40px] bottom-[-40px] z-20 pointer-events-none drop-shadow-2xl md:scale-75 lg:scale-100 origin-bottom-left">
                     <NPCPortrait npcId={npcData.characterId || npcData.templateId} state={npcState} size="large" />
                 </div>
-                
+
                 {/* Dialogue Area (Derecha) */}
-                <div className="ml-[360px] relative z-10">
-                    
+                <div className="ml-0 md:ml-[260px] lg:ml-[360px] relative z-10">
+
+                    {/* Mobile NPC Portrait — ocupa el espacio libre sobre el globo */}
+                    <div className="md:hidden flex justify-start ml-1 mb-[-30px] relative z-20 pointer-events-none">
+                        <NPCPortrait npcId={npcData.characterId || npcData.templateId} state={npcState} size="medium" />
+                    </div>
+
                     {/* Name Tag (Parallelogram) */}
-                    <div className="relative inline-block ml-12 mb-[-6px] z-30">
-                        <div className="bg-[var(--color-orange-vibrant)] text-white px-12 py-3 border-4 border-[var(--color-gold)] shadow-[0_8px_16px_rgba(0,0,0,0.5)] relative">
+                    <div className="relative inline-block ml-2 md:ml-8 lg:ml-12 mb-[-6px] z-30">
+                        <div className="bg-[var(--color-orange-vibrant)] text-white px-4 py-2 lg:px-12 lg:py-3 border-4 border-[var(--color-gold)] shadow-[0_8px_16px_rgba(0,0,0,0.5)] relative">
                             <div className="absolute -left-2 -top-2 w-4 h-4 bg-[var(--color-gold)] rotate-45 border border-[var(--color-gold-dark)]"></div>
                             <div className="absolute -right-2 -top-2 w-4 h-4 bg-[var(--color-gold)] rotate-45 border border-[var(--color-gold-dark)]"></div>
-                            <span className="block font-medieval text-2xl tracking-widest uppercase drop-shadow-[2px_2px_0_rgba(0,0,0,0.5)]">
+                            <span className="block font-medieval text-lg lg:text-2xl tracking-wider lg:tracking-widest uppercase drop-shadow-[2px_2px_0_rgba(0,0,0,0.5)]">
                                 {npcName}
                             </span>
                         </div>
                     </div>
                     
                     {/* Dialogue Bubble */}
-                    <div className="bg-[var(--color-parchment)] border-8 border-double border-[var(--color-gold)] p-10 pb-8 shadow-[0_20px_50px_rgba(0,0,0,0.8)] relative min-h-[220px] max-h-[70vh] flex flex-col overflow-hidden pointer-events-auto">
+                    <div className="bg-[var(--color-parchment)] border-4 lg:border-8 border-double border-[var(--color-gold)] p-4 pb-4 lg:p-10 lg:pb-8 shadow-[0_20px_50px_rgba(0,0,0,0.8)] relative min-h-[220px] max-h-[75vh] lg:max-h-[70vh] flex flex-col overflow-hidden pointer-events-auto">
                         {/* Parchment Texture */}
                         <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/parchment.png")' }}></div>
                         
                         {/* Pronunciation Badge (Top Right) */}
                         {lastMessage.sender === 'npc' && lastMessage.eval && (
-                            <div className="absolute top-6 right-10 flex items-center gap-2 px-4 py-1.5 bg-[var(--color-base-dark)] text-[var(--color-gold)] border-2 border-[var(--color-gold)] text-[11px] font-medieval uppercase tracking-widest shadow-lg z-20">
+                            <div className="absolute top-2 right-2 lg:top-6 lg:right-10 flex items-center gap-2 px-3 lg:px-4 py-1.5 bg-[var(--color-base-dark)] text-[var(--color-gold)] border-2 border-[var(--color-gold)] text-[10px] lg:text-[11px] font-medieval uppercase tracking-widest shadow-lg z-20">
                                 <AlertCircle size={12} className="text-[var(--color-gold)]" />
                                 {lastMessage.eval}
                             </div>
@@ -934,9 +943,9 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
                         {/* Mission Selector / Hub */}
                         {((availableMissions.length > 0 && !selectedMissionId) || (resolvedType || npcType) === 'quest_master') && !selectedMissionId && (
-                            <div className="absolute inset-0 z-[100] bg-[var(--color-parchment)]/95 backdrop-blur-sm p-8 flex flex-col items-center justify-start gap-4 text-center overflow-y-auto custom-scrollbar-light">
+                            <div className="absolute inset-0 z-[100] bg-[var(--color-parchment)]/95 backdrop-blur-sm p-4 lg:p-8 flex flex-col items-center justify-start gap-4 text-center overflow-y-auto custom-scrollbar-light">
 
-                                <h3 className="text-3xl font-medieval text-[var(--color-base-dark)] mt-12 mb-4 drop-shadow-sm uppercase tracking-wider">
+                                <h3 className="text-xl lg:text-3xl font-medieval text-[var(--color-base-dark)] mt-6 lg:mt-12 mb-4 drop-shadow-sm uppercase tracking-wider">
                                     {(resolvedType || npcType) === 'quest_master' ? t('npc.dialogue.mission_board') : t('npc.dialogue.how_can_i_help')}
                                 </h3>
                                 <div className="grid grid-cols-1 gap-4 w-full max-w-xl pb-10">
@@ -959,10 +968,10 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                     {hasShop && (
                                         <button 
                                             onClick={() => setIsShopOpen(true)}
-                                            className="p-6 border-4 border-double border-yellow-700 bg-yellow-50 hover:bg-yellow-600 hover:text-white transition-all flex items-center justify-between group shadow-xl -translate-y-1"
+                                            className="p-4 lg:p-6 border-4 border-double border-yellow-700 bg-yellow-50 hover:bg-yellow-600 hover:text-white transition-all flex items-center justify-between group shadow-xl -translate-y-1"
                                         >
                                             <div className="flex flex-col items-start">
-                                                <span className="font-medieval text-2xl uppercase tracking-widest text-[#8b0000] group-hover:text-white">{t('npc.dialogue.view_goods')}</span>
+                                                <span className="font-medieval text-lg lg:text-2xl uppercase tracking-widest text-[#8b0000] group-hover:text-white">{t('npc.dialogue.view_goods')}</span>
                                                 <span className="text-sm opacity-80 font-serif">{t('npc.dialogue.view_goods_desc')}</span>
                                             </div>
                                             <ShoppingBag size={40} className="text-yellow-700 group-hover:text-white" />
@@ -975,7 +984,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                             <button 
                                                 onClick={() => handleSelectMission(m)}
                                                 disabled={loadingMissionId !== null}
-                                                className={`p-6 border-4 border-double transition-all flex flex-col items-start gap-2 group shadow-xl w-full text-left disabled:opacity-50 disabled:cursor-not-allowed ${
+                                                className={`p-4 lg:p-6 border-4 border-double transition-all flex flex-col items-start gap-2 group shadow-xl w-full text-left disabled:opacity-50 disabled:cursor-not-allowed ${
                                                     selectedMissionId === m.id
                                                         ? 'border-[var(--color-orange-vibrant)] bg-orange-100 ring-4 ring-[var(--color-orange-vibrant)]/30'
                                                         : m.status === 'completed' 
@@ -986,8 +995,8 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                                 }`}
                                             >
                                                 <div className="flex items-center justify-between w-full">
-                                                    <div className="flex items-center gap-3">
-                                                        <span className={`font-medieval text-2xl uppercase tracking-tighter transition-colors ${
+                                                    <div className="flex items-center gap-2 lg:gap-3 flex-wrap">
+                                                        <span className={`font-medieval text-lg lg:text-2xl uppercase tracking-tighter transition-colors ${
                                                             selectedMissionId === m.id 
                                                                 ? 'text-[var(--color-orange-vibrant)]' 
                                                                 : 'text-[var(--color-base-dark)] group-hover:text-white'
@@ -1063,8 +1072,8 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                         )}
 
                         {/* Speaking Status / Mission Header */}
-                        <div className="flex items-center justify-between mb-3 relative z-10">
-                            <h4 className="text-[var(--color-accent-blue)] text-[12px] font-medieval uppercase tracking-widest opacity-90 flex items-center gap-2">
+                        <div className="flex items-center justify-between gap-2 mb-3 relative z-10">
+                            <h4 className="text-[var(--color-accent-blue)] text-[11px] lg:text-[12px] font-medieval uppercase tracking-widest opacity-90 flex items-center gap-2 flex-wrap min-w-0">
                                 {selectedMission 
                                     ? <span className="text-[var(--color-orange-vibrant)] flex items-center gap-2 animate-pulse"><Map size={14} /> {t('lobby.challenge.title')}: {selectedMission.title}</span>
                                     : (lastMessage.sender === 'npc' ? t('npc.dialogue.speaks', { name: npcName }) : t('npc.dialogue.you_responded'))
@@ -1131,9 +1140,9 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                 </div>
                             )}
 
-                            <div className="flex items-start justify-between gap-6">
-                                <div className="flex-1 flex flex-col gap-3">
-                                    <p className="text-2xl text-[var(--color-base-dark)] font-medieval leading-tight tracking-tight drop-shadow-sm">
+                            <div className="flex items-start justify-between gap-3 lg:gap-6">
+                                <div className="flex-1 min-w-0 flex flex-col gap-3">
+                                    <p className="text-lg lg:text-2xl text-[var(--color-base-dark)] font-medieval leading-tight tracking-tight drop-shadow-sm">
                                         {(lastMessage.sender === 'npc' && isAudioOnly && !showAudioTranscript) ? (
                                             <span className="text-[var(--color-accent-blue)] italic opacity-60">{t('npc.dialogue.listen_closely')}</span>
                                         ) : (
@@ -1141,7 +1150,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                         )}
                                     </p>
                                     {lastMessage.sender === 'npc' && getTranslation(lastMessage) && (!isAudioOnly || showAudioTranscript) && (
-                                        <p className="text-xl text-gray-700 italic font-serif leading-relaxed mt-2 border-t border-[var(--color-gold)]/20 pt-2">
+                                        <p className="text-base lg:text-xl text-gray-700 italic font-serif leading-relaxed mt-2 border-t border-[var(--color-gold)]/20 pt-2">
                                             {getTranslation(lastMessage)}
                                         </p>
                                     )}
@@ -1152,27 +1161,27 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                     )}
                                 </div>
                             {lastMessage.sender === 'npc' && (
-                                <div className="flex flex-col gap-2">
+                                <div className="flex flex-col gap-2 shrink-0">
                                     <button
                                         onClick={() => handleListen(lastMessage.text, 'en', true)}
                                         disabled={isProcessing || isRecording}
-                                        className={`p-4 transition-all duration-300 border-4 border-[var(--color-gold)] shadow-xl ${
+                                        className={`p-2.5 lg:p-4 transition-all duration-300 border-4 border-[var(--color-gold)] shadow-xl ${
                                             isTtsPlaying 
                                                 ? 'bg-[var(--color-orange-vibrant)] text-white' 
                                                 : 'bg-[var(--color-accent-blue)] text-[var(--color-gold)] hover:bg-[var(--color-base-dark)] active:translate-y-1'
                                         }`}
                                         title={isTtsPlaying ? "Stop audio" : "Hear voice"}
                                     >
-                                        <Volume2 size={28} className={isTtsPlaying ? 'animate-pulse' : ''} />
+                                        <Volume2 size={22} className={isTtsPlaying ? 'animate-pulse' : ''} />
                                     </button>
                                     
                                     {hasShop && (
                                         <button
                                             onClick={() => setIsShopOpen(true)}
-                                            className="p-4 bg-[#8b0000] text-yellow-500 border-4 border-yellow-600 shadow-2xl hover:bg-[#a00000] transition-all active:translate-y-1 flex items-center justify-center animate-in fade-in zoom-in duration-300"
+                                            className="p-2.5 lg:p-4 bg-[#8b0000] text-yellow-500 border-4 border-yellow-600 shadow-2xl hover:bg-[#a00000] transition-all active:translate-y-1 flex items-center justify-center animate-in fade-in zoom-in duration-300"
                                             title="Merchant Store"
                                         >
-                                            <ShoppingBag size={28} />
+                                            <ShoppingBag size={22} />
                                         </button>
                                     )}
 
@@ -1188,10 +1197,10 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                                     timestamp: new Date()
                                                 }]);
                                             }}
-                                            className="p-4 bg-gray-800 text-white border-4 border-gray-600 shadow-2xl hover:bg-gray-700 transition-all active:translate-y-1 flex items-center justify-center"
+                                            className="p-2.5 lg:p-4 bg-gray-800 text-white border-4 border-gray-600 shadow-2xl hover:bg-gray-700 transition-all active:translate-y-1 flex items-center justify-center"
                                             title={t('npc.dialogue.missions_menu')}
                                         >
-                                            <MapPin size={28} />
+                                            <MapPin size={22} />
                                         </button>
                                     )}
 
@@ -1294,10 +1303,10 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                 )}
                             </div>
                         ) : (
-                        <div className="mt-auto flex items-center gap-4 bg-[var(--color-base-dark)]/10 p-2 pl-6 border-4 border-double border-[var(--color-gold)] relative z-10">
+                        <div className="mt-auto flex items-center gap-2 lg:gap-4 bg-[var(--color-base-dark)]/10 p-2 pl-3 lg:pl-6 border-4 border-double border-[var(--color-gold)] relative z-10">
                             <button
                                 onClick={toggleRecording}
-                                className={`p-4 transition-all border-2 border-[var(--color-gold-dark)] shadow-md ${
+                                className={`p-3 lg:p-4 transition-all border-2 border-[var(--color-gold-dark)] shadow-md ${
                                     isRecording
                                         ? 'bg-[var(--color-orange-vibrant)] text-white animate-pulse'
                                         : 'bg-[var(--color-accent-blue)] text-[var(--color-gold)]'
@@ -1313,15 +1322,15 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                 onKeyPress={(e) => e.key === 'Enter' && handleSend(inputText)}
                                 disabled={isProcessing || isRecording || isAudioOnly}
                                 placeholder={isAudioOnly ? t('npc.dialogue.silence_required_placeholder') : t('npc.dialogue.type_words_placeholder')}
-                                className={`flex-1 bg-transparent text-[var(--color-base-dark)] text-xl font-medieval placeholder-[var(--color-accent-blue)]/50 focus:outline-none ${isAudioOnly ? 'cursor-not-allowed opacity-50' : ''}`}
+                                className={`flex-1 min-w-0 bg-transparent text-[var(--color-base-dark)] text-base lg:text-xl font-medieval placeholder-[var(--color-accent-blue)]/50 focus:outline-none ${isAudioOnly ? 'cursor-not-allowed opacity-50' : ''}`}
                             />
 
                             <button
                                 onClick={() => handleSend(inputText)}
                                 disabled={!inputText.trim() || isProcessing || isAudioOnly}
-                                className="bg-[var(--color-orange-vibrant)] text-white p-4 border-2 border-[var(--color-gold)] hover:bg-[var(--color-accent-blue)] disabled:opacity-50 transition-all flex items-center justify-center shadow-lg active:translate-y-1"
+                                className="bg-[var(--color-orange-vibrant)] text-white p-3 lg:p-4 border-2 border-[var(--color-gold)] hover:bg-[var(--color-accent-blue)] disabled:opacity-50 transition-all flex items-center justify-center shadow-lg active:translate-y-1"
                             >
-                                <ChevronRight size={28} />
+                                <ChevronRight size={24} />
                             </button>
                         </div>
                         )}

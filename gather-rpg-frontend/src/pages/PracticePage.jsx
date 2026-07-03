@@ -7,6 +7,7 @@
  *   - OverlaidWaveform → wavesurfer.js overlaid comparison
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useRecorder } from '../hooks/useRecorder';
 import {
     fetchRandomWord,
@@ -20,7 +21,7 @@ import {
 import OverlaidWaveform from '../components/voice/OverlaidWaveform';
 import Waveform from '../components/voice/Waveform';
 import ChallengeView from '../components/learning/ChallengeView';
-import { Mic, Layout, Trophy, BookOpen, Sparkles } from 'lucide-react';
+import { Mic, Layout, Trophy, BookOpen, Sparkles, ArrowLeft } from 'lucide-react';
 
 export default function PracticePage() {
     const [word, setWord] = useState(null);
@@ -195,6 +196,14 @@ export default function PracticePage() {
             {/* Header */}
             <header className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-black/20 backdrop-blur-md">
                 <div className="flex items-center gap-3 flex-1">
+                    <Link
+                        to="/lobby"
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium
+                         bg-white/5 text-gray-300 border border-white/10
+                         hover:bg-white/10 hover:text-white transition"
+                    >
+                        <ArrowLeft size={14} /> Lobby
+                    </Link>
                     <div className="p-2 bg-indigo-600 rounded-lg shadow-lg">
                         <BookOpen size={20} className="text-white" />
                     </div>

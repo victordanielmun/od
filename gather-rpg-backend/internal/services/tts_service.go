@@ -9,18 +9,25 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
+
+// janitorInterval es cada cuánto corre la limpieza del caché de audios.
+const janitorInterval = 6 * time.Hour
 
 type TTSService struct {
 	ExePath   string
 	ModelsDir string
 	CacheDir  string
 	semaphore chan struct{}
+	// Política de limpieza del caché (0 = criterio desactivado):
+	cacheTTL      time.Duration // expiran los .wav sin uso hace más de esto
+	cacheMaxBytes int64         // tope de tamaño total; se borran los más viejos
 }
 
-func NewTTSService(exePath, modelsDir, cacheDir string) *TTSService {
+func NewTTSService(exePath, modelsDir, cacheDir string, cacheTTLDays int, cacheMaxMB int64) *TTSService {
 	// Create cache dir if not exists
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		log.Printf("[TTSService] Warning: failed to create cache dir: %v", err)
@@ -31,11 +38,114 @@ func NewTTSService(exePath, modelsDir, cacheDir string) *TTSService {
 		log.Printf("[TTSService] Warning: failed to create models dir: %v", err)
 	}
 
-	return &TTSService{
-		ExePath:   exePath,
-		ModelsDir: modelsDir,
-		CacheDir:  cacheDir,
-		semaphore: make(chan struct{}, 2), // Limit parallel Piper processes to 2
+	s := &TTSService{
+		ExePath:       exePath,
+		ModelsDir:     modelsDir,
+		CacheDir:      cacheDir,
+		semaphore:     make(chan struct{}, 2), // Limit parallel Piper processes to 2
+		cacheTTL:      time.Duration(cacheTTLDays) * 24 * time.Hour,
+		cacheMaxBytes: cacheMaxMB * 1024 * 1024,
+	}
+
+	// Janitor del caché: sin él los .wav se acumulan para siempre (las respuestas
+	// libres del LLM son únicas por conversación y nunca vuelven a tener hit).
+	if s.cacheTTL > 0 || s.cacheMaxBytes > 0 {
+		go s.cacheJanitor()
+	}
+
+	return s
+}
+
+// cacheJanitor corre la limpieza al arrancar y luego cada janitorInterval.
+func (s *TTSService) cacheJanitor() {
+	s.CleanCache()
+	ticker := time.NewTicker(janitorInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		s.CleanCache()
+	}
+}
+
+// CleanCache aplica la política de retención sobre CacheDir en dos pasos:
+//  1. TTL: borra los .wav cuyo mtime es más viejo que cacheTTL. Los cache-hits
+//     renuevan el mtime (ver Generate), así que esto es un LRU de facto: los
+//     textos repetidos (saludos, misiones) sobreviven y las respuestas únicas
+//     del LLM expiran solas.
+//  2. Tope de tamaño: si el total sigue por encima de cacheMaxBytes, borra los
+//     más viejos primero hasta quedar por debajo.
+//
+// Borrar es siempre seguro: un audio que vuelva a pedirse se regenera con Piper
+// en el próximo request (el os.Stat de Generate falla y sigue el flujo normal).
+func (s *TTSService) CleanCache() {
+	type cacheFile struct {
+		path string
+		size int64
+		mod  time.Time
+	}
+
+	entries, err := os.ReadDir(s.CacheDir)
+	if err != nil {
+		log.Printf("[TTSService] Cache janitor: cannot read cache dir: %v", err)
+		return
+	}
+
+	var files []cacheFile
+	var total int64
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".wav") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, cacheFile{
+			path: filepath.Join(s.CacheDir, e.Name()),
+			size: info.Size(),
+			mod:  info.ModTime(),
+		})
+		total += info.Size()
+	}
+
+	removed := 0
+	var freed int64
+
+	// 1. TTL por antigüedad (mtime renovado en cada hit).
+	if s.cacheTTL > 0 {
+		cutoff := time.Now().Add(-s.cacheTTL)
+		kept := files[:0]
+		for _, f := range files {
+			if f.mod.Before(cutoff) {
+				if os.Remove(f.path) == nil {
+					removed++
+					freed += f.size
+					total -= f.size
+					continue
+				}
+			}
+			kept = append(kept, f)
+		}
+		files = kept
+	}
+
+	// 2. Tope de tamaño total: borrar los más viejos hasta caber.
+	if s.cacheMaxBytes > 0 && total > s.cacheMaxBytes {
+		sort.Slice(files, func(i, j int) bool { return files[i].mod.Before(files[j].mod) })
+		for _, f := range files {
+			if total <= s.cacheMaxBytes {
+				break
+			}
+			if os.Remove(f.path) == nil {
+				removed++
+				freed += f.size
+				total -= f.size
+			}
+		}
+	}
+
+	if removed > 0 {
+		log.Printf("[TTSService] Cache janitor: removed %d wav(s), freed %.1f MB, cache now %.1f MB",
+			removed, float64(freed)/(1024*1024), float64(total)/(1024*1024))
 	}
 }
 
@@ -94,6 +204,10 @@ func (s *TTSService) Generate(text, voice string) (string, error) {
 
 	// Check if already in cache
 	if _, err := os.Stat(outputFile); err == nil {
+		// Renovar el mtime en cada hit: el janitor expira por antigüedad, así que
+		// esto convierte el TTL en un LRU (los audios que sí se reutilizan viven).
+		now := time.Now()
+		_ = os.Chtimes(outputFile, now, now)
 		fmt.Printf("[Performance] Go Backend: TTS Cache Hit! Output file already exists.\n")
 		fmt.Printf("[Performance] Go Backend: TTS total process complete. Took %d ms\n\n", time.Since(startTime).Milliseconds())
 		return cacheKey, nil

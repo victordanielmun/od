@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -22,7 +23,51 @@ import (
 const (
 	usernameMinLen = 3
 	usernameMaxLen = 20
+
+	// bcrypt silently truncates input beyond 72 bytes, so we cap there rather than
+	// let two different long passwords hash to the same value.
+	passwordMinLen = 8
+	passwordMaxLen = 72
+
+	// strictEmailValidation gates validateEmail in Register. The client's
+	// type="email" input accepts addresses without a TLD (e.g. "j@j"), so
+	// once enabled this rejects them server-side too. Off until the rollout
+	// decision is made.
+	strictEmailValidation = false
 )
+
+// emailRegex requires a dot-separated domain with a TLD of 2+ chars,
+// rejecting inputs like "j@j" that the HTML email input allows.
+var emailRegex = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]{2,}$`)
+
+func validateEmail(email string) error {
+	if !emailRegex.MatchString(strings.TrimSpace(email)) {
+		return errors.New("invalid email address")
+	}
+	return nil
+}
+
+// normalizeEmail trims surrounding whitespace and lowercases the address so that
+// "J@Dominio.com " and "j@dominio.com" resolve to the same account. Without this
+// the unique-email constraint is case-sensitive and lets near-duplicate accounts
+// register, and login-by-email becomes case-fragile.
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// validatePassword enforces a minimum length and rejects anything past bcrypt's
+// 72-byte truncation point. The client only marks the field required, so a direct
+// API call could otherwise register an empty or 1-char password.
+func validatePassword(password string) error {
+	n := len(password)
+	if n < passwordMinLen {
+		return errors.New("password must be at least 8 characters")
+	}
+	if n > passwordMaxLen {
+		return errors.New("password must be at most 72 characters")
+	}
+	return nil
+}
 
 // validateUsername enforces the same 3–20 character bound the client applies,
 // so a direct API call can't bypass the input's maxLength.
@@ -111,6 +156,19 @@ func (s *AuthService) Register(req models.RegisterRequest) (*models.AuthResponse
 		return nil, err
 	}
 
+	// Normalize the email so the unique constraint and login are case-insensitive.
+	req.Email = normalizeEmail(req.Email)
+
+	if strictEmailValidation {
+		if err := validateEmail(req.Email); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := validatePassword(req.Password); err != nil {
+		return nil, err
+	}
+
 	// Check if user exists
 	if _, err := s.Repo.FindByEmail(req.Email); err == nil {
 		return nil, errors.New("email already registered")
@@ -160,7 +218,8 @@ func (s *AuthService) Register(req models.RegisterRequest) (*models.AuthResponse
 }
 
 func (s *AuthService) Login(req models.LoginRequest) (*models.AuthResponse, error) {
-	user, err := s.Repo.FindByEmail(req.Email)
+	// Match the normalization done at registration so login is case-insensitive.
+	user, err := s.Repo.FindByEmail(normalizeEmail(req.Email))
 	if err != nil {
 		return nil, errors.New("invalid credentials")
 	}

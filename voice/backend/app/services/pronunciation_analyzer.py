@@ -5,6 +5,7 @@ Uses both text similarity (SequenceMatcher) and phonetic matching
 detailed, per-word feedback.
 """
 
+import re
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -22,10 +23,21 @@ class PronunciationAnalyzer:
     TEXT_WEIGHT = 0.6
     PHONETIC_WEIGHT = 0.4
 
+    # Whisper base/int8 rarely reports exp(avg_logprob) above ~0.8 even for
+    # clear native speech, so confidence at or above this is treated as full
+    # credit; only genuinely unclear audio below it reduces the score.
+    CONFIDENCE_FULL_CREDIT = 0.55
+
     @staticmethod
     def _normalize(text: str) -> str:
-        """Lowercase, strip, collapse whitespace."""
-        return " ".join(text.lower().strip().split())
+        """Lowercase, drop punctuation, collapse whitespace.
+
+        Matches the cleaning applied to Whisper transcriptions so the
+        expected text ("How are you?") and the heard text ("how are you")
+        compare on equal footing.
+        """
+        text = re.sub(r"[^\w\s]", "", text.lower())
+        return " ".join(text.strip().split())
 
     @staticmethod
     def _similarity(a: str, b: str) -> float:
@@ -53,17 +65,43 @@ class PronunciationAnalyzer:
                 best = max(best, sim)
         return best
 
+    @staticmethod
+    def _align_words(
+        expected_words: list[str], spoken_words: list[str]
+    ) -> list[tuple[str | None, str | None]]:
+        """Pair expected and spoken words tolerating insertions/deletions.
+
+        Index-based pairing collapses when the transcription gains or loses
+        a single word (e.g. a leading "uh") — every word after it lands on
+        the wrong slot. Aligning with SequenceMatcher keeps matching words
+        paired and isolates the extra/missing word instead.
+        """
+        pairs: list[tuple[str | None, str | None]] = []
+        sm = SequenceMatcher(None, expected_words, spoken_words)
+        for tag, i1, i2, j1, j2 in sm.get_opcodes():
+            if tag == "equal":
+                pairs.extend(zip(expected_words[i1:i2], spoken_words[j1:j2]))
+            elif tag == "replace":
+                exp_block = expected_words[i1:i2]
+                spk_block = spoken_words[j1:j2]
+                for k in range(max(len(exp_block), len(spk_block))):
+                    pairs.append((
+                        exp_block[k] if k < len(exp_block) else None,
+                        spk_block[k] if k < len(spk_block) else None,
+                    ))
+            elif tag == "delete":
+                pairs.extend((w, None) for w in expected_words[i1:i2])
+            elif tag == "insert":
+                pairs.extend((None, w) for w in spoken_words[j1:j2])
+        return pairs
+
     def _word_level_analysis(
         self, expected_words: list[str], spoken_words: list[str]
     ) -> list[dict[str, Any]]:
         """Produce per-word comparison with text + phonetic match."""
         results: list[dict[str, Any]] = []
-        max_len = max(len(expected_words), len(spoken_words))
 
-        for i in range(max_len):
-            exp = expected_words[i] if i < len(expected_words) else None
-            spk = spoken_words[i] if i < len(spoken_words) else None
-
+        for exp, spk in self._align_words(expected_words, spoken_words):
             entry: dict[str, Any] = {
                 "expected": exp or "(missing)",
                 "heard": spk or "(missing)",
@@ -110,7 +148,13 @@ class PronunciationAnalyzer:
         # ── Blended score ─────────────────────────────────
         blended_sim = (text_sim * self.TEXT_WEIGHT) + (phonetic_sim * self.PHONETIC_WEIGHT)
         raw_score = blended_sim * 100
-        pronunciation_score = round(raw_score * min(confidence, 1.0), 1)
+
+        # Confidence only penalizes genuinely unclear audio: above the
+        # full-credit threshold the multiplier is 1.0, below it the score
+        # scales down proportionally (mumbled/noisy input still fails).
+        confidence = max(0.0, min(1.0, confidence))
+        confidence_factor = min(1.0, confidence / self.CONFIDENCE_FULL_CREDIT)
+        pronunciation_score = round(raw_score * confidence_factor, 1)
 
         # ── Feedback ──────────────────────────────────────
         feedback: dict[str, Any] = {

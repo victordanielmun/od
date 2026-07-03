@@ -40,6 +40,11 @@ type Config struct {
 	PiperExePath    string
 	PiperModelsDir  string
 	PiperCacheDir   string
+	// TTS cache janitor: los .wav expiran tras TTL días (los cache-hits renuevan
+	// el mtime, así los textos repetidos sobreviven) y el total se limita a MaxMB
+	// borrando los más viejos primero. 0 = desactivar ese criterio.
+	TTSCacheTTLDays int
+	TTSCacheMaxMB   int64
 
 	// Wompi billing (membership subscriptions charged via reusable payment sources).
 	WompiBaseURL         string // https://production.wompi.co/v1 (or sandbox)
@@ -99,6 +104,8 @@ func LoadConfig() *Config {
 		PiperExePath:    getEnv("PIPER_EXE_PATH", "piper"),
 		PiperModelsDir:  getEnv("PIPER_MODELS_DIR", "./models"),
 		PiperCacheDir:   getEnv("PIPER_CACHE_DIR", "./tts_cache"),
+		TTSCacheTTLDays: int(getEnvInt64("TTS_CACHE_TTL_DAYS", 7)),
+		TTSCacheMaxMB:   getEnvInt64("TTS_CACHE_MAX_MB", 500),
 
 		PrecacheLangs:   parseCSVLangs(getEnv("PRECACHE_LANGS", "es")),
 		AutoMigrate:     getEnv("AUTO_MIGRATE", "true") != "false",

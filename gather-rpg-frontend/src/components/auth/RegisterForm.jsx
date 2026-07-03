@@ -96,7 +96,7 @@ export const GuidePhaserPreview = ({ npcId }) => {
       scene: scene,
       audio: { disableWebAudio: true, noAudio: true },
       physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
-      scale: { mode: Phaser.Scale.NONE },
+      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
       render: { pixelArt: true },
       input: {
         keyboard: false,
@@ -113,11 +113,18 @@ export const GuidePhaserPreview = ({ npcId }) => {
   }, [npcId]);
 
   return (
-    <div className="flex justify-center items-center rounded-2xl overflow-hidden bg-gray-950/85 border border-white/10 p-2 shadow-inner w-52 h-52">
-      <div ref={canvasRef} style={{ width: 200, height: 200 }} />
+    <div className="flex justify-center items-center rounded-2xl overflow-hidden bg-gray-950/85 border border-white/10 p-2 shadow-inner w-36 h-36 sm:w-52 sm:h-52">
+      <div ref={canvasRef} className="w-full h-full" />
     </div>
   );
 };
+
+// Strict email validation: the browser's type="email" accepts addresses
+// without a TLD (e.g. "j@j"). This regex requires a dot-separated domain.
+// Flip STRICT_EMAIL_VALIDATION to true to enforce it on registration.
+const STRICT_EMAIL_VALIDATION = false;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+export const isValidEmail = (value) => EMAIL_REGEX.test(value.trim());
 
 const COUNTRY_CODES = [
   { code: '+57', country: 'Colombia', flag: '🇨🇴' },
@@ -314,6 +321,14 @@ export const RegisterForm = () => {
     setStep1Error('');
     if (!username || !email || !password || !confirmPassword) {
       setStep1Error(t('register.step1.error_all_fields'));
+      return;
+    }
+    if (STRICT_EMAIL_VALIDATION && !isValidEmail(email)) {
+      setStep1Error(t('register.step1.error_invalid_email'));
+      return;
+    }
+    if (password.length < 8) {
+      setStep1Error(t('register.step1.error_password_short'));
       return;
     }
     if (password !== confirmPassword) {
@@ -641,6 +656,8 @@ export const RegisterForm = () => {
                       onChange={(e) => setPassword(e.target.value)}
                       className="w-full bg-gray-950/60 text-white border border-white/10 rounded-xl pl-10 pr-10 py-3 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all font-sans placeholder-gray-600 text-sm"
                       placeholder="••••••••"
+                      minLength={8}
+                      maxLength={72}
                       required
                     />
                     <button
@@ -736,12 +753,12 @@ export const RegisterForm = () => {
                   <span className="text-gray-400 text-sm font-medieval tracking-widest uppercase">{t('register.step2.loading')}</span>
                 </div>
               ) : (
-                <div className="flex items-center justify-between max-w-2xl mx-auto gap-4 mb-8">
+                <div className="flex items-center justify-between max-w-2xl mx-auto gap-2 sm:gap-4 mb-8">
                   {/* Left Arrow */}
                   <button
                     type="button"
                     onClick={handlePrevGuide}
-                    className="p-3 rounded-full bg-gray-950/60 border border-white/10 hover:border-yellow-500 hover:text-yellow-400 text-gray-400 active:scale-95 transition-all shadow-xl cursor-pointer"
+                    className="shrink-0 p-2 sm:p-3 rounded-full bg-gray-950/60 border border-white/10 hover:border-yellow-500 hover:text-yellow-400 text-gray-400 active:scale-95 transition-all shadow-xl cursor-pointer"
                     title={t('register.step2.prev')}
                   >
                     <ChevronLeft size={24} />
@@ -753,7 +770,7 @@ export const RegisterForm = () => {
                       const currentGuide = guides[guideIndex];
                       const details = getGuideDetails(currentGuide);
                       return (
-                        <div className={`flex-1 relative flex flex-col items-center border rounded-3xl p-8 bg-gray-950/40 backdrop-blur-md shadow-2xl transition-all duration-500 overflow-hidden ${details.selectedColor} ${details.cardGlow}`}>
+                        <div className={`flex-1 min-w-0 relative flex flex-col items-center border rounded-3xl p-4 sm:p-8 bg-gray-950/40 backdrop-blur-md shadow-2xl transition-all duration-500 overflow-hidden ${details.selectedColor} ${details.cardGlow}`}>
                           {/* Ambient background glow */}
                           <div 
                             className="absolute -right-16 -bottom-16 w-48 h-48 rounded-full filter blur-[50px] opacity-10 pointer-events-none"
@@ -761,22 +778,22 @@ export const RegisterForm = () => {
                           ></div>
 
                           {/* Animated Phaser Preview */}
-                          <div className="mb-6 relative z-10">
+                          <div className="mb-4 sm:mb-6 relative z-10">
                             <GuidePhaserPreview npcId={getPhaserNpcId(currentGuide)} />
                           </div>
 
                           {/* Info */}
                           <div className="text-center relative z-10 max-w-md w-full">
-                            <h3 className="text-3xl font-extrabold text-white font-medieval uppercase tracking-widest drop-shadow-md mb-2">
+                            <h3 className="text-xl sm:text-3xl font-extrabold text-white font-medieval uppercase tracking-wider sm:tracking-widest drop-shadow-md mb-2 break-words">
                               {currentGuide.name}
                             </h3>
-                            
-                            <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/5 text-xs text-gray-400 mb-4 font-sans tracking-wide">
-                              <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
-                              <span>{currentGuide.type === 'guide' ? t('register.step2.companion') : t('register.step2.mentor')}</span>
+
+                            <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/5 text-xs text-gray-400 mb-4 font-sans tracking-wide max-w-full">
+                              <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0"></span>
+                              <span className="truncate">{currentGuide.type === 'guide' ? t('register.step2.companion') : t('register.step2.mentor')}</span>
                             </div>
 
-                            <p className="text-gray-300 text-sm italic font-serif leading-relaxed px-4 min-h-[80px]">
+                            <p className="text-gray-300 text-xs sm:text-sm italic font-serif leading-relaxed px-0 sm:px-4 min-h-[60px] sm:min-h-[80px]">
                               "{currentGuide.greeting || t('register.step2.ready')}"
                             </p>
                           </div>
@@ -789,7 +806,7 @@ export const RegisterForm = () => {
                   <button
                     type="button"
                     onClick={handleNextGuide}
-                    className="p-3 rounded-full bg-gray-950/60 border border-white/10 hover:border-yellow-500 hover:text-yellow-400 text-gray-400 active:scale-95 transition-all shadow-xl cursor-pointer"
+                    className="shrink-0 p-2 sm:p-3 rounded-full bg-gray-950/60 border border-white/10 hover:border-yellow-500 hover:text-yellow-400 text-gray-400 active:scale-95 transition-all shadow-xl cursor-pointer"
                     title={t('register.step2.next')}
                   >
                     <ChevronRight size={24} />

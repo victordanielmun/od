@@ -11,6 +11,7 @@ import (
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/repository"
 	"gather-rpg-backend/internal/services"
+	"gather-rpg-backend/internal/utils"
 	gameWS "gather-rpg-backend/internal/websocket"
 
 	"github.com/gofiber/contrib/websocket"
@@ -23,6 +24,15 @@ import (
 
 func main() {
 	cfg := config.LoadConfig()
+
+	// Wire the JWT signing secret from config. Without this the token secret stays
+	// at its hardcoded "secret" default, which is public in the source — anyone could
+	// forge a token for any user_id/role (including admin). Fail fast in production if
+	// it wasn't overridden.
+	if cfg.Env == "production" && cfg.JWTSecret == "secret" {
+		log.Fatal("JWT_SECRET must be set to a strong, non-default value in production")
+	}
+	utils.SecretKey = []byte(cfg.JWTSecret)
 
 	// Database
 	database.ConnectPostgres(cfg)
@@ -140,7 +150,7 @@ func main() {
 	dialogueService := services.NewDialogueService(npcRepo, missionRepo, missionService, llmClient, translationService)
 
 	// TTS Service & Handler
-	ttsService := services.NewTTSService(cfg.PiperExePath, cfg.PiperModelsDir, cfg.PiperCacheDir)
+	ttsService := services.NewTTSService(cfg.PiperExePath, cfg.PiperModelsDir, cfg.PiperCacheDir, cfg.TTSCacheTTLDays, cfg.TTSCacheMaxMB)
 	ttsHandler := handlers.NewTTSHandler(ttsService)
 
 	// WebSocket Hub

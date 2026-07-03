@@ -877,6 +877,8 @@
       "title": "Comienza tu Odisea",
       "subtitle": "Crea tu avatar lingüístico para entrar en el reino de Gather RPG.",
       "error_all_fields": "Por favor, completa todos los campos.",
+      "error_invalid_email": "Ingresa un correo válido (ej: nombre@dominio.com).",
+      "error_password_short": "La contraseña debe tener al menos 8 caracteres.",
       "error_mismatch": "Las contraseñas no coinciden.",
       "error_generic": "Error al registrar la cuenta. Inténtalo de nuevo.",
       "language": "Tu Idioma Nativo",

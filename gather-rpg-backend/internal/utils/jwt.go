@@ -21,6 +21,11 @@ func GenerateToken(userID, username, role string) (string, error) {
 
 func ParseToken(tokenString string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Reject any token not signed with HMAC, so a forged "alg: none" (or an
+		// asymmetric-key confusion) can't slip past with our secret as the key.
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
 		return SecretKey, nil
 	})
 	if err != nil {

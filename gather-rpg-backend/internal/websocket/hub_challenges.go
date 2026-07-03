@@ -37,6 +37,12 @@ func (h *Hub) handleJoinChallenge(client *Client, payload models.JoinChallengePa
 		if other == client {
 			continue
 		}
+		// Moderación: igual que en coop y proximidad, un par bloqueado (en
+		// cualquier dirección) no se conecta por voz. Sin registro en el
+		// PeerManager, isSignalingAllowedInSession también les corta el signaling.
+		if client.HasBlocked(other.ID.String()) || other.HasBlocked(client.ID.String()) {
+			continue
+		}
 		h.PeerService.Manager.AddPeerConnection(other.ID.String(), client.ID.String(), payload.ChallengeID, other.RoomID)
 		h.PeerService.Manager.AddPeerConnection(client.ID.String(), other.ID.String(), payload.ChallengeID, client.RoomID)
 		other.SendJSON(&models.WSMessage{
