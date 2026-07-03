@@ -1,5 +1,5 @@
 // ⚙️  AUTO-GENERADO por run_pipeline.cjs
-// Generado: 2026-06-21T00:48:25.230Z
+// Generado: 2026-07-03T18:22:14.837Z
 // Para regenerar: node run_pipeline.cjs
 export const animationsByCharacter = {
     '1': {
