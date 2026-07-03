@@ -237,6 +237,9 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 		startLLM := time.Now()
 		aiRespRaw, err = s.AIClient.SendPrompt(systemPrompt, userPrompt)
 		if err != nil {
+			// Log server-side too: the handler returns this to the client as `details`,
+			// but without a journal entry a transient LLM failure is invisible in ops.
+			fmt.Printf("[DialogueService] AI Error (input='%s', mission=%v, npc=%d): %v\n", req.PlayerInput, req.MissionID, req.NPCTemplateID, err)
 			return nil, fmt.Errorf("AI Error: %w", err)
 		}
 		llmTime := time.Since(startLLM).Milliseconds()

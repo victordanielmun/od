@@ -73,37 +73,74 @@ func (c *OpenAIClient) SendPrompt(systemPrompt string, userPrompt string) (strin
 	}
 
 	jsonBody, _ := json.Marshal(reqBody)
-	fmt.Printf("[OpenAIClient] Sending Request to %s (Model: %s)\n", c.URL, c.Model)
-	
+
+	// Retry transient failures. Every dialogue turn is an LLM call, so a single
+	// network blip or an OpenAI-side 429/5xx (which their edge returns in tens of
+	// milliseconds, long before the model runs) must not hard-fail the turn and
+	// strand the player mid-mission. We retry only transient errors — a 4xx like
+	// 400 (bad request) is deterministic and retrying it just wastes time.
+	const maxAttempts = 3
+	client := &http.Client{Timeout: 60 * time.Second}
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		fmt.Printf("[OpenAIClient] Sending Request to %s (Model: %s) [attempt %d/%d]\n", c.URL, c.Model, attempt, maxAttempts)
+
+		content, retryable, err := c.doRequest(client, jsonBody)
+		if err == nil {
+			fmt.Printf("[OpenAIClient] Received Response: %s\n", content)
+			return content, nil
+		}
+
+		lastErr = err
+		if !retryable {
+			return "", err
+		}
+
+		fmt.Printf("[OpenAIClient] Transient error on attempt %d/%d: %v\n", attempt, maxAttempts, err)
+		if attempt < maxAttempts {
+			// Linear backoff: 300ms, then 600ms. Short enough to keep the turn
+			// responsive, long enough to ride out a brief rate-limit spike.
+			time.Sleep(time.Duration(attempt) * 300 * time.Millisecond)
+		}
+	}
+
+	return "", fmt.Errorf("OpenAI request failed after %d attempts: %w", maxAttempts, lastErr)
+}
+
+// doRequest performs a single OpenAI call. It returns (content, retryable, err):
+// retryable is true when the failure looks transient (network error, HTTP 429, or
+// 5xx) and the caller should try again, false for deterministic errors (4xx).
+func (c *OpenAIClient) doRequest(client *http.Client, jsonBody []byte) (string, bool, error) {
 	req, err := http.NewRequest("POST", c.URL, bytes.NewBuffer(jsonBody))
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 
-	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		// Transport-level failure (connection reset, timeout, DNS/TLS): transient.
+		return "", true, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("OpenAI API error (status %d): %s", resp.StatusCode, string(body))
+		retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+		return "", retryable, fmt.Errorf("OpenAI API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
 	var chatResp ChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	if len(chatResp.Choices) == 0 {
-		return "", fmt.Errorf("OpenAI API returned no choices")
+		return "", false, fmt.Errorf("OpenAI API returned no choices")
 	}
 
-	fmt.Printf("[OpenAIClient] Received Response: %s\n", chatResp.Choices[0].Message.Content)
-	return chatResp.Choices[0].Message.Content, nil
+	return chatResp.Choices[0].Message.Content, false, nil
 }
