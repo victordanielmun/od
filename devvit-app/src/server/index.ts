@@ -3,17 +3,32 @@
  * webview reaches these routes via same-origin `fetch('/api/...')`. All game state lives in
  * the managed Redis; identity is the Reddit user (see core/identity.ts).
  */
-import { createServer, getServerPort } from '@devvit/web/server';
+import { createServer, getServerPort, context, reddit } from '@devvit/web/server';
 import { Router } from './core/http.js';
 import * as learn from './services/learningService.js';
 import * as missions from './services/missionService.js';
 import * as npcs from './services/npcService.js';
 import * as room from './services/roomService.js';
-import { resolveNinjaCard, type NinjaCardRequest } from './services/combatService.js';
-import { talk, talkToNpc, type DialogueRequest, type NpcTalkRequest } from './services/dialogueService.js';
+import { resolveNinjaCard } from './services/combatService.js';
+import type { NinjaCardRequest } from './services/combatService.js';
+import { talk, talkToNpc } from './services/dialogueService.js';
+import type { DialogueRequest, NpcTalkRequest } from './services/dialogueService.js';
 import { seedAll } from './seed/seed.js';
+import type { EnemyState } from '../shared/realtime.js';
 
 const router = new Router()
+  .post('/internal/create-post', async () => {
+    const { subredditName } = context;
+    if (!subredditName) {
+      throw new Error('No subredditName found in context');
+    }
+    await reddit.submitCustomPost({
+      title: 'Odyssey RPG',
+      subredditName,
+      entry: 'default'
+    });
+    return { ok: true };
+  })
   // ── Learning loop ──────────────────────────────────────────────────────────
   .get('/api/challenge/random', ({ query }) =>
     learn.getRandomForUser({
@@ -71,7 +86,7 @@ const router = new Router()
     return room.broadcastMove(b.roomId, b.x, b.y, b.dir, b.state);
   })
   .post('/api/room/enemies', async ({ body }) => {
-    const b = await body<{ roomId: string; enemies: import('../shared/realtime.js').EnemyState[] }>();
+    const b = await body<{ roomId: string; enemies: EnemyState[] }>();
     return room.broadcastEnemies(b.roomId, b.enemies);
   })
   .get('/api/room/chat', ({ query }) => room.chatHistory(query.get('roomId') ?? ''))

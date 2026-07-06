@@ -1,20 +1,24 @@
 {
-  "name": "odyssey-devvit",
-  "version": "0.0.1",
+  "name": "odyssey-rpg-test",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "description": "Odyssey — English-learning social RPG on Reddit's Developer Platform (Devvit).",
   "scripts": {
-    "dev": "devvit playtest",
-    "upload": "devvit upload",
+    "build:server": "vite build --config src/server/vite.config.ts",
+    "dev": "npm run build:server && devvit playtest",
+    "upload": "npm run build:server && devvit upload",
     "typecheck": "tsc -p tsconfig.server.json && tsc -p tsconfig.client.json"
   },
   "dependencies": {
+    "@devvit/public-api": "^0.13.6",
     "@devvit/web": "0.13.6",
     "phaser": "^3.80.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
-    "typescript": "^5.5.0"
-  }
+    "typescript": "^5.5.0",
+    "vite": "^8.1.3"
+  },
+  "license": "BSD-3-Clause"
 }
