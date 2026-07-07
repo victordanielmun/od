@@ -25,6 +25,7 @@ interface State {
   answered?: AttemptResponse;
   loading: boolean;
   error?: string;
+  openModal?: 'privacy' | 'terms';
 }
 
 const state: State = { tab: 'learn', loading: true };
@@ -210,6 +211,88 @@ function renderLearn(): HTMLElement {
   return main;
 }
 
+const PRIVACY_TEXT = `
+<h2>Privacy Policy</h2>
+<p class="muted">Last updated: July 6, 2026</p>
+<p>Odyssey RPG is a Reddit app developed on the Reddit Developer Platform. We value your privacy and handle your data with transparency.</p>
+<h3>1. Data Collection</h3>
+<p>Our app processes your Reddit username and Reddit User ID (provided securely via Reddit's Developer Platform APIs) to create your character and track your game statistics, progress, and language learning achievements (e.g., XP, daily streak, and level).</p>
+<h3>2. Data Usage and Storage</h3>
+<p>All user information, stats, and game progress are stored entirely inside Reddit's sandboxed Redis data store allocated specifically to this app. We do not transmit or store your personal data on any third-party external servers, except for necessary request context sent securely to the OpenAI API for dynamically generating translation and dialogue context (with no personally identifiable information).</p>
+<h3>3. Data Sharing</h3>
+<p>We do not sell, rent, or share user data with any third parties. Your data is strictly used to run the Odyssey RPG app interface and multiplayer taverns inside Reddit.</p>
+<h3>4. Contact</h3>
+<p>If you have questions or want to request data deletion, please contact the developer via Reddit private message.</p>
+`;
+
+const TERMS_TEXT = `
+<h2>Terms of Service</h2>
+<p class="muted">Last updated: July 6, 2026</p>
+<p>By installing, accessing, or playing Odyssey RPG inside Reddit, you agree to these Terms of Service.</p>
+<h3>1. Acceptance of Terms</h3>
+<p>You agree to comply with Reddit's User Agreement and Content Policy, in addition to these Terms.</p>
+<h3>2. Game Rules and User Conduct</h3>
+<p>Odyssey RPG is a social language learning game. You agree to interact respectfully with other players in the multiplayer tavern chat. Any form of harassment, hate speech, cheating, or disruptive behavior is strictly prohibited and will result in a ban from the game.</p>
+<h3>3. Disclaimer of Warranties</h3>
+<p>The game is provided "as is" without warranty of any kind. We do not guarantee uninterrupted or error-free operation.</p>
+<h3>4. Changes to Terms</h3>
+<p>We reserve the right to update these terms at any time. Your continued use of the game constitutes acceptance of the updated terms.</p>
+`;
+
+function legalModal(): HTMLElement {
+  const modalType = state.openModal;
+  if (!modalType) return h('div', { style: 'display: none;' });
+
+  const contentHtml = modalType === 'privacy' ? PRIVACY_TEXT : TERMS_TEXT;
+
+  const bodyEl = h('div', { class: 'modal-body-content' });
+  bodyEl.innerHTML = contentHtml;
+
+  const closeBtn = withClick(h('button', { class: 'next flee' }, 'Close'), () => {
+    state.openModal = undefined;
+    render();
+  });
+
+  const modalEl = h(
+    'div',
+    { class: 'modal card' },
+    bodyEl,
+    closeBtn
+  );
+
+  const overlayEl = h(
+    'div',
+    { class: 'modal-overlay' },
+    modalEl
+  );
+
+  return overlayEl;
+}
+
+function footer(): HTMLElement {
+  const privacyLink = withClick(h('a', { href: '#', class: 'footer-link' }, 'Privacy Policy'), () => {
+    state.openModal = 'privacy';
+    render();
+  });
+
+  const termsLink = withClick(h('a', { href: '#', class: 'footer-link' }, 'Terms of Service'), () => {
+    state.openModal = 'terms';
+    render();
+  });
+
+  // Prevent default click behavior on links
+  privacyLink.addEventListener('click', (e) => e.preventDefault());
+  termsLink.addEventListener('click', (e) => e.preventDefault());
+
+  return h(
+    'footer',
+    { class: 'app-footer' },
+    privacyLink,
+    h('span', { class: 'footer-sep' }, '·'),
+    termsLink
+  );
+}
+
 function render() {
   app.replaceChildren(header(), nav());
 
@@ -227,6 +310,12 @@ function render() {
     const content = h('div', { class: 'content' });
     app.append(content);
     void mountTavern(content);
+  }
+
+  app.append(footer());
+
+  if (state.openModal) {
+    app.append(legalModal());
   }
 }
 

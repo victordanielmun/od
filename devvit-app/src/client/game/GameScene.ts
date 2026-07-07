@@ -71,7 +71,7 @@ export class GameScene extends Phaser.Scene {
     g.lineStyle(2, 0x3d3222, 1);
     g.strokeRect(4, 4, WORLD_W - 8, WORLD_H - 8);
 
-    this.player = this.add.circle(WORLD_W / 2, WORLD_H / 2, 14, 0xe0a145).setDepth(5);
+    this.player = this.add.circle(WORLD_W / 2, WORLD_H / 2, 24, 0xe0a145).setDepth(5);
     this.add.text(6, WORLD_H - 20, 'WASD / arrows to move · SPACE to attack', { fontSize: '12px', color: '#9c8f79' });
 
     const kb = this.input.keyboard!;
@@ -89,13 +89,13 @@ export class GameScene extends Phaser.Scene {
     for (const r of this.remotes.values()) {
       r.sprite.x = lerp(r.sprite.x, r.tx, 0.2);
       r.sprite.y = lerp(r.sprite.y, r.ty, 0.2);
-      r.label.setPosition(r.sprite.x, r.sprite.y - 24);
+      r.label.setPosition(r.sprite.x, r.sprite.y - 34);
     }
 
     if (this.host) this.tickEnemies(time, delta);
     for (const e of this.enemies.values()) {
       e.sprite.setPosition(e.state.x, e.state.y);
-      e.label.setPosition(e.state.x, e.state.y - 22);
+      e.label.setPosition(e.state.x, e.state.y - (e.state.type === 'boss' ? 46 : 34));
     }
   }
 
@@ -112,8 +112,8 @@ export class GameScene extends Phaser.Scene {
     const moving = vx !== 0 || vy !== 0;
     if (moving) {
       const len = Math.hypot(vx, vy);
-      this.player.x = clamp(this.player.x + (vx / len) * SPEED * (delta / 1000), 16, WORLD_W - 16);
-      this.player.y = clamp(this.player.y + (vy / len) * SPEED * (delta / 1000), 16, WORLD_H - 16);
+      this.player.x = clamp(this.player.x + (vx / len) * SPEED * (delta / 1000), 24, WORLD_W - 24);
+      this.player.y = clamp(this.player.y + (vy / len) * SPEED * (delta / 1000), 24, WORLD_H - 24);
       this.dir = dirOf(vx, vy);
     }
 
@@ -141,8 +141,8 @@ export class GameScene extends Phaser.Scene {
   setRemotePlayer(userId: string, x: number, y: number): void {
     let r = this.remotes.get(userId);
     if (!r) {
-      const sprite = this.add.circle(x, y, 13, 0x6fa8dc).setDepth(4);
-      const label = this.add.text(x, y - 24, '🧑', { fontSize: '12px' }).setOrigin(0.5);
+      const sprite = this.add.circle(x, y, 22, 0x6fa8dc).setDepth(4);
+      const label = this.add.text(x, y - 34, '🧑', { fontSize: '12px' }).setOrigin(0.5);
       r = { sprite, label, tx: x, ty: y };
       this.remotes.set(userId, r);
     }
@@ -189,8 +189,9 @@ export class GameScene extends Phaser.Scene {
       const dx = target.x - e.state.x;
       const dy = target.y - e.state.y;
       const len = Math.hypot(dx, dy) || 1;
-      e.state.x = clamp(e.state.x + (dx / len) * ENEMY_SPEED * (delta / 1000), 16, WORLD_W - 16);
-      e.state.y = clamp(e.state.y + (dy / len) * ENEMY_SPEED * (delta / 1000), 16, WORLD_H - 16);
+      const r = e.state.type === 'boss' ? 35 : 24;
+      e.state.x = clamp(e.state.x + (dx / len) * ENEMY_SPEED * (delta / 1000), r, WORLD_W - r);
+      e.state.y = clamp(e.state.y + (dy / len) * ENEMY_SPEED * (delta / 1000), r, WORLD_H - r);
     }
     if (time - this.lastEnemyBroadcast > 1000 / ENEMY_HZ) {
       this.lastEnemyBroadcast = time;
@@ -228,8 +229,9 @@ export class GameScene extends Phaser.Scene {
     let e = this.enemies.get(state.id);
     if (!e) {
       const color = state.type === 'boss' ? 0xb23b3b : 0xcc5b4a;
-      const sprite = this.add.circle(state.x, state.y, state.type === 'boss' ? 20 : 14, color).setDepth(3);
-      const label = this.add.text(state.x, state.y - 22, state.type, { fontSize: '11px', color: '#ece3d4' }).setOrigin(0.5);
+      const radius = state.type === 'boss' ? 35 : 24;
+      const sprite = this.add.circle(state.x, state.y, radius, color).setDepth(3);
+      const label = this.add.text(state.x, state.y - (state.type === 'boss' ? 46 : 34), state.type, { fontSize: '11px', color: '#ece3d4' }).setOrigin(0.5);
       e = { sprite, label, state };
       this.enemies.set(state.id, e);
     } else {

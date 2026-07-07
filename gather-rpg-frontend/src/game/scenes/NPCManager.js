@@ -232,7 +232,15 @@ export class NPCManager {
     }
 
     if (emoji) {
-      const indicator = scene.add.text(0, -45, emoji, {
+      const npcSprite = container.list.find(item => item instanceof NPCSprite);
+      let npcHeight = 86; // Default fallback height
+      if (npcSprite && npcSprite.sprite) {
+        npcHeight = npcSprite.sprite.displayHeight;
+      }
+      const indicatorY = -npcHeight * 0.85 - 43;
+      const bounceY = indicatorY - 7;
+
+      const indicator = scene.add.text(0, indicatorY, emoji, {
         fontSize: '20px',
         fill: color,
         stroke: '#000000',
@@ -243,7 +251,7 @@ export class NPCManager {
       // Add a little bounce
       scene.tweens.add({
         targets: indicator,
-        y: -50,
+        y: bounceY,
         duration: 1000,
         yoyo: true,
         repeat: -1,

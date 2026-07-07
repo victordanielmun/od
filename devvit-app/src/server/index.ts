@@ -103,7 +103,67 @@ const router = new Router()
 
   // ── Content seeding (dev/mod) ────────────────────────────────────────────────
   // TODO(Fase 0): expose this only via a moderator menu action, not a public route.
-  .post('/api/admin/seed', ({ query }) => seedAll(query.get('force') === '1'));
+  .post('/api/admin/seed', ({ query }) => seedAll(query.get('force') === '1'))
+
+  // ── Legal documents ──────────────────────────────────────────────────────────
+  .get('/privacy', async ({ res }) => {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Privacy Policy - Odyssey RPG</title>
+  <style>
+    body { font-family: sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #ece3d4; background-color: #14110d; }
+    h1, h2 { color: #e0a145; }
+    a { color: #e0a145; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy for Odyssey RPG</h1>
+  <p>Last updated: July 6, 2026</p>
+  <p>Odyssey RPG is a Reddit app developed on the Reddit Developer Platform. We value your privacy and handle your data with transparency.</p>
+  <h2>1. Data Collection</h2>
+  <p>Our app processes your Reddit username and Reddit User ID (provided securely via Reddit's Developer Platform APIs) to create your character and track your game statistics, progress, and language learning achievements (e.g., XP, daily streak, and level).</p>
+  <h2>2. Data Usage and Storage</h2>
+  <p>All user information, stats, and game progress are stored entirely inside Reddit's sandboxed Redis data store allocated specifically to this app. We do not transmit or store your personal data on any third-party external servers, except for necessary request context sent securely to the OpenAI API for dynamically generating translation and dialogue context (with no personally identifiable information).</p>
+  <h2>3. Data Sharing</h2>
+  <p>We do not sell, rent, or share user data with any third parties. Your data is strictly used to run the Odyssey RPG app interface and multiplayer taverns inside Reddit.</p>
+  <h2>4. Contact</h2>
+  <p>If you have questions or want to request data deletion, please contact the developer via Reddit private message.</p>
+</body>
+</html>`);
+    return null;
+  })
+  .get('/terms', async ({ res }) => {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Terms of Service - Odyssey RPG</title>
+  <style>
+    body { font-family: sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #ece3d4; background-color: #14110d; }
+    h1, h2 { color: #e0a145; }
+    a { color: #e0a145; }
+  </style>
+</head>
+<body>
+  <h1>Terms of Service for Odyssey RPG</h1>
+  <p>Last updated: July 6, 2026</p>
+  <p>By installing, accessing, or playing Odyssey RPG inside Reddit, you agree to these Terms of Service.</p>
+  <h2>1. Acceptance of Terms</h2>
+  <p>You agree to comply with Reddit's User Agreement and Content Policy, in addition to these Terms.</p>
+  <h2>2. Game Rules and User Conduct</h2>
+  <p>Odyssey RPG is a social language learning game. You agree to interact respectfully with other players in the multiplayer tavern chat. Any form of harassment, hate speech, cheating, or disruptive behavior is strictly prohibited and will result in a ban from the game.</p>
+  <h2>3. Disclaimer of Warranties</h2>
+  <p>The game is provided "as is" without warranty of any kind. We do not guarantee uninterrupted or error-free operation.</p>
+  <h2>4. Changes to Terms</h2>
+  <p>We reserve the right to update these terms at any time. Your continued use of the game constitutes acceptance of the updated terms.</p>
+</body>
+</html>`);
+    return null;
+  });
 
 const server = createServer(async (req, res) => {
   await router.handle(req, res);

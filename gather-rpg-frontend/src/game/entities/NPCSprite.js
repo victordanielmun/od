@@ -1,4 +1,5 @@
 import * as Phaser from 'phaser';
+import { DEFAULT_CHARACTER_SCALE, CHARACTER_CONFIG } from '../config/CharacterConfig';
 
 export class NPCSprite extends Phaser.GameObjects.Container {
   constructor(scene, x, y, charId, username, textureType = 'npc') {
@@ -26,8 +27,9 @@ export class NPCSprite extends Phaser.GameObjects.Container {
     
     this.sprite = scene.add.sprite(0, 0, textureKey);
     this.sprite.setOrigin(0.5, 0.85);
-    // Escala ajustada para que coincida con el tamaño del jugador
-    this.sprite.setScale(1.0);
+    
+    // Escala ajustada dinámicamente para que coincida con el tamaño del jugador
+    this.normalizeScale();
 
     // Etiqueta de nombre - Estilo Premium para NPCs (Oro/Amarillo)
     this.nameTag = scene.add.text(0, 18, username, {
@@ -95,6 +97,36 @@ export class NPCSprite extends Phaser.GameObjects.Container {
     // Mirror left/right like the player. Any other value (e.g. the legacy
     // 'south' default) falls back to facing right for a consistent look.
     this.sprite.setFlipX(direction === 'left');
+  }
+
+  normalizeScale() {
+    if (!this.sprite || !this.sprite.texture) return;
+    const tex = this.sprite.texture;
+    
+    // Obtenemos los nombres de los frames en el atlas
+    const frameNames = tex.getFrameNames();
+    let h = 0;
+    
+    if (frameNames && frameNames.length > 0) {
+      // Intentamos usar un frame de reposo/idle representativo para calcular la escala
+      const repName = frameNames.find(name => 
+        name.includes('idle') || 
+        name.includes('frame_000') || 
+        name.includes('sprite3')
+      ) || frameNames[0];
+      
+      const frame = tex.get(repName);
+      h = frame?.height || 0;
+    }
+    
+    if (h === 0) {
+      h = this.sprite.height;
+    }
+    
+    if (h > 0) {
+      const targetHeight = CHARACTER_CONFIG.base.npcTargetHeight || 86;
+      this.sprite.setScale(targetHeight / h);
+    }
   }
 
   preUpdate(time, delta) {

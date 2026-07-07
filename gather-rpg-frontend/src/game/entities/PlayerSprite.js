@@ -22,10 +22,8 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
     // Ideally pass scale in constructor or read global config.
     this.sprite.setOrigin(0.5, 0.85); // Anchor at feet (adjusted for larger sprite)
     
-    // Read character-specific scale from CharacterConfig
-    const charDef = CHARACTER_CONFIG.characters.find(c => c.id === this.characterId);
-    const s = charDef?.scale ?? 1.0;
-    this.sprite.setScale(Number.isFinite(s) && s > 0 ? s : 1.0);
+    // Read character-specific scale dynamically from frame texture
+    this.normalizeScale();
 
     // Add name tag - Unified style with NPCs but with white color
     this.nameTag = scene.add.text(0, 18, username, {
@@ -127,14 +125,43 @@ export class PlayerSprite extends Phaser.GameObjects.Container {
         console.log(`[PlayerSprite] ${this.username} updating texture to ${newTexture}`);
         this.sprite.setTexture(newTexture);
         
-        // Update scale factor for the new character ID
-        const charDef = CHARACTER_CONFIG.characters.find(c => c.id === this.characterId);
-        const s = charDef?.scale ?? 1.0;
-        this.sprite.setScale(Number.isFinite(s) && s > 0 ? s : 1.0);
+        // Update scale factor dynamically
+        this.normalizeScale();
 
         this.playAnimation('idle'); // Force restart animation with new ID
     } else {
         console.warn(`[PlayerSprite] Texture ${newTexture} not found when updating character sync.`);
+    }
+  }
+
+  normalizeScale() {
+    if (!this.sprite || !this.sprite.texture) return;
+    const tex = this.sprite.texture;
+    
+    // Obtenemos los nombres de los frames en el atlas
+    const frameNames = tex.getFrameNames();
+    let h = 0;
+    
+    if (frameNames && frameNames.length > 0) {
+      // Intentamos usar un frame de reposo/idle representativo para calcular la escala
+      const repName = frameNames.find(name => 
+        name.includes('frame_000') || 
+        name.includes('sprite3') || 
+        name.includes('idle')
+      ) || frameNames[0];
+      
+      const frame = tex.get(repName);
+      h = frame?.height || 0;
+    }
+    
+    if (h === 0) {
+      h = this.sprite.height;
+    }
+    
+    if (h > 0) {
+      const targetHeight = CHARACTER_CONFIG.base.targetHeight || 108;
+      const computedScale = targetHeight / h;
+      this.sprite.setScale(computedScale);
     }
   }
 

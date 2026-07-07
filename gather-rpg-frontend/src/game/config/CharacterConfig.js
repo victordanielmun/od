@@ -3,18 +3,23 @@ import { animationsByCharacter } from '../../../public/characters/_animationsByC
 // Los IDs de los personajes se detectan automáticamente desde el script generado
 const AVAILABLE_CHARACTERS = Object.keys(animationsByCharacter);
 
+export const DEFAULT_CHARACTER_SCALE = 1.5; // Escala global base de personajes (original + 0.5 de aumento)
+export const TARGET_PLAYER_HEIGHT = 108;    // Altura objetivo en píxeles en el canvas (72px original * 1.5)
+
 export const CHARACTER_CONFIG = {
   // Configuración base para todos los spritesheets de personajes
   // No se usa frameWidth/Height porque usamos Texture Atlas (JSON)
   base: {
-    scale: 1,
+    scale: DEFAULT_CHARACTER_SCALE,
+    targetHeight: TARGET_PLAYER_HEIGHT,
+    npcTargetHeight: 86, // Altura objetivo para NPCs (un poco más pequeños que los jugadores)
   },
 
   // Generamos la lista de personajes dinámicamente basada en los IDs
   characters: AVAILABLE_CHARACTERS.map(id => ({
     id,
-    // Escala del personaje en el mapa: 0.25 para todos los sprites de alta resolución
-    scale: 0.25,
+    // Escala del personaje en el mapa
+    scale: DEFAULT_CHARACTER_SCALE,
     sheets: [
       { type: 'base', path: `/characters/${id}b.png`, json: `/characters/${id}b.json` },
       { type: 'combat', path: `/characters/${id}a.png`, json: `/characters/${id}a.json` },

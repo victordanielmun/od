@@ -59,13 +59,19 @@ export class Router {
 
     try {
       const result = await route.handler(ctx);
-      sendJson(res, 200, result ?? { ok: true });
+      if (!res.writableEnded) {
+        sendJson(res, 200, result ?? { ok: true });
+      }
     } catch (err) {
-      if (err instanceof HttpError) {
-        sendJson(res, err.status, { error: err.message });
+      if (!res.writableEnded) {
+        if (err instanceof HttpError) {
+          sendJson(res, err.status, { error: err.message });
+        } else {
+          console.error('[http] unhandled error:', err);
+          sendJson(res, 500, { error: 'Internal error' });
+        }
       } else {
-        console.error('[http] unhandled error:', err);
-        sendJson(res, 500, { error: 'Internal error' });
+        console.error('[http] error after response ended:', err);
       }
     }
   }
