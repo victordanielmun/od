@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS npc_templates (
     position_y INTEGER NOT NULL,
     facing_direction VARCHAR(10) DEFAULT 'south',
     interaction_radius INTEGER DEFAULT 64,
+    movement_type VARCHAR(20) DEFAULT 'static',
+    movement_range INTEGER DEFAULT 0,
+    movement_speed INTEGER DEFAULT 50,
+    waypoints JSONB DEFAULT '[]'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

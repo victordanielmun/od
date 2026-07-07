@@ -28,6 +28,9 @@ export class EditorController {
     this.buildScale = 2.5;
     this.buildMetadata = { portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '', missionIds: [] };
     this.npcMetadata = null;
+    this.isEditingNPCRouteMode = false;
+    this.routeOverlayGraphics = null;
+    this.routeLabels = [];
     this.enemyMetadata = null;
     this.pickupMetadata = null;
     this.furnitureMetadata = null;
@@ -121,6 +124,17 @@ export class EditorController {
       const gx = Math.floor(wp.x / G) * G + G / 2;
       const gy = Math.floor(wp.y / G) * G + G / 2;
 
+      if (this.isEditingNPCRouteMode) {
+        if (gx < 0 || gx > this.scene.mapWidth || gy < 0 || gy > this.scene.mapHeight) return;
+        const currentWaypoints = [...(this.npcMetadata?.waypoints || [])];
+        currentWaypoints.push({ x: gx, y: gy });
+        if (!this.npcMetadata) this.npcMetadata = {};
+        this.npcMetadata.waypoints = currentWaypoints;
+        window.dispatchEvent(new CustomEvent('editor-sync-npc-waypoints', { detail: currentWaypoints }));
+        this.drawRoutePreview();
+        return;
+      }
+
       console.log(`[Editor] pointerdown at (${gx}, ${gy}) | mapSize: ${this.scene.mapWidth}x${this.scene.mapHeight}`);
 
       if (gx < 0 || gx > this.scene.mapWidth || gy < 0 || gy > this.scene.mapHeight) {
@@ -186,7 +200,12 @@ export class EditorController {
       case 'setTexture': this.setTexture(value); break;
       case 'setBuildMetadata': this.buildMetadata = value; break;
       case 'setBuildScale': this.buildScale = parseFloat(value) || 1; break;
-      case 'setNPCMetadata': this.npcMetadata = value; break;
+      case 'setNPCMetadata': 
+        this.npcMetadata = value; 
+        if (this.isEditingNPCRouteMode) {
+          this.drawRoutePreview();
+        }
+        break;
       case 'setEnemyMetadata': this.enemyMetadata = value; break;
       case 'setPickupMetadata': this.pickupMetadata = value; break;
       case 'setFurnitureMetadata': this.furnitureMetadata = value; break;
@@ -198,6 +217,59 @@ export class EditorController {
       case 'applyBuildMetadata': this.applyBuildMetadataToAll(); break;
       case 'pauseEnemies': this.pauseEnemies(); break;
       case 'resumeEnemies': this.resumeEnemies(); break;
+      case 'setEditingNpcRouteMode': this.setEditingNpcRouteMode(value); break;
+    }
+  }
+
+  setEditingNpcRouteMode(enabled) {
+    console.log(`[EditorController] setEditingNpcRouteMode: ${enabled}`);
+    this.isEditingNPCRouteMode = enabled;
+    if (enabled) {
+      this.drawRoutePreview();
+    } else {
+      if (this.routeOverlayGraphics) {
+        this.routeOverlayGraphics.clear();
+      }
+      if (this.routeLabels) {
+        this.routeLabels.forEach(txt => txt.destroy());
+      }
+      this.routeLabels = [];
+    }
+  }
+
+  drawRoutePreview() {
+    if (!this.routeOverlayGraphics) {
+      this.routeOverlayGraphics = this.scene.add.graphics().setDepth(10000);
+    }
+    this.routeOverlayGraphics.clear();
+    
+    if (this.routeLabels) {
+      this.routeLabels.forEach(txt => txt.destroy());
+    }
+    this.routeLabels = [];
+    
+    const waypoints = this.npcMetadata?.waypoints || [];
+    if (waypoints.length === 0) return;
+    
+    this.routeOverlayGraphics.lineStyle(3, 0xffa500, 0.8);
+    this.routeOverlayGraphics.fillStyle(0xffa500, 1.0);
+    
+    for (let i = 0; i < waypoints.length; i++) {
+      const pt = waypoints[i];
+      this.routeOverlayGraphics.fillCircle(pt.x, pt.y, 8);
+      
+      const txt = this.scene.add.text(pt.x, pt.y - 18, `Pt ${i + 1}`, {
+        fontSize: '10px',
+        color: '#ffa500',
+        backgroundColor: '#111111cc',
+        padding: { x: 3, y: 1 }
+      }).setOrigin(0.5).setDepth(10001);
+      this.routeLabels.push(txt);
+      
+      if (i > 0) {
+        const prev = waypoints[i - 1];
+        this.routeOverlayGraphics.lineBetween(prev.x, prev.y, pt.x, pt.y);
+      }
     }
   }
 

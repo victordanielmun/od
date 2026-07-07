@@ -143,7 +143,8 @@ export const MapEditorUI = ({ gameRef }) => {
   const [activeTile, setActiveTile] = useState('wall');
   const [activeTexture, setActiveTexture] = useState('sprite1');
   const [buildMeta, setBuildMeta] = useState({ portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '', missionIds: [] });
-  const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [], state: 'idle', facing: 'right' });
+  const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [], state: 'idle', facing: 'right', movementType: 'static', waypoints: [] });
+  const [editingNpcRoute, setEditingNpcRoute] = useState(false);
   const [enemyMeta, setEnemyMeta] = useState({ npcId: '', waveNum: 1, hp: 50, speed: 120, damage: 10, attackRate: 1000, type: 'melee', projectileSprite: '', manaMax: 100, manaRegen: 10, hpRegen: 0, cardFailHealPct: 100 });
   const [buildScale, setBuildScale] = useState(2.5);
   const [availableMaps, setAvailableMaps] = useState([]);
@@ -233,12 +234,16 @@ export const MapEditorUI = ({ gameRef }) => {
         setBuildMeta(bm);
         dispatchEditorCommand('setBuildMetadata', bm);
       } else if (type === 'npc') {
-        setNpcMeta({
+        const nm = {
           definitionId: metadata.definitionId || '',
           missionIds: Array.isArray(metadata.missionIds) ? metadata.missionIds : (metadata.missionId ? [metadata.missionId] : []),
           state: mapFaceToBodyState(metadata.state || 'idle'),
-          facing: metadata.facing || 'right'
-        });
+          facing: metadata.facing || 'right',
+          movementType: metadata.movementType || metadata.movement_type || 'static',
+          waypoints: Array.isArray(metadata.waypoints) ? metadata.waypoints : []
+        };
+        setNpcMeta(nm);
+        dispatchEditorCommand('setNPCMetadata', nm);
         setPickupMeta({
           itemId: metadata.itemId || '',
           quantity: metadata.quantity || 1
@@ -506,6 +511,23 @@ export const MapEditorUI = ({ gameRef }) => {
   useEffect(() => {
     dispatchEditorCommand('setFurnitureMetadata', furnitureMeta);
   }, [furnitureMeta]);
+
+  useEffect(() => {
+    const handleSyncWaypoints = (e) => {
+      setNpcMeta(prev => ({ ...prev, waypoints: e.detail || [] }));
+    };
+    window.addEventListener('editor-sync-npc-waypoints', handleSyncWaypoints);
+    return () => {
+      window.removeEventListener('editor-sync-npc-waypoints', handleSyncWaypoints);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeTile !== 'npc' || !isEditorActive) {
+      setEditingNpcRoute(false);
+      dispatchEditorCommand('setEditingNpcRouteMode', false);
+    }
+  }, [activeTile, isEditorActive]);
   const selectMoveMode = (mode) => { setMoveMode(mode); dispatchEditorCommand('setMoveMode', mode); };
   const updatePlayerSpeed = (val) => {
     const s = parseInt(val);
@@ -1271,6 +1293,42 @@ export const MapEditorUI = ({ gameRef }) => {
                     <option value="left">⬅️ {t('lobby.editor.facing_left') || 'Izquierda'}</option>
                   </select>
                 </div>
+
+                <div className="mb-2">
+                  <label className="block text-[9px] text-gray-500 mb-0.5">Movimiento / Comportamiento</label>
+                  <select value={npcMeta.movementType || 'static'} onChange={e => updateNpcMeta('movementType', e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none">
+                    <option value="static">Estático (Static)</option>
+                    <option value="wander">Vagar Aleatorio (Wander)</option>
+                    <option value="follow">Acompañar (Follow Player)</option>
+                    <option value="lead_player">Guiar Jugador (Lead Player)</option>
+                  </select>
+                </div>
+
+                {npcMeta.movementType === 'lead_player' && (
+                  <div className="mb-2 p-2 bg-gray-900/40 border border-gray-750 rounded">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[9px] text-gray-400">Puntos de Ruta ({npcMeta.waypoints?.length || 0})</span>
+                      {npcMeta.waypoints?.length > 0 && (
+                        <button onClick={() => updateNpcMeta('waypoints', [])} className="text-[8px] text-red-400 hover:underline">
+                          Borrar
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        const nextVal = !editingNpcRoute;
+                        setEditingNpcRoute(nextVal);
+                        dispatchEditorCommand('setEditingNpcRouteMode', nextVal);
+                      }}
+                      className={`w-full py-1 text-[10px] font-bold rounded transition ${
+                        editingNpcRoute ? 'bg-red-600 text-white animate-pulse' : 'bg-indigo-650 hover:bg-indigo-600 text-white'
+                      }`}
+                    >
+                      {editingNpcRoute ? '🔴 Detener Marcado' : '📍 Marcar Puntos'}
+                    </button>
+                  </div>
+                )}
 
                 {/* Associated Missions */}
 

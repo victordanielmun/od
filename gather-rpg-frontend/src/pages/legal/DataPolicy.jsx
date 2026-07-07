@@ -118,7 +118,7 @@ const DataPolicy = () => {
             <li>Presentar quejas por infracciones a la ley ante la Superintendencia de Industria y Comercio (SIC).</li>
           </ul>
           <p className="text-gray-300 text-xs mt-3 leading-relaxed">
-            Para ejercer cualquiera de estos derechos, o solicitar la eliminación total de sus datos, por favor contáctenos directamente a nuestro correo oficial de privacidad: <a href="mailto:privacidad@odiseagame.co" className="text-yellow-400 hover:underline">privacidad@odiseagame.co</a>.
+            Para ejercer cualquiera de estos derechos, o solicitar la eliminación total de sus datos, por favor contáctenos directamente a nuestro correo oficial de privacidad: <a href="mailto:support@odisea-rpg.com" className="text-yellow-400 hover:underline">support@odisea-rpg.com</a>.
           </p>
         </section>
       </div>

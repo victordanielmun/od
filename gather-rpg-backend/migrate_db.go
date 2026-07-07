@@ -13,5 +13,6 @@ func main() {
 		panic(err)
 	}
 	db.Exec("ALTER TABLE mission_tasks ADD COLUMN IF NOT EXISTS required_items jsonb;")
+	db.Exec("ALTER TABLE npc_templates ADD COLUMN IF NOT EXISTS waypoints jsonb DEFAULT '[]'::jsonb;")
 	fmt.Println("Migration successful")
 }

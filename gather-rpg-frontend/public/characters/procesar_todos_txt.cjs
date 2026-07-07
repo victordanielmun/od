@@ -3,7 +3,7 @@ const path = require('path');
 
 const CHARS_DIR = __dirname;
 const MIN_SIZE = 10;
-const ROW_TOLERANCE = 80;
+const ROW_TOLERANCE = 40;
 
 function parseTxt(filePath) {
     const raw = fs.readFileSync(filePath, 'utf8');
@@ -32,23 +32,11 @@ function parseTxt(filePath) {
 }
 
 function sortByRowThenX(sprites) {
-    const sorted = [...sprites].sort((a, b) => a.y - b.y);
-    const rows = [];
-    
-    for (const s of sorted) {
-        const lastRow = rows[rows.length - 1];
-        if (!lastRow || s.y - lastRow[0].y > ROW_TOLERANCE) {
-            rows.push([s]);
-        } else {
-            lastRow.push(s);
-        }
-    }
-
-    for (const row of rows) {
-        row.sort((a, b) => a.x - b.x);
-    }
-
-    return rows.flat();
+    const getSpriteNumber = (name) => {
+        const match = name.match(/\d+/);
+        return match ? parseInt(match[0], 10) : 0;
+    };
+    return [...sprites].sort((a, b) => getSpriteNumber(a.name) - getSpriteNumber(b.name));
 }
 
 function buildJson(sprites, filename, pngWidth, pngHeight) {

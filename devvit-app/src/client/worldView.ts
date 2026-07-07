@@ -46,11 +46,24 @@ export async function mountWorld(container: HTMLElement): Promise<void> {
     trackUsers([]);
   }
 
+  // Fetch active missions for the room
+  let activeMissions: any[] = [];
+  try {
+    activeMissions = await api.missionsForScene(ROOM_ID);
+  } catch {
+    activeMissions = [];
+  }
+
   const hooks: GameHooks = {
     onMove: (x, y, dir, state) => void api.roomMove(ROOM_ID, x, y, dir, state).catch(() => {}),
     onAttack: (enemyId, enemyType) => void openNinjaCard(enemyId, enemyType),
     onEnemySnapshot: (enemies) => void api.roomEnemies(ROOM_ID, enemies).catch(() => {}),
     isHost: amHost,
+    canAttack: () => {
+      const active = activeMissions.find(m => m.status === 'in_progress');
+      if (!active) return true;
+      return active.tasks.some((t: any) => t.type === 'defeat_enemy' || t.type === 'kill_all' || t.type === 'kill_boss');
+    }
   };
 
   game = new Phaser.Game({

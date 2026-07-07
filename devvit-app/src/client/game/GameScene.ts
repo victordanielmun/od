@@ -17,6 +17,7 @@ export interface GameHooks {
   onAttack: (enemyId: string, enemyType: string) => void;
   onEnemySnapshot: (enemies: EnemyState[]) => void;
   isHost: () => boolean;
+  canAttack?: () => boolean;
 }
 
 export const WORLD_W = 800;
@@ -56,6 +57,7 @@ export class GameScene extends Phaser.Scene {
   private dir = 'south';
   private host = false;
   private spawned = false;
+  private helpText!: Phaser.GameObjects.Text;
 
   constructor() {
     super('game');
@@ -72,7 +74,7 @@ export class GameScene extends Phaser.Scene {
     g.strokeRect(4, 4, WORLD_W - 8, WORLD_H - 8);
 
     this.player = this.add.circle(WORLD_W / 2, WORLD_H / 2, 24, 0xe0a145).setDepth(5);
-    this.add.text(6, WORLD_H - 20, 'WASD / arrows to move · SPACE to attack', { fontSize: '12px', color: '#9c8f79' });
+    this.helpText = this.add.text(6, WORLD_H - 20, 'WASD / arrows to move · SPACE to attack', { fontSize: '12px', color: '#9c8f79' });
 
     const kb = this.input.keyboard!;
     this.cursors = kb.createCursorKeys();
@@ -124,6 +126,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryAttack(): void {
+    if (this.hooks.canAttack && !this.hooks.canAttack()) {
+      this.helpText.setText('⚠️ El ataque está desactivado fuera de misiones de combate.');
+      this.helpText.setColor('#ff5555');
+      this.time.delayedCall(2000, () => {
+        this.helpText.setText('WASD / arrows to move · SPACE to attack');
+        this.helpText.setColor('#9c8f79');
+      });
+      return;
+    }
     let nearest: Enemy | undefined;
     let best = ATTACK_RANGE;
     for (const e of this.enemies.values()) {

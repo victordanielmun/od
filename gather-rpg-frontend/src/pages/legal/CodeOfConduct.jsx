@@ -81,7 +81,7 @@ const CodeOfConduct = () => {
               1. <strong>En el Juego:</strong> Acceda al perfil del jugador infractor y seleccione el botón de <strong>"Reportar"</strong>. Esto enviará una captura de chat directamente al equipo de moderación.
             </p>
             <p>
-              2. <strong>Por Correo Electrónico:</strong> Escríbanos detallando el incidente, hora aproximada y capturas de pantalla a: <a href="mailto:soporte@odiseagame.co" className="text-yellow-400 hover:underline">soporte@odiseagame.co</a>.
+              2. <strong>Por Correo Electrónico:</strong> Escríbanos detallando el incidente, hora aproximada y capturas de pantalla a: <a href="mailto:support@odisea-rpg.com" className="text-yellow-400 hover:underline">support@odisea-rpg.com</a>.
             </p>
             <p className="text-yellow-500/80 italic mt-2">
               * Nota: Todos los reportes son manejados con estricta confidencialidad y el reportante mantendrá el anonimato total.

@@ -124,13 +124,14 @@ type NPCTemplate struct {
 	FacingDirection   string        `gorm:"size:10;default:'south'" json:"facing_direction"`
 	DefaultState      NPCState      `gorm:"type:npc_state;default:'idle'" json:"default_state"`
 	InteractionRadius int           `gorm:"default:64" json:"interaction_radius"`
-	MovementType      string        `gorm:"size:20;default:'static'" json:"movement_type"`
-	MovementRange     int           `gorm:"default:0" json:"movement_range"`
-	MovementSpeed     int           `gorm:"default:50" json:"movement_speed"`
-	Instructions      string        `json:"instructions"`      // Custom AI instructions for this instance
-	SuccessMessage    string        `json:"success_message"`  // Message shown when "purpose" is fulfilled
-	Greeting          string        `json:"greeting"`         // Custom initial greeting for this instance
-	CreatedAt         time.Time     `json:"created_at"`
+	MovementType      string          `gorm:"size:20;default:'static'" json:"movement_type"`
+	MovementRange     int             `gorm:"default:0" json:"movement_range"`
+	MovementSpeed     int             `gorm:"default:50" json:"movement_speed"`
+	Waypoints         json.RawMessage `gorm:"type:jsonb" json:"waypoints"` // List of waypoints for lead_player behavior
+	Instructions      string          `json:"instructions"`      // Custom AI instructions for this instance
+	SuccessMessage    string          `json:"success_message"`  // Message shown when "purpose" is fulfilled
+	Greeting          string          `json:"greeting"`         // Custom initial greeting for this instance
+	CreatedAt         time.Time       `json:"created_at"`
 }
 
 type Mission struct {

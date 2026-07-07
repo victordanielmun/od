@@ -92,6 +92,8 @@ export class MapSerializer {
         templateId:   getData(t.data, 'templateId'),
         state:        getData(t.data, 'state'),
         facing:       getData(t.data, 'facing'),
+        movement_type: getData(t.data, 'movementType'),
+        waypoints:     getData(t.data, 'waypoints'),
       })),
 
       pickups: mm.pickups.getChildren().map(t => ({
@@ -268,6 +270,8 @@ export class MapSerializer {
         missionId:    t.missionId,
         state:        t.state,
         facing:       t.facing,
+        movementType: t.movementType || t.movement_type || 'static',
+        waypoints:    Array.isArray(t.waypoints) ? t.waypoints : [],
       }));
 
       (data.pickups || []).forEach(t => place('item', t.x, t.y, null, {

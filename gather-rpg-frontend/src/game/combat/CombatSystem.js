@@ -349,6 +349,16 @@ export class CombatSystem {
     if (!this.scene.player || this.scene.isTyping()) return;
     if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
+    const activeMission = useGameStore.getState().activeMission;
+    if (activeMission && activeMission.type !== 'defeat_enemy') {
+      const now = this.scene.time.now;
+      if (now - (this._lastAttackBlockNotifyTime || 0) > 3000) {
+        this._lastAttackBlockNotifyTime = now;
+        useNotificationStore.getState().addNotification('warning', 'El ataque está desactivado durante misiones que no son de combate.');
+      }
+      return;
+    }
+
     // Un swing a la vez: ignorar la pulsación si aún corre la animación del ataque
     // anterior. Así el daño se aplica UNA sola vez por golpe (no se spamea el collider).
     const now = this.scene.time.now;
@@ -396,6 +406,16 @@ export class CombatSystem {
   handlePlayerCombo() {
     if (!this.scene.player || this.scene.isTyping()) return;
     if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
+
+    const activeMission = useGameStore.getState().activeMission;
+    if (activeMission && activeMission.type !== 'defeat_enemy') {
+      const now = this.scene.time.now;
+      if (now - (this._lastAttackBlockNotifyTime || 0) > 3000) {
+        this._lastAttackBlockNotifyTime = now;
+        useNotificationStore.getState().addNotification('warning', 'El ataque está desactivado durante misiones que no son de combate.');
+      }
+      return;
+    }
 
     const now = this.scene.time.now;
     // Un swing a la vez: si la animación del golpe anterior sigue, ignorar la pulsación.
@@ -479,6 +499,16 @@ export class CombatSystem {
   handlePlayerSpell() {
     if (!this.scene.player || this.scene.isTyping()) return;
     if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
+
+    const activeMission = useGameStore.getState().activeMission;
+    if (activeMission && activeMission.type !== 'defeat_enemy') {
+      const now = this.scene.time.now;
+      if (now - (this._lastAttackBlockNotifyTime || 0) > 3000) {
+        this._lastAttackBlockNotifyTime = now;
+        useNotificationStore.getState().addNotification('warning', 'El ataque está desactivado durante misiones que no son de combate.');
+      }
+      return;
+    }
 
     // Pergamino activo (configurable en inventario); si no, el primero disponible.
     const scrollEntry = this._pickActiveItem('scroll');
@@ -649,6 +679,16 @@ export class CombatSystem {
   handlePlayerThrow() {
     if (!this.scene.player || this.scene.isTyping()) return;
     if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
+
+    const activeMission = useGameStore.getState().activeMission;
+    if (activeMission && activeMission.type !== 'defeat_enemy') {
+      const now = this.scene.time.now;
+      if (now - (this._lastAttackBlockNotifyTime || 0) > 3000) {
+        this._lastAttackBlockNotifyTime = now;
+        useNotificationStore.getState().addNotification('warning', 'El ataque está desactivado durante misiones que no son de combate.');
+      }
+      return;
+    }
 
     // Arrojadizo activo (configurable en inventario); si no, el primero disponible.
     const itemEntry = this._pickActiveItem('throwable');

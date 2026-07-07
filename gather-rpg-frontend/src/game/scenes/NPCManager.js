@@ -143,15 +143,38 @@ export class NPCManager {
       shopId: def.shop_id,
       roomId: instance.room_id,
       // Movement Params
-      movementType: (tmpl.movement_type && tmpl.movement_type !== 'static') ? tmpl.movement_type : (defState === 'walking' ? 'wander' : 'static'),
+      movementType: tmpl.movement_type || (defState === 'walking' ? 'wander' : 'static'),
       movementRange: tmpl.movement_range || (defState === 'walking' ? 150 : 0),
       movementSpeed: tmpl.movement_speed || 50,
+      waypoints: Array.isArray(tmpl.waypoints) ? tmpl.waypoints : [],
       spawnX: tmpl.position_x,
       spawnY: tmpl.position_y,
       targetX: tmpl.position_x,
       targetY: tmpl.position_y,
       moveTimer: 0,
       isTalking: false
+    };
+
+    container.showDialogueBubble = (txt) => {
+      if (container.bubble) {
+        container.bubble.destroy();
+      }
+      const npcSprite = container.list.find(item => item instanceof NPCSprite);
+      const h = (npcSprite && npcSprite.sprite) ? npcSprite.sprite.displayHeight : 86;
+      const bubble = scene.add.text(0, -h - 20, txt, {
+        fontSize: '11px',
+        color: '#ffffff',
+        backgroundColor: '#000000bb',
+        padding: { x: 5, y: 3 }
+      }).setOrigin(0.5);
+      container.add(bubble);
+      container.bubble = bubble;
+      scene.time.delayedCall(2500, () => {
+        if (bubble && bubble.active) {
+          bubble.destroy();
+          if (container.bubble === bubble) container.bubble = null;
+        }
+      });
     };
 
     scene.physics.add.existing(container, false); // Dynamic body
@@ -268,13 +291,46 @@ export class NPCManager {
       npc.setDepth(npc.y + 1);
 
       const data = npc.npcData;
-      if (!data || data.movementType === 'static' || data.isTalking) {
+      if (!data) return;
+
+      // Enforce depth sorting (Feet at container.y)
+      npc.setDepth(npc.y + 1);
+
+      // Talking override (always takes priority)
+      if (data.isTalking) {
         if (npc.body) npc.body.setVelocity(0);
         const sprite = npc.list.find(item => item instanceof NPCSprite);
-        if (sprite) {
-          if (data.isTalking) {
-            sprite.playAnimation('talking');
-          } else {
+        if (sprite) sprite.playAnimation('talking');
+        return;
+      }
+
+      const player = scene.player;
+      const sprite = npc.list.find(item => item instanceof NPCSprite);
+
+      // ── MODO ACOMPAÑANTE (follow) ──
+      if (data.movementType === 'follow' && player) {
+        const dist = Phaser.Math.Distance.Between(npc.x, npc.y, player.x, player.y);
+        
+        // Stuck prevention: teleport if too far
+        if (dist > 350) {
+          npc.setPosition(player.x - 40, player.y);
+          if (npc.body) npc.body.setVelocity(0);
+          if (sprite) sprite.playAnimation('idle-waiting');
+          return;
+        }
+
+        // Move to player
+        if (dist > 75) {
+          scene.physics.moveToObject(npc, player, data.movementSpeed || 150);
+          if (sprite) {
+            sprite.playAnimation('walking');
+            if (npc.body.velocity.x < 0) sprite.sprite.setFlipX(true);
+            else if (npc.body.velocity.x > 0) sprite.sprite.setFlipX(false);
+          }
+        } else {
+          // Stop near player
+          if (npc.body) npc.body.setVelocity(0);
+          if (sprite) {
             const defState = data.defaultState || 'idle';
             const animConfig = STATE_TO_ANIM[defState] || STATE_TO_ANIM.idle;
             sprite.playAnimation(animConfig.body || 'idle-waiting');
@@ -283,12 +339,73 @@ export class NPCManager {
         return;
       }
 
+      // ── MODO GUIA (lead_player) ──
+      if (data.movementType === 'lead_player' && player) {
+        const distToPlayer = Phaser.Math.Distance.Between(npc.x, npc.y, player.x, player.y);
+        const waypoints = data.waypoints || [];
+
+        if (data.currentWaypointIdx === undefined) {
+          data.currentWaypointIdx = 0;
+        }
+
+        // Reached end of path
+        if (data.currentWaypointIdx >= waypoints.length) {
+          if (npc.body) npc.body.setVelocity(0);
+          if (sprite) sprite.playAnimation('idle-waiting');
+          return;
+        }
+
+        // Pacing: wait for player if they get left behind
+        if (distToPlayer > 130) {
+          if (npc.body) npc.body.setVelocity(0);
+          if (sprite) {
+            sprite.playAnimation('idle-waiting');
+            sprite.sprite.setFlipX(player.x < npc.x);
+          }
+          
+          // Occasional wait speech bubble
+          if (time > (data.nextWaitShout || 0)) {
+            if (typeof npc.showDialogueBubble === 'function') {
+              npc.showDialogueBubble("¡Por aquí! ¡Sígueme!");
+            }
+            data.nextWaitShout = time + 4000;
+          }
+          return;
+        }
+
+        // Move towards current waypoint
+        const targetPt = waypoints[data.currentWaypointIdx];
+        const distToTarget = Phaser.Math.Distance.Between(npc.x, npc.y, targetPt.x, targetPt.y);
+
+        if (distToTarget < 15) {
+          data.currentWaypointIdx++;
+        } else {
+          scene.physics.moveTo(npc, targetPt.x, targetPt.y, data.movementSpeed || 110);
+          if (sprite) {
+            sprite.playAnimation('walking');
+            if (npc.body.velocity.x < 0) sprite.sprite.setFlipX(true);
+            else if (npc.body.velocity.x > 0) sprite.sprite.setFlipX(false);
+          }
+        }
+        return;
+      }
+
+      // ── MODO CONVERSACIONAL ESTATICO ──
+      if (data.movementType === 'static') {
+        if (npc.body) npc.body.setVelocity(0);
+        if (sprite) {
+          const defState = data.defaultState || 'idle';
+          const animConfig = STATE_TO_ANIM[defState] || STATE_TO_ANIM.idle;
+          sprite.playAnimation(animConfig.body || 'idle-waiting');
+        }
+        return;
+      }
+
+      // ── MODO VAGABUNDEO (wander) ──
       if (data.movementType === 'wander') {
         const distToTarget = Phaser.Math.Distance.Between(npc.x, npc.y, data.targetX, data.targetY);
-        const sprite = npc.list.find(item => item instanceof NPCSprite);
 
         if (distToTarget < 5) {
-          // We reached the target
           if (npc.body) npc.body.setVelocity(0);
           if (sprite) {
             const defState = data.defaultState || 'idle';
@@ -297,26 +414,21 @@ export class NPCManager {
             sprite.playAnimation(idleAnim);
           }
 
-          // Wait before picking next target
           if (time > data.moveTimer) {
             const angle = Math.random() * Math.PI * 2;
             const dist = Math.random() * data.movementRange;
-            // Clamp the wander target to the map bounds (with a margin) so NPCs in
-            // walking/wander state can never roam off the edge of the map.
             const mm = scene.mapManager;
             const margin = 40;
             const maxX = (mm?.mapWidth  || scene.scale.width)  - margin;
             const maxY = (mm?.mapHeight || scene.scale.height) - margin;
             data.targetX = Phaser.Math.Clamp(data.spawnX + Math.cos(angle) * dist, margin, maxX);
             data.targetY = Phaser.Math.Clamp(data.spawnY + Math.sin(angle) * dist, margin, maxY);
-            data.moveTimer = time + 2000 + Math.random() * 3000; // Wait 2-5 seconds
+            data.moveTimer = time + 2000 + Math.random() * 3000;
           }
         } else {
-          // Move towards target
           scene.physics.moveTo(npc, data.targetX, data.targetY, data.movementSpeed);
           if (sprite) {
             sprite.playAnimation('walking');
-            // Flip sprite based on velocity
             if (npc.body.velocity.x < 0) sprite.sprite.setFlipX(true);
             else if (npc.body.velocity.x > 0) sprite.sprite.setFlipX(false);
           }
