@@ -1,0 +1,35 @@
+{
+  "frames": [
+    {
+      "filename": "frame_000",
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 574,
+        "h": 434
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 574,
+        "h": 434
+      },
+      "sourceSize": {
+        "w": 574,
+        "h": 434
+      }
+    }
+  ],
+  "meta": {
+    "app": "run_pipeline.cjs",
+    "version": "1.0",
+    "image": "2c.png",
+    "size": {
+      "w": 574,
+      "h": 434
+    },
+    "scale": 1
+  }
+}
