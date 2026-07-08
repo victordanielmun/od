@@ -127,7 +127,7 @@ export class EditorController {
       if (this.isEditingNPCRouteMode) {
         if (gx < 0 || gx > this.scene.mapWidth || gy < 0 || gy > this.scene.mapHeight) return;
         const currentWaypoints = [...(this.npcMetadata?.waypoints || [])];
-        currentWaypoints.push({ x: gx, y: gy });
+        currentWaypoints.push({ x: gx, y: gy, message: '', pauseMs: 0 });
         if (!this.npcMetadata) this.npcMetadata = {};
         this.npcMetadata.waypoints = currentWaypoints;
         window.dispatchEvent(new CustomEvent('editor-sync-npc-waypoints', { detail: currentWaypoints }));

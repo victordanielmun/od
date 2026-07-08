@@ -1311,10 +1311,41 @@ export const MapEditorUI = ({ gameRef }) => {
                       <span className="text-[9px] text-gray-400">Puntos de Ruta ({npcMeta.waypoints?.length || 0})</span>
                       {npcMeta.waypoints?.length > 0 && (
                         <button onClick={() => updateNpcMeta('waypoints', [])} className="text-[8px] text-red-400 hover:underline">
-                          Borrar
+                          Borrar Todo
                         </button>
                       )}
                     </div>
+
+                    {/* Lista editable de waypoints */}
+                    {(npcMeta.waypoints || []).length > 0 && (
+                      <div className="mb-2 space-y-1 max-h-40 overflow-y-auto custom-scrollbar">
+                        {(npcMeta.waypoints || []).map((wp, idx) => (
+                          <div key={idx} className="flex items-center gap-1 bg-gray-800/70 rounded px-1 py-0.5">
+                            <span className="text-[8px] text-indigo-400 shrink-0 w-10">Pt {idx + 1}</span>
+                            <input
+                              type="text"
+                              placeholder={`Mensaje (opcional)`}
+                              value={wp.message || ''}
+                              onChange={e => {
+                                const wps = [...(npcMeta.waypoints || [])];
+                                wps[idx] = { ...wps[idx], message: e.target.value };
+                                updateNpcMeta('waypoints', wps);
+                              }}
+                              className="flex-1 bg-gray-700 border border-gray-600 rounded px-1 py-0.5 text-[9px] text-white outline-none placeholder-gray-500"
+                            />
+                            <button
+                              onClick={() => {
+                                const wps = (npcMeta.waypoints || []).filter((_, i) => i !== idx);
+                                updateNpcMeta('waypoints', wps);
+                              }}
+                              className="text-[9px] text-red-400 hover:text-red-300 shrink-0 px-0.5"
+                              title="Eliminar punto"
+                            >✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <button
                       onClick={() => {
                         const nextVal = !editingNpcRoute;

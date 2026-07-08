@@ -55,7 +55,13 @@ export class LobbyEventBridge {
     });
     this._on('npc-interaction-end', (e) => {
       const npc = scene.npcSprites.get(e.detail.templateId);
-      if (npc) npc.npcData.isTalking = false;
+      if (npc) {
+        npc.npcData.isTalking = false;
+        // Activate companion/guide movement the first time the player talks to the NPC
+        if (npc.npcData.movementType === 'follow' || npc.npcData.movementType === 'lead_player') {
+          npc.npcData.isActivated = true;
+        }
+      }
     });
 
     // Spectator mode

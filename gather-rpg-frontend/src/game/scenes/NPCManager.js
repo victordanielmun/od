@@ -152,7 +152,9 @@ export class NPCManager {
       targetX: tmpl.position_x,
       targetY: tmpl.position_y,
       moveTimer: 0,
-      isTalking: false
+      isTalking: false,
+      // For follow/lead_player: NPC stays static until player talks to it first
+      isActivated: false
     };
 
     container.showDialogueBubble = (txt) => {
@@ -309,6 +311,13 @@ export class NPCManager {
 
       // ── MODO ACOMPAÑANTE (follow) ──
       if (data.movementType === 'follow' && player) {
+        // Wait for player to talk to us first
+        if (!data.isActivated) {
+          if (npc.body) npc.body.setVelocity(0);
+          if (sprite) sprite.playAnimation('idle-waiting');
+          return;
+        }
+
         const dist = Phaser.Math.Distance.Between(npc.x, npc.y, player.x, player.y);
         
         // Stuck prevention: teleport if too far
@@ -341,6 +350,13 @@ export class NPCManager {
 
       // ── MODO GUIA (lead_player) ──
       if (data.movementType === 'lead_player' && player) {
+        // Wait for player to talk to us first
+        if (!data.isActivated) {
+          if (npc.body) npc.body.setVelocity(0);
+          if (sprite) sprite.playAnimation('idle-waiting');
+          return;
+        }
+
         const distToPlayer = Phaser.Math.Distance.Between(npc.x, npc.y, player.x, player.y);
         const waypoints = data.waypoints || [];
 
@@ -348,10 +364,26 @@ export class NPCManager {
           data.currentWaypointIdx = 0;
         }
 
-        // Reached end of path
+        // Reached end of path → fire final dialogue automatically
         if (data.currentWaypointIdx >= waypoints.length) {
           if (npc.body) npc.body.setVelocity(0);
           if (sprite) sprite.playAnimation('idle-waiting');
+          if (!data.finalDialogueFired) {
+            data.finalDialogueFired = true;
+            window.dispatchEvent(new CustomEvent('lobby-interaction', {
+              detail: {
+                templateId:     data.templateId,
+                definitionId:   data.definitionId,
+                characterId:    data.characterId,
+                name:           data.name,
+                role:           data.role,
+                interactionMode: data.interactionMode,
+                voiceType:      data.voiceType,
+                missionId:      data.missionId,
+                roomId:         data.roomId,
+              }
+            }));
+          }
           return;
         }
 
@@ -362,24 +394,46 @@ export class NPCManager {
             sprite.playAnimation('idle-waiting');
             sprite.sprite.setFlipX(player.x < npc.x);
           }
-          
-          // Occasional wait speech bubble
           if (time > (data.nextWaitShout || 0)) {
             if (typeof npc.showDialogueBubble === 'function') {
-              npc.showDialogueBubble("¡Por aquí! ¡Sígueme!");
+              npc.showDialogueBubble('¡Por aquí! ¡Sígueme!');
             }
             data.nextWaitShout = time + 4000;
           }
           return;
         }
 
-        // Move towards current waypoint
+        // Waypoint pause: if we just arrived and there's a message to say
         const targetPt = waypoints[data.currentWaypointIdx];
         const distToTarget = Phaser.Math.Distance.Between(npc.x, npc.y, targetPt.x, targetPt.y);
 
         if (distToTarget < 15) {
-          data.currentWaypointIdx++;
+          // Arrived at waypoint
+          if (!data.waypointPauseUntil) {
+            const pauseMs = targetPt.pauseMs || 0;
+            const msg     = targetPt.message || '';
+            if (msg) {
+              if (typeof npc.showDialogueBubble === 'function') {
+                npc.showDialogueBubble(msg);
+              }
+              data.waypointPauseUntil = time + Math.max(pauseMs, 2500);
+            } else if (pauseMs > 0) {
+              data.waypointPauseUntil = time + pauseMs;
+            } else {
+              // No pause — advance immediately
+              data.currentWaypointIdx++;
+            }
+          } else if (time >= data.waypointPauseUntil) {
+            // Pause done
+            data.waypointPauseUntil = null;
+            data.currentWaypointIdx++;
+          } else {
+            // Still pausing
+            if (npc.body) npc.body.setVelocity(0);
+            if (sprite) sprite.playAnimation('idle-waiting');
+          }
         } else {
+          // Move towards current waypoint
           scene.physics.moveTo(npc, targetPt.x, targetPt.y, data.movementSpeed || 110);
           if (sprite) {
             sprite.playAnimation('walking');
