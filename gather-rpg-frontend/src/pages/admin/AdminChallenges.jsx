@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Brain, Plus, Trash2, Edit2, Search, X, AlertCircle, Save, HelpCircle, Volume2, Globe, Sparkles, Tag, Check, Award } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import api from '../../services/api';
 
 const CHALLENGE_TYPES = [
@@ -46,9 +47,9 @@ const ChallengeCard = ({ challenge, onEdit, onDelete }) => {
                     </span>
                 </div>
 
-                <h3 className="text-white font-bold text-sm mb-2 line-clamp-3">
-                    {challenge.question}
-                </h3>
+                <div className="text-white font-bold text-sm mb-2 line-clamp-3">
+                    <ReactMarkdown className="prose prose-invert prose-sm max-w-none prose-p:my-0">{challenge.question}</ReactMarkdown>
+                </div>
                 {challenge.question_es && (
                     <p className="text-xs text-gray-500 italic mb-3 line-clamp-2">
                         {challenge.question_es}
@@ -656,6 +657,12 @@ export const AdminChallenges = () => {
                                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none resize-none font-medium text-sm"
                                     placeholder="ej: What is the translation of 'gato'?"
                                 />
+                                {formData.question && (
+                                    <div className="mt-2 p-3 bg-gray-900 rounded-lg border border-gray-750 text-sm text-gray-300">
+                                        <div className="text-[10px] text-gray-500 font-bold uppercase mb-1">Vista Previa:</div>
+                                        <ReactMarkdown className="prose prose-invert prose-sm max-w-none">{formData.question}</ReactMarkdown>
+                                    </div>
+                                )}
                             </div>
 
                             <div>
@@ -667,6 +674,12 @@ export const AdminChallenges = () => {
                                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none resize-none text-sm"
                                     placeholder="ej: ¿Cuál es la traducción de 'gato'?"
                                 />
+                                {formData.question_es && (
+                                    <div className="mt-2 p-3 bg-gray-900 rounded-lg border border-gray-750 text-sm text-gray-300">
+                                        <div className="text-[10px] text-gray-500 font-bold uppercase mb-1">Vista Previa:</div>
+                                        <ReactMarkdown className="prose prose-invert prose-sm max-w-none">{formData.question_es}</ReactMarkdown>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Options section - Hide option 2/3 for pronunciation if not needed, but keep them for others */}
@@ -784,6 +797,12 @@ export const AdminChallenges = () => {
                                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none resize-none text-xs"
                                     placeholder="ej: 'Cat' significa gato en inglés."
                                 />
+                                {formData.explanation_es && (
+                                    <div className="mt-2 p-3 bg-gray-900 rounded-lg border border-gray-750 text-xs text-gray-300">
+                                        <div className="text-[10px] text-gray-500 font-bold uppercase mb-1">Vista Previa:</div>
+                                        <ReactMarkdown className="prose prose-invert prose-sm max-w-none">{formData.explanation_es}</ReactMarkdown>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="pt-4 flex gap-3">

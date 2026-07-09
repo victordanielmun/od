@@ -116,6 +116,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const [taskCompletedBanner, setTaskCompletedBanner] = useState(null);
     const [npcTaskDone, setNpcTaskDone] = useState(false); // this NPC's task already completed by the player
     const [showKaraoke, setShowKaraoke] = useState(true); // karaoke overlay visible while its task is current
+    const [missionFilter, setMissionFilter] = useState('all');
     const hasPlayedGreeting = useRef(false);
     const taskBannerTimeoutRef = useRef(null);
 
@@ -1003,8 +1004,44 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                         </button>
                                     )}
 
+                                    {/* Missions Filter */}
+                                    {(resolvedType || npcType) === 'quest_master' && availableMissions.length > 0 && (
+                                        <div className="flex justify-end w-full mb-2">
+                                            <select
+                                                value={missionFilter}
+                                                onChange={(e) => setMissionFilter(e.target.value)}
+                                                className="p-2 border-2 border-[var(--color-gold)] bg-[var(--color-parchment)] font-medieval text-[var(--color-base-dark)] shadow-md focus:outline-none focus:ring-2 focus:ring-[var(--color-orange-vibrant)] cursor-pointer"
+                                            >
+                                                <option value="all">{t('npc.dialogue.filter_all', { defaultValue: 'Todas' })}</option>
+                                                <option value="uncompleted">{t('npc.dialogue.filter_uncompleted', { defaultValue: 'No realizadas' })}</option>
+                                                <option value="npc">NPC</option>
+                                                <option value="item">{t('npc.dialogue.filter_item', { defaultValue: 'Búsqueda de Item' })}</option>
+                                                <option value="karaoke">Karaoke</option>
+                                                <option value="combat">{t('npc.dialogue.filter_combat', { defaultValue: 'Combate' })}</option>
+                                            </select>
+                                        </div>
+                                    )}
+
                                     {/* Missions List */}
-                                    {availableMissions.map(m => (
+                                    {availableMissions.filter(m => {
+                                        if (missionFilter === 'all') return true;
+                                        if (missionFilter === 'uncompleted') return m.status !== 'completed';
+                                        
+                                        const mType = m.mission_type || m.type;
+                                        const tType = m.current_task_type;
+                                        
+                                        const isNpc = ['talk_to_npc', 'deliver_message'].includes(tType) || ['talk_to_npc', 'deliver_message'].includes(mType);
+                                        const isItem = ['find_item', 'bring_item', 'collect_items', 'find_items'].includes(tType) || ['find_item', 'bring_item', 'collect_items', 'find_items'].includes(mType);
+                                        const isKaraoke = tType === 'karaoke' || mType === 'karaoke';
+                                        const isCombat = ['defeat_enemy', 'kill_boss', 'kill_all'].includes(tType) || ['defeat_enemy', 'kill_boss', 'kill_all'].includes(mType);
+
+                                        if (missionFilter === 'npc') return isNpc;
+                                        if (missionFilter === 'item') return isItem;
+                                        if (missionFilter === 'karaoke') return isKaraoke;
+                                        if (missionFilter === 'combat') return isCombat;
+                                        
+                                        return true;
+                                    }).map(m => (
                                         <div key={m.id} className="flex flex-col gap-1">
                                             <button 
                                                 onClick={() => handleSelectMission(m)}

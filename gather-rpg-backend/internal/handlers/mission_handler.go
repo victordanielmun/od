@@ -276,6 +276,7 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		Status                string          `json:"status"`
 		SceneKey              string          `json:"scene_key"`
 		Difficulty            string          `json:"difficulty"` // informative label only
+		Type                  string          `json:"mission_type"`
 		IsPremium             bool            `json:"is_premium"`
 		Locked                bool            `json:"locked"`
 		PlayerInstruction     string          `json:"player_instruction"`
@@ -439,6 +440,7 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 			Status:                summaryStatus,
 			SceneKey:              m.SceneKey,
 			Difficulty:            string(m.Difficulty),
+			Type:                  string(m.Type),
 			IsPremium:             m.IsPremium,
 			Locked:                m.IsPremium && !isPremiumUser,
 			PlayerInstruction:     instruction,

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useGameStore } from '../../store/gameStore';
+import ReactMarkdown from 'react-markdown';
 
 const COUNTDOWN_START = 10; // segundos de presión para responder
 
@@ -106,9 +107,13 @@ export const NinjaCardHUD = () => {
           <div className="inline-block px-3 py-1 bg-amber-500/20 text-amber-400 rounded-full text-xs font-bold uppercase tracking-wider mb-4 border border-amber-500/30">
             NINJA CARD
           </div>
-          <h3 className="text-2xl font-bold text-white mb-2">{challenge.question}</h3>
+          <div className="text-2xl font-bold text-white mb-2 prose prose-invert prose-2xl max-w-none prose-p:my-0">
+            <ReactMarkdown>{challenge.question}</ReactMarkdown>
+          </div>
           {challenge.question_es && (
-            <p className="text-gray-400 mb-4">{challenge.question_es}</p>
+            <div className="text-gray-400 mb-4 prose prose-invert prose-sm max-w-none prose-p:my-0">
+              <ReactMarkdown>{challenge.question_es}</ReactMarkdown>
+            </div>
           )}
         </div>
 
