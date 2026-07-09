@@ -88,8 +88,19 @@ export const useAuthStore = create((set, get) => ({
   loginGuest: async () => {
     set({ isLoading: true, error: null });
     try {
+      // Get or generate a device ID to maintain the same guest account across reloads
+      let deviceId = localStorage.getItem('guestDeviceId');
+      if (!deviceId) {
+        deviceId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+        localStorage.setItem('guestDeviceId', deviceId);
+      }
+
       const characterIds = CHARACTER_CONFIG.characters.map(c => c.id);
-      const response = await api.post('/auth/guest', { character_ids: characterIds, native_language: currentLang() });
+      const response = await api.post('/auth/guest', { 
+        character_ids: characterIds, 
+        native_language: currentLang(),
+        device_id: deviceId
+      });
       const { token, user } = response.data;
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));

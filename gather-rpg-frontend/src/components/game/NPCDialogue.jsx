@@ -198,6 +198,31 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     useEffect(() => {
         console.log("[NPCDialogue] MOUNTED. Props npcData:", npcData);
         
+        const handleInteractionComplete = () => {
+            if (npcData.autoCloseDialogue) {
+                onClose();
+            }
+        };
+
+        // Add auto-close effect
+        if (npcData.autoCloseDialogue && !missionsLoading) {
+            let timer;
+            if (autoPlay) {
+                // If autoPlay is on, close after TTS finishes
+                if (hasPlayedGreeting.current && !isTtsPlaying) {
+                    timer = setTimeout(() => onClose(), 1500);
+                }
+            } else {
+                // If autoPlay is off, just close after a few seconds
+                timer = setTimeout(() => onClose(), 3500);
+            }
+            return () => {
+                if (timer) clearTimeout(timer);
+            };
+        }
+    }, [isTtsPlaying, missionsLoading, autoPlay, npcData.autoCloseDialogue, onClose]);
+
+    useEffect(() => {
         window.dispatchEvent(new CustomEvent('npc-interaction-start', {
             detail: { templateId: npcData.templateId }
         }));

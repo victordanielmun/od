@@ -94,6 +94,8 @@ export class MapSerializer {
         facing:       getData(t.data, 'facing'),
         movement_type: getData(t.data, 'movementType'),
         waypoints:     getData(t.data, 'waypoints'),
+        autoDialogue:  getData(t.data, 'autoDialogue', false),
+        autoCloseDialogue: getData(t.data, 'autoCloseDialogue', false),
       })),
 
       pickups: mm.pickups.getChildren().map(t => ({
@@ -272,6 +274,8 @@ export class MapSerializer {
         facing:       t.facing,
         movementType: t.movementType || t.movement_type || 'static',
         waypoints:    Array.isArray(t.waypoints) ? t.waypoints : [],
+        autoDialogue: !!t.autoDialogue,
+        autoCloseDialogue: !!t.autoCloseDialogue,
       }));
 
       (data.pickups || []).forEach(t => place('item', t.x, t.y, null, {

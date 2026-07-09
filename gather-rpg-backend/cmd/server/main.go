@@ -301,6 +301,9 @@ func main() {
 	// Item & Shop Admin Routes
 	admin.Get("/items", adminHandler.ListItems)
 	admin.Get("/skills", adminHandler.ListSkills)
+	admin.Post("/skills", adminHandler.CreateSkill)
+	admin.Put("/skills/:id", adminHandler.UpdateSkill)
+	admin.Delete("/skills/:id", adminHandler.DeleteSkill)
 	admin.Get("/enemies", adminHandler.ListEnemies)
 	admin.Post("/enemies", adminHandler.CreateEnemy)
 	admin.Put("/enemies/:id", adminHandler.UpdateEnemy)

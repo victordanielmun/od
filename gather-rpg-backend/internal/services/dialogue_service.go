@@ -198,6 +198,13 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 	var fromCache bool
 
 	normalizedInput := normalizeInput(req.PlayerInput)
+	
+	// Build the System Prompt FIRST so we can hash it into the cache key.
+	// This guarantees that any changes made by an Admin to the NPC, Mission, 
+	// or tasks will automatically invalidate the cache!
+	systemPrompt := s.buildSystemPrompt(npcDef, instance.NPCTemplate, missionRole, currentTask, conditionMet, conditionMsg, req.PronunciationMetadata, nativeLang)
+	promptHash := hashText(systemPrompt)
+
 	// Hash the prior PLAYER turns into the cache key so it captures the conversation
 	// PATH, not just the current phrase. This makes later-turn replies cacheable
 	// safely: the same scripted path (these mission NPCs dictate the exact phrases,
@@ -206,9 +213,8 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 	// a merchant step) is never served in the wrong place. First turn = empty path =
 	// a fixed hash shared by all openings.
 	contextHash := conversationPathHash(history)
-	// Scope the cache key by native language too, so the cached npc_response_native
-	// is never served to a learner who speaks a different language.
-	cacheInput := nativeLang + "|" + contextHash + "|" + normalizedInput
+	// Scope the cache key by native language, conversation path, PROMPT HASH, and input.
+	cacheInput := nativeLang + "|" + contextHash + "|" + promptHash + "|" + normalizedInput
 	var taskID *uint
 	if currentTask != nil {
 		taskID = &currentTask.ID
@@ -225,8 +231,6 @@ func (s *DialogueService) ProcessInput(req DialogueRequest) (*DialogueResponse, 
 
 	// 5. AIService Call (if Cache Miss)
 	if !fromCache {
-		systemPrompt := s.buildSystemPrompt(npcDef, instance.NPCTemplate, missionRole, currentTask, conditionMet, conditionMsg, req.PronunciationMetadata, nativeLang)
-
 		historyPrompt := ""
 		for i := len(history) - 1; i >= 0; i-- {
 			historyPrompt += fmt.Sprintf("Player: %s\nNPC: %s\n", history[i].PlayerInput, history[i].NPCResponse)

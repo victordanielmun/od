@@ -90,9 +90,44 @@ func NewAuthService(repo *repository.UserRepository) *AuthService {
 	return &AuthService{Repo: repo}
 }
 
-func (s *AuthService) LoginGuest(characterIDs []string, nativeLang string) (*models.AuthResponse, error) {
+func (s *AuthService) LoginGuest(characterIDs []string, nativeLang string, deviceID string) (*models.AuthResponse, error) {
+	// If a deviceID is provided, check if we already have a guest account for it
+	if deviceID != "" {
+		email := fmt.Sprintf("%s@guest.local", deviceID)
+		if user, err := s.Repo.FindByEmail(email); err == nil && user.IsGuest {
+			// Found existing guest account for this device, log them in
+			token, err := utils.GenerateToken(user.ID.String(), user.Username, user.Role)
+			if err != nil {
+				return nil, err
+			}
+			return &models.AuthResponse{
+				Token: token,
+				User:  *user,
+			}, nil
+		}
+	}
+
 	guestID := uuid.New().String()
-	username := fmt.Sprintf("Guest_%s", guestID[:8])
+	if deviceID != "" {
+		guestID = deviceID
+	}
+
+	names := []string{"Leo", "Mia", "Zoe", "Max", "Sam", "Ivy", "Eli", "Ava", "Ian", "Uma", "Rex", "Fay", "Kai", "Lia", "Nia", "Ray"}
+	adjectives := []string{"Brave", "Swift", "Wild", "Bold", "Epic", "Fierce", "Cool", "Smart", "Wise", "Fast", "Grand", "True", "Sly", "Keen", "Noble", "Proud"}
+	
+	nameSeed := rand.New(rand.NewSource(time.Now().UnixNano()))
+	baseName := names[nameSeed.Intn(len(names))]
+	adjective := adjectives[nameSeed.Intn(len(adjectives))]
+	
+	// E.g., LeoBrave, MiaSwift
+	username := fmt.Sprintf("%s%s", baseName, adjective)
+
+	// If the username already exists, add a random letter to ensure uniqueness
+	if _, err := s.Repo.FindByUsername(username); err == nil {
+		letters := "abcdefghijklmnopqrstuvwxyz"
+		username = fmt.Sprintf("%s%s%c", baseName, adjective, letters[nameSeed.Intn(len(letters))])
+	}
+
 	email := fmt.Sprintf("%s@guest.local", guestID)
 	password := guestID
 

@@ -25,6 +25,9 @@ import { AdminEnemyDefinitions } from './pages/admin/AdminEnemyDefinitions';
 import { AdminChallenges } from './pages/admin/AdminChallenges';
 import { AdminWhatsApp } from './pages/admin/AdminWhatsApp';
 import { AdminBlocks } from './pages/admin/AdminBlocks';
+import { AdminSkills } from './pages/admin/AdminSkills';
+import { AdminCombatLab } from './pages/admin/AdminCombatLab';
+import { AdminBosses } from './pages/admin/AdminBosses';
 import PracticePage from './pages/PracticePage';
 import { Dashboard } from './pages/Dashboard';
 import { Membership } from './pages/Membership';
@@ -115,6 +118,9 @@ function App() {
           <Route path="challenges" element={<AdminChallenges />} />
           <Route path="whatsapp" element={<AdminWhatsApp />} />
           <Route path="blocks" element={<AdminBlocks />} />
+          <Route path="skills" element={<AdminSkills />} />
+          <Route path="combat-lab" element={<AdminCombatLab />} />
+          <Route path="bosses" element={<AdminBosses />} />
           {/* Unknown /admin/* subpath -> admin home instead of a blank Outlet */}
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>

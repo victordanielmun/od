@@ -237,6 +237,8 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 		Facing       string          `json:"facing"`
 		MovementType string          `json:"movement_type"`
 		Waypoints    json.RawMessage `json:"waypoints"`
+		AutoDialogue bool            `json:"autoDialogue"`
+		AutoCloseDialogue bool       `json:"autoCloseDialogue"`
 	}
 	type mapConfig struct {
 		NPCZones []mapObject `json:"npcZones"`
@@ -324,6 +326,8 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 				foundTmpl.MovementType = zone.MovementType
 			}
 			foundTmpl.Waypoints = zone.Waypoints
+			foundTmpl.AutoDialogue = zone.AutoDialogue
+			foundTmpl.AutoCloseDialogue = zone.AutoCloseDialogue
 			if err := s.Repo.UpdateTemplate(foundTmpl); err != nil {
 				log.Printf("[NPCService] WARN: failed to update template %d: %v", foundTmpl.ID, err)
 			}
@@ -352,6 +356,8 @@ func (s *NPCService) SyncTemplatesFromMap(sceneKey string, wallsJSON string) err
 				FacingDirection: facing,
 				MovementType:    mType,
 				Waypoints:       zone.Waypoints,
+				AutoDialogue:    zone.AutoDialogue,
+				AutoCloseDialogue: zone.AutoCloseDialogue,
 			}
 			if err := s.Repo.CreateTemplate(newTmpl); err == nil {
 				matchedTemplateIDs[newTmpl.ID] = true

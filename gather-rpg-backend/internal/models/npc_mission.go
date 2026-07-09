@@ -128,6 +128,8 @@ type NPCTemplate struct {
 	MovementRange     int             `gorm:"default:0" json:"movement_range"`
 	MovementSpeed     int             `gorm:"default:50" json:"movement_speed"`
 	Waypoints         json.RawMessage `gorm:"type:jsonb" json:"waypoints"` // List of waypoints for lead_player behavior
+	AutoDialogue      bool            `gorm:"default:false" json:"auto_dialogue"`
+	AutoCloseDialogue bool            `gorm:"default:false" json:"auto_close_dialogue"`
 	Instructions      string          `json:"instructions"`      // Custom AI instructions for this instance
 	SuccessMessage    string          `json:"success_message"`  // Message shown when "purpose" is fulfilled
 	Greeting          string          `json:"greeting"`         // Custom initial greeting for this instance

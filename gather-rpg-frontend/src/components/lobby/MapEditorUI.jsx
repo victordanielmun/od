@@ -143,7 +143,7 @@ export const MapEditorUI = ({ gameRef }) => {
   const [activeTile, setActiveTile] = useState('wall');
   const [activeTexture, setActiveTexture] = useState('sprite1');
   const [buildMeta, setBuildMeta] = useState({ portalType: 'map', targetMap: '', targetX: '', targetY: '', targetRoute: '', interactionText: '', missionIds: [] });
-  const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [], state: 'idle', facing: 'right', movementType: 'static', waypoints: [] });
+  const [npcMeta, setNpcMeta] = useState({ definitionId: '', missionIds: [], state: 'idle', facing: 'right', movementType: 'static', waypoints: [], autoDialogue: false, autoCloseDialogue: false });
   const [editingNpcRoute, setEditingNpcRoute] = useState(false);
   const [enemyMeta, setEnemyMeta] = useState({ npcId: '', waveNum: 1, hp: 50, speed: 120, damage: 10, attackRate: 1000, type: 'melee', projectileSprite: '', manaMax: 100, manaRegen: 10, hpRegen: 0, cardFailHealPct: 100 });
   const [buildScale, setBuildScale] = useState(2.5);
@@ -1400,6 +1400,27 @@ export const MapEditorUI = ({ gameRef }) => {
                       </p>
                     )}
                   </div>
+                </div>
+                
+                <div className="mb-2">
+                  <label className="flex items-center gap-2 cursor-pointer mt-3">
+                    <input
+                      type="checkbox"
+                      checked={npcMeta.autoDialogue || false}
+                      onChange={e => updateNpcMeta('autoDialogue', e.target.checked)}
+                      className="w-3 h-3 accent-yellow-500"
+                    />
+                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Activar Diálogo Automático</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer mt-2">
+                    <input
+                      type="checkbox"
+                      checked={npcMeta.autoCloseDialogue || false}
+                      onChange={e => updateNpcMeta('autoCloseDialogue', e.target.checked)}
+                      className="w-3 h-3 accent-yellow-500"
+                    />
+                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Cerrar Diálogo Automáticamente</span>
+                  </label>
                 </div>
                 
                 <p className="text-[8px] text-gray-400 italic mt-2">

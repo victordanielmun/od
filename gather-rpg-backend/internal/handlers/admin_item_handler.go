@@ -63,6 +63,43 @@ func (h *AdminHandler) ListSkills(c *fiber.Ctx) error {
 	return c.JSON(skills)
 }
 
+func (h *AdminHandler) CreateSkill(c *fiber.Ctx) error {
+	var skill models.Skill
+	if err := c.BodyParser(&skill); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
+	}
+	if err := database.DB.Create(&skill).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(201).JSON(skill)
+}
+
+func (h *AdminHandler) UpdateSkill(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var skill models.Skill
+	if err := database.DB.First(&skill, "id = ?", id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Skill not found"})
+	}
+	if err := c.BodyParser(&skill); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
+	}
+	if err := database.DB.Save(&skill).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(skill)
+}
+
+func (h *AdminHandler) DeleteSkill(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "id is required"})
+	}
+	if err := database.DB.Delete(&models.Skill{}, "id = ?", id).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.SendStatus(204)
+}
+
 func (h *AdminHandler) ListItemSprites(c *fiber.Ctx) error {
 	// Candidate paths based on common execution contexts
 	candidates := []string{

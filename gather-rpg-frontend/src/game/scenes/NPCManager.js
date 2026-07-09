@@ -154,7 +154,9 @@ export class NPCManager {
       moveTimer: 0,
       isTalking: false,
       // For follow/lead_player: NPC stays static until player talks to it first
-      isActivated: false
+      isActivated: false,
+      autoDialogue: !!tmpl.auto_dialogue,
+      autoCloseDialogue: !!tmpl.auto_close_dialogue
     };
 
     container.showDialogueBubble = (txt) => {

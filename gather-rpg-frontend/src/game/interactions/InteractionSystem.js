@@ -72,6 +72,15 @@ export class InteractionSystem {
 
         if (dist < 150) { // Interaction radius increased from 80 to 150 to allow talking across desks
           found = npc;
+
+          // Auto Dialog Trigger
+          if (npc.npcData?.autoDialogue && !npc.npcData.autoDialogueTriggered) {
+            // Check if player is not currently in a modal
+            if (!this.scene.isTyping || !this.scene.isTyping()) {
+              npc.npcData.autoDialogueTriggered = true;
+              this.triggerInteraction(npc.npcData);
+            }
+          }
         }
       });
     }
