@@ -26,13 +26,13 @@ const MissionTracker = ({ mission }) => {
       md:bottom-24 md:left-6 md:slide-in-from-bottom-4 md:w-64
       ${isCollapsed ? 'p-2 w-auto max-md:max-w-[180px] md:p-3' : 'p-3 w-[calc(100vw-2rem)] md:w-64 md:p-4'}
     `}>
-      <div 
-        className="flex justify-between items-center select-none cursor-pointer"
+      <div
+        className="flex justify-between items-start select-none cursor-pointer"
         onClick={handleToggleCollapse}
       >
-        <h3 className="text-indigo-400 font-bold text-sm flex items-center gap-2 truncate pr-2">
-          <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse shrink-0" />
-          {mission.title}
+        <h3 className="text-indigo-400 font-bold text-sm flex items-start gap-2 flex-1 min-w-0 break-words pr-2">
+          <span className="w-2 h-2 mt-1 rounded-full bg-indigo-500 animate-pulse shrink-0" />
+          <span>{mission.title}</span>
         </h3>
         <button
           onClick={(e) => {
