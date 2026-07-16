@@ -3,7 +3,7 @@ import * as Phaser from 'phaser';
 export class CameraSystem {
   constructor(scene) {
     this.scene = scene;
-    this.zoom = 1;
+    this.zoom = window.innerWidth < 768 ? 0.8 : 1;
     this.zoomMin = 0.5;
     this.zoomMax = 2;
     this.zoomStep = 0.1;

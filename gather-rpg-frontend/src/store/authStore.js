@@ -133,6 +133,24 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
+  upgradeGuest: async (username, email, password) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await api.put('/auth/guest/upgrade', { username, email, password, native_language: currentLang() });
+      const { token, user } = response.data;
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+      set({ user, token, isAuthenticated: true, isLoading: false });
+      return true;
+    } catch (error) {
+      set({
+        error: error.response?.data?.message || 'Guest upgrade failed',
+        isLoading: false
+      });
+      return false;
+    }
+  },
+
   // Persist the player's native language (drives all helper translations). Safe to call
   // for guests too. No-op on the server for unauthenticated users.
   setNativeLanguage: async (lang) => {

@@ -27,7 +27,7 @@ export const HelpOverlay = ({ onClose }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto p-2 md:p-4 animate-in fade-in duration-300">
       {/* Parchment Box */}
-      <div className="relative w-full max-w-3xl bg-[var(--color-parchment)] border-4 md:border-8 border-double border-[var(--color-gold)] p-4 md:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.8)] flex flex-col max-h-[92vh] md:max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-300 text-[var(--color-base-dark)]">
+      <div className="relative w-full max-w-3xl bg-[var(--color-parchment)] border-2 md:border-8 border-double border-[var(--color-gold)] p-3 md:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.8)] flex flex-col max-h-[90vh] md:max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-300 text-[var(--color-base-dark)]">
         {/* Parchment Texture Overlay */}
         <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/parchment.png")' }}></div>
 
@@ -38,9 +38,9 @@ export const HelpOverlay = ({ onClose }) => {
         <div className="absolute -bottom-3 -right-3 w-8 h-8 border-b-4 border-r-4 border-[var(--color-gold)]"></div>
 
         {/* Header */}
-        <div className="flex items-center gap-2 md:gap-3 mb-4 pb-2 md:mb-6 md:pb-4 border-b-2 border-[var(--color-gold-dark)]/30 relative z-10">
-          <HelpCircle className="w-6 h-6 md:w-8 md:h-8 text-[var(--color-orange-vibrant)]" />
-          <h2 className="text-xl md:text-3xl font-medieval uppercase tracking-wider">
+        <div className="flex items-center gap-2 md:gap-3 mb-3 pb-2 md:mb-6 md:pb-4 border-b-2 border-[var(--color-gold-dark)]/30 relative z-10">
+          <HelpCircle className="w-5 h-5 md:w-8 md:h-8 text-[var(--color-orange-vibrant)]" />
+          <h2 className="text-lg sm:text-xl md:text-3xl font-medieval uppercase tracking-wider pr-6">
             {isEs ? 'Guía del Aventurero' : 'Adventurer\'s Guide'}
           </h2>
           
@@ -55,7 +55,7 @@ export const HelpOverlay = ({ onClose }) => {
 
         {/* Tabs */}
         <div 
-          className="flex gap-1 md:gap-2 mb-4 md:mb-6 border-b border-gray-300 pb-1.5 md:pb-2 relative z-10 overflow-x-auto select-none"
+          className="flex gap-1 md:gap-2 mb-3 md:mb-6 border-b border-gray-300 pb-1.5 md:pb-2 relative z-10 overflow-x-auto select-none"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {tabs.map((tab) => {
@@ -65,7 +65,7 @@ export const HelpOverlay = ({ onClose }) => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1 md:gap-2 px-2.5 py-1.5 md:px-4 md:py-2 font-medieval text-[10px] sm:text-xs md:text-base uppercase border-2 transition-all cursor-pointer whitespace-nowrap ${
+                className={`flex items-center gap-1 md:gap-2 px-2 py-1.5 md:px-4 md:py-2 font-medieval text-[10px] sm:text-xs md:text-base uppercase border-2 transition-all cursor-pointer whitespace-nowrap ${
                   isActive
                     ? 'bg-[var(--color-base-dark)] border-[var(--color-gold)] text-[var(--color-gold)] shadow-md'
                     : 'bg-white/40 border-transparent text-[var(--color-base-dark)] hover:bg-white/70'
@@ -110,9 +110,9 @@ export const HelpOverlay = ({ onClose }) => {
           )}
 
           {activeTab === 'gameplay' && (
-            <div className="space-y-4 md:space-y-6 font-serif text-gray-800 animate-in fade-in duration-200">
-              <div className="bg-yellow-500/10 border-2 border-dashed border-[var(--color-gold)] p-3 md:p-4 shadow-inner">
-                <h4 className="font-medieval text-[var(--color-orange-vibrant)] text-base md:text-xl uppercase tracking-wider mb-1 md:mb-2 flex items-center gap-2">
+            <div className="space-y-3 md:space-y-6 font-serif text-gray-800 animate-in fade-in duration-200">
+              <div className="bg-yellow-500/10 border-2 border-dashed border-[var(--color-gold)] p-2 md:p-4 shadow-inner">
+                <h4 className="font-medieval text-[var(--color-orange-vibrant)] text-sm md:text-xl uppercase tracking-wider mb-1 md:mb-2 flex items-center gap-1 md:gap-2">
                   <span>🎯</span> {isEs ? 'Misión Inicial' : 'Starter Objective'}
                 </h4>
                 <p className="text-xs md:text-sm leading-relaxed font-semibold">
@@ -123,10 +123,10 @@ export const HelpOverlay = ({ onClose }) => {
               </div>
 
               <div>
-                <h3 className="text-base md:text-xl font-medieval text-[var(--color-orange-vibrant)] mb-1 md:mb-2 uppercase tracking-wide">
+                <h3 className="text-sm md:text-xl font-medieval text-[var(--color-orange-vibrant)] mb-1 md:mb-2 uppercase tracking-wide">
                   {isEs ? '1. Misiones e Interacción' : '1. Missions & Interaction'}
                 </h3>
-                <p className="text-xs md:text-sm leading-relaxed">
+                <p className="text-[11px] md:text-sm leading-relaxed">
                   {isEs 
                     ? 'Camina cerca de los NPCs y presiona la tecla de interactuar (o haz clic sobre ellos) para entablar una conversación. Los NPCs con misiones disponibles tienen marcadores especiales. Completa sus peticiones para progresar en tu aventura.' 
                     : 'Walk close to NPCs and press the interaction key (or click on them) to start a conversation. NPCs with available quests have special indicators. Complete their requests to progress in your adventure.'}
@@ -134,10 +134,10 @@ export const HelpOverlay = ({ onClose }) => {
               </div>
 
               <div>
-                <h3 className="text-base md:text-xl font-medieval text-[var(--color-orange-vibrant)] mb-1 md:mb-2 uppercase tracking-wide">
+                <h3 className="text-sm md:text-xl font-medieval text-[var(--color-orange-vibrant)] mb-1 md:mb-2 uppercase tracking-wide">
                   {isEs ? '2. Combate y Mazmorras' : '2. Combat & Dungeons'}
                 </h3>
-                <p className="text-xs md:text-sm leading-relaxed">
+                <p className="text-[11px] md:text-sm leading-relaxed">
                   {isEs 
                     ? 'Cruza portales o acepta misiones para entrar en zonas de combate (Beat \'em up). Utiliza tus habilidades mágicas (L) y ataques básicos (J / Clic) para vencer oleadas de monstruos. ¡No olvides vigilar tu barra de vida y usar pociones (Q) si estás en peligro!' 
                     : 'Cross portals or accept quests to enter combat zones (Beat \'em up). Use your magic spells (L) and basic attacks (J / Click) to defeat waves of monsters. Don\'t forget to watch your health bar and use potions (Q) if you are in danger!'}
@@ -145,10 +145,10 @@ export const HelpOverlay = ({ onClose }) => {
               </div>
 
               <div>
-                <h3 className="text-base md:text-xl font-medieval text-[var(--color-orange-vibrant)] mb-1 md:mb-2 uppercase tracking-wide">
+                <h3 className="text-sm md:text-xl font-medieval text-[var(--color-orange-vibrant)] mb-1 md:mb-2 uppercase tracking-wide">
                   {isEs ? '3. Gestión de Salas' : '3. Room Management'}
                 </h3>
-                <p className="text-xs md:text-sm leading-relaxed">
+                <p className="text-[11px] md:text-sm leading-relaxed">
                   {isEs 
                     ? 'Puedes jugar en salas públicas con otros usuarios o crear salas privadas protegidas por un código PIN para jugar cooperativamente con tus amigos. Copia el PIN desde la interfaz superior derecha para compartirlo.' 
                     : 'You can play in public rooms with other users or create private rooms protected by a PIN code to play cooperatively with your friends. Copy the PIN from the top-right interface to share it.'}

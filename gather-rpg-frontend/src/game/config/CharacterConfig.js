@@ -4,7 +4,7 @@ import { animationsByCharacter } from '../../../public/characters/_animationsByC
 const AVAILABLE_CHARACTERS = Object.keys(animationsByCharacter);
 
 export const DEFAULT_CHARACTER_SCALE = 1.5; // Escala global base de personajes (original + 0.5 de aumento)
-export const TARGET_PLAYER_HEIGHT = 108;    // Altura objetivo en píxeles en el canvas (72px original * 1.5)
+export const TARGET_PLAYER_HEIGHT = 90;    // Altura objetivo en píxeles en el canvas (72px original * 1.25)
 
 export const CHARACTER_CONFIG = {
   // Configuración base para todos los spritesheets de personajes

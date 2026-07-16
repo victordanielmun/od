@@ -6,6 +6,7 @@ import { CHARACTER_CONFIG } from '../game/config/CharacterConfig';
 import { useAssetPreloader } from '../hooks/useAssetPreloader';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
+import { GuestUpgradeModal } from '../components/auth/GuestUpgradeModal';
 import { 
   LogOut, 
   Users, 
@@ -98,6 +99,7 @@ export const Dashboard = () => {
   const [togglingNotifs, setTogglingNotifs] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [linkingWA, setLinkingWA] = useState(false);
+  const [showGuestUpgrade, setShowGuestUpgrade] = useState(false);
 
   // WhatsApp Register Flow equivalent states
   const [enableWhatsApp, setEnableWhatsApp] = useState(true);
@@ -410,6 +412,8 @@ export const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-indigo-950 to-gray-950 text-white font-sans selection:bg-yellow-500 selection:text-black py-8 px-4 sm:px-6 lg:px-8 relative">
+      <GuestUpgradeModal isOpen={showGuestUpgrade} onClose={() => setShowGuestUpgrade(false)} />
+      
       {/* Decorative backdrop glow elements */}
       <div className="absolute top-20 left-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute bottom-20 right-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none"></div>
@@ -425,6 +429,24 @@ export const Dashboard = () => {
 
       <div className="max-w-7xl mx-auto relative z-10">
         
+        {isGuest() && (
+          <div className="mb-6 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3 text-yellow-100">
+              <AlertCircle className="text-yellow-400 shrink-0" size={24} />
+              <div>
+                <h3 className="font-bold text-yellow-400 uppercase tracking-wide text-sm">Estás jugando como invitado</h3>
+                <p className="text-sm opacity-90">Completa tu registro para guardar permanentemente tus estadísticas, ítems y amigos.</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setShowGuestUpgrade(true)}
+              className="shrink-0 bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-2 px-6 rounded-xl uppercase text-xs tracking-wider transition-colors shadow-[0_0_15px_rgba(234,179,8,0.3)]"
+            >
+              Completar Registro
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <header className="flex flex-col md:flex-row justify-between items-center mb-8 pb-6 border-b border-white/10 gap-4">
           <div className="flex items-center gap-3">

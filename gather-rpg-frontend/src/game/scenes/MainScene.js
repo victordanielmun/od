@@ -14,7 +14,7 @@ export class MainScene extends Phaser.Scene {
     this.worldWidth = 2000;
     this.worldHeight = 1500;
     this.mySprite = null;
-    this.zoom = 1.1;
+    this.zoom = window.innerWidth < 768 ? 0.8 : 1.1;
     this.zoomMin = 0.6;
     this.zoomMax = 1.5;
     this.zoomStep = 0.1;

@@ -92,6 +92,24 @@ export const LoginForm = () => {
         >
           Sign In
         </button>
+
+        <div className="relative flex items-center justify-center my-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-white/10"></div>
+          </div>
+          <span className="relative px-3 bg-[#0a0a0a] text-xs uppercase tracking-widest text-gray-500 font-bold">o</span>
+        </div>
+
+        <button
+          type="button"
+          onClick={async () => {
+            const success = await useAuthStore.getState().loginGuest();
+            if (success) navigate('/dashboard');
+          }}
+          className="w-full bg-gray-900 hover:bg-gray-800 text-white font-extrabold py-3 rounded-xl transition-all font-medieval uppercase tracking-widest border border-white/10 hover:border-white/20 cursor-pointer"
+        >
+          Jugar como invitado
+        </button>
       </form>
 
       <div className="mt-6 text-center text-xs tracking-wide">

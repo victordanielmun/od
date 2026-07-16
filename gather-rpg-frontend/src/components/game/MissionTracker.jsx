@@ -21,9 +21,11 @@ const MissionTracker = ({ mission }) => {
   if (!mission) return null;
 
   return (
-    <div className={`absolute bottom-24 right-6 w-64 bg-gray-900/80 border border-gray-700 rounded-xl backdrop-blur-md shadow-2xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-4 pointer-events-auto ${
-      isCollapsed ? 'p-3' : 'p-4'
-    }`}>
+    <div className={`absolute z-50 transition-all duration-300 animate-in fade-in pointer-events-auto shadow-2xl bg-gray-900/80 border border-gray-700 rounded-xl backdrop-blur-md
+      max-md:top-4 max-md:left-4 max-md:slide-in-from-top-4 
+      md:bottom-24 md:left-6 md:slide-in-from-bottom-4 md:w-64
+      ${isCollapsed ? 'p-2 w-auto max-md:max-w-[180px] md:p-3' : 'p-3 w-[calc(100vw-2rem)] md:w-64 md:p-4'}
+    `}>
       <div 
         className="flex justify-between items-center select-none cursor-pointer"
         onClick={handleToggleCollapse}

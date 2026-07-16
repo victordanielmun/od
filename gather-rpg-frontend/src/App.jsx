@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
+import { PlayLanding } from './pages/PlayLanding';
 import ChallengeRules from './pages/resources/ChallengeRules';
 import StarterKit from './pages/resources/StarterKit';
 import DataPolicy from './pages/legal/DataPolicy';
@@ -64,6 +65,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/login" />} />
         <Route path="/event" element={<LandingPage />} />
+        <Route path="/play" element={<PlayLanding />} />
 
         {/* Resource Routes */}
         <Route path="/rules" element={<ChallengeRules />} />

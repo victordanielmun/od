@@ -252,6 +252,66 @@ func (s *AuthService) Register(req models.RegisterRequest) (*models.AuthResponse
 	}, nil
 }
 
+func (s *AuthService) UpgradeGuest(userIDStr string, req models.RegisterRequest) (*models.AuthResponse, error) {
+	_, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, errors.New("invalid user ID")
+	}
+
+	user, err := s.Repo.FindByID(userIDStr)
+	if err != nil {
+		return nil, errors.New("user not found")
+	}
+
+	if !user.IsGuest {
+		return nil, errors.New("user is already fully registered")
+	}
+
+	req.Username = strings.TrimSpace(req.Username)
+	if err := validateUsername(req.Username); err != nil {
+		return nil, err
+	}
+
+	req.Email = normalizeEmail(req.Email)
+	if strictEmailValidation {
+		if err := validateEmail(req.Email); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := validatePassword(req.Password); err != nil {
+		return nil, err
+	}
+
+	if existing, err := s.Repo.FindByEmail(req.Email); err == nil && existing.ID != user.ID {
+		return nil, errors.New("email already registered")
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+
+	user.Username = req.Username
+	user.Email = req.Email
+	user.Password = string(hashedPassword)
+	user.IsGuest = false
+
+	if err := database.DB.Save(user).Error; err != nil {
+		return nil, err
+	}
+
+	token, err := utils.GenerateToken(user.ID.String(), user.Username, user.Role)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.AuthResponse{
+		Token: token,
+		User:  *user,
+	}, nil
+}
+
 func (s *AuthService) Login(req models.LoginRequest) (*models.AuthResponse, error) {
 	// Match the normalization done at registration so login is case-insensitive.
 	user, err := s.Repo.FindByEmail(normalizeEmail(req.Email))

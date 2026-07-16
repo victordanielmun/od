@@ -428,22 +428,26 @@ export const LobbyLayout = () => {
               <Music size={16} />
             )}
           </button>
-          <button
-            onClick={() => navigate('/learn')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/30 transition-all text-xs font-bold hover:scale-105 cursor-pointer shadow-lg"
-            title="Practice English"
-          >
-            <Brain size={14} />
-            <span>Practice</span>
-          </button>
-          <button
-            onClick={() => setActiveOverlay(prev => prev === 'help' ? null : 'help')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/25 text-yellow-400 border border-yellow-500/20 transition-all text-xs font-bold hover:scale-105 cursor-pointer shadow-lg"
-            title={i18n.language?.startsWith('es') ? "Guía de Ayuda (H)" : "Help Guide (H)"}
-          >
-            <HelpCircle size={14} />
-            <span>{i18n.language?.startsWith('es') ? "Ayuda" : "Help"}</span>
-          </button>
+          {currentSceneKey === 'lobby' && (
+            <>
+              <button
+                onClick={() => navigate('/learn')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/30 transition-all text-xs font-bold hover:scale-105 cursor-pointer shadow-lg"
+                title="Practice English"
+              >
+                <Brain size={14} />
+                <span>Practice</span>
+              </button>
+              <button
+                onClick={() => setActiveOverlay(prev => prev === 'help' ? null : 'help')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/25 text-yellow-400 border border-yellow-500/20 transition-all text-xs font-bold hover:scale-105 cursor-pointer shadow-lg"
+                title={i18n.language?.startsWith('es') ? "Guía de Ayuda (H)" : "Help Guide (H)"}
+              >
+                <HelpCircle size={14} />
+                <span>{i18n.language?.startsWith('es') ? "Ayuda" : "Help"}</span>
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -468,13 +472,13 @@ export const LobbyLayout = () => {
       {/* Mission Welcome Banner */}
       {showMissionBanner && activeMission && currentSceneKey !== 'lobby' && (
         <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-top-10 duration-1000 pointer-events-none">
-          <div className="bg-black/60 backdrop-blur-xl border-t-4 border-b-4 border-yellow-500/50 p-8 shadow-[0_0_50px_rgba(234,179,8,0.3)] flex flex-col items-center min-w-[500px] rounded-2xl">
-            <div className="text-yellow-500 font-extrabold text-xs uppercase tracking-[0.5em] mb-2 opacity-80">{t('lobby.mission.started_banner')}</div>
-            <h1 className="text-white font-extrabold text-5xl uppercase tracking-tighter drop-shadow-2xl mb-4">
+          <div className="bg-black/60 backdrop-blur-xl border-t-4 border-b-4 border-yellow-500/50 p-4 sm:p-8 shadow-[0_0_50px_rgba(234,179,8,0.3)] flex flex-col items-center w-[90vw] sm:min-w-[500px] sm:w-auto rounded-2xl">
+            <div className="text-yellow-500 font-extrabold text-[10px] sm:text-xs uppercase tracking-[0.5em] mb-2 opacity-80 text-center">{t('lobby.mission.started_banner')}</div>
+            <h1 className="text-white font-extrabold text-3xl sm:text-5xl uppercase tracking-tighter drop-shadow-2xl mb-4 text-center break-words max-w-full">
               {activeMission.title}
             </h1>
             <div className="h-0.5 w-32 bg-gradient-to-r from-transparent via-yellow-500 to-transparent"></div>
-            <div className="mt-4 text-yellow-200/70 font-serif italic text-lg tracking-wide text-center max-w-md">
+            <div className="mt-4 text-yellow-200/70 font-serif italic text-sm sm:text-lg tracking-wide text-center max-w-md px-2">
               {(!i18n.language.startsWith('en') ? (activeMission.description || activeMission.description_en) : (activeMission.description_en || activeMission.description)) || activeMission.scene_key || t('lobby.mission.mysterious_adventure')}
             </div>
           </div>

@@ -351,11 +351,6 @@ export class CombatSystem {
 
     const activeMission = useGameStore.getState().activeMission;
     if (activeMission && activeMission.type !== 'defeat_enemy') {
-      const now = this.scene.time.now;
-      if (now - (this._lastAttackBlockNotifyTime || 0) > 3000) {
-        this._lastAttackBlockNotifyTime = now;
-        useNotificationStore.getState().addNotification('warning', 'El ataque está desactivado durante misiones que no son de combate.');
-      }
       return;
     }
 

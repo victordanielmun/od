@@ -228,6 +228,7 @@ func main() {
 	auth.Post("/register", authHandler.Register)
 	auth.Post("/login", authHandler.Login)
 	auth.Post("/guest", authHandler.GuestLogin)
+	auth.Put("/guest/upgrade", middleware.Protected(cfg), authHandler.UpgradeGuest)
 	auth.Post("/companion", middleware.Protected(cfg), authHandler.SetCompanion)
 	auth.Post("/terms", middleware.Protected(cfg), authHandler.AcceptTerms)
 	auth.Put("/sprite", middleware.Protected(cfg), authHandler.SetSprite)
