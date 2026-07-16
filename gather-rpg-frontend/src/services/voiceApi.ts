@@ -198,8 +198,10 @@ export interface ChallengeMetadata {
     tags: string[];
 }
 
-export async function fetchChallengeMetadata(type?: string): Promise<ChallengeMetadata> {
-    const params = type ? { type } : undefined;
+export async function fetchChallengeMetadata(type?: string, difficulty?: string): Promise<ChallengeMetadata> {
+    const params: Record<string, string> = {};
+    if (type) params.type = type;
+    if (difficulty) params.difficulty = difficulty;
     const { data } = await gatherApi.get<ChallengeMetadata>('/learning/challenges/metadata', { params });
     return data;
 }

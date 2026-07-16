@@ -25,8 +25,8 @@ func (s *LearningService) RecordAttempt(userID uuid.UUID, challengeID uuid.UUID,
 }
 
 // GetChallengeMetadata retrieves distinct difficulties and tags from the repository.
-func (s *LearningService) GetChallengeMetadata(challengeType string) ([]string, []string, error) {
-	return s.Repo.GetChallengeMetadata(challengeType)
+func (s *LearningService) GetChallengeMetadata(challengeType string, difficulty string) ([]string, []string, error) {
+	return s.Repo.GetChallengeMetadata(challengeType, difficulty)
 }
 
 func (s *LearningService) GetProfileByUserID(userID uuid.UUID) (*models.UserLearningProfile, error) {
