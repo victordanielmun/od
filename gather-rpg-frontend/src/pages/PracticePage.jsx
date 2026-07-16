@@ -56,16 +56,21 @@ export default function PracticePage() {
     }, []);
 
     // ── Load dynamic metadata ────────────────────────────────
+    // Scoped to the active tab's type: a tag like "animals" may only exist for
+    // "vocabulary" challenges, so offering it while practicing "pronunciation"
+    // produces a type+tag combo with zero matching challenges (404 on loadWord).
     useEffect(() => {
-        fetchChallengeMetadata().then((data) => {
+        const typeParam = activeTab === 'pronunciation' ? 'pronunciation' : 'vocabulary';
+        setCategory('');
+        fetchChallengeMetadata(typeParam).then((data) => {
             if (data.difficulties?.length) setDifficulties(data.difficulties);
-            if (data.tags?.length) setCategories(['', ...data.tags]);
+            setCategories(['', ...(data.tags || [])]);
         }).catch((err) => {
             console.warn('Failed to load challenge metadata, using defaults:', err);
             setDifficulties(['beginner', 'intermediate', 'advanced']);
             setCategories(['', 'vocabulary', 'greetings', 'phrases', 'sentences']);
         });
-    }, []);
+    }, [activeTab]);
 
     // ── Load a random word ──────────────────────────────────
     const loadWord = useCallback(async () => {

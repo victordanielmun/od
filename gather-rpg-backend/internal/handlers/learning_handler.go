@@ -52,7 +52,8 @@ func (h *LearningHandler) GetRandomChallenge(c *fiber.Ctx) error {
 }
 
 func (h *LearningHandler) GetChallengeMetadata(c *fiber.Ctx) error {
-	difficulties, tags, err := h.Service.GetChallengeMetadata()
+	challengeType := c.Query("type")
+	difficulties, tags, err := h.Service.GetChallengeMetadata(challengeType)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve metadata", "details": err.Error()})
 	}

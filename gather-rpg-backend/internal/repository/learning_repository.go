@@ -57,8 +57,12 @@ func (r *LearningRepository) GetRandomChallenge(challengeType string, difficulty
 	return &challenge, nil
 }
 
-// GetChallengeMetadata retrieves distinct difficulties and tags from all challenges
-func (r *LearningRepository) GetChallengeMetadata() ([]string, []string, error) {
+// GetChallengeMetadata retrieves distinct difficulties and tags from challenges.
+// When challengeType is non-empty, tags are scoped to that type only — otherwise a
+// tag that only exists for e.g. "vocabulary" (like "animals") would show up as a
+// filter option while practicing "pronunciation", producing a type+tag combo with
+// zero matching rows (404 from GetRandomChallenge).
+func (r *LearningRepository) GetChallengeMetadata(challengeType string) ([]string, []string, error) {
 	var difficulties []string
 	var tags []string
 
@@ -67,8 +71,14 @@ func (r *LearningRepository) GetChallengeMetadata() ([]string, []string, error) 
 		return nil, nil, err
 	}
 
-	// Get distinct tags (unnest the text array)
-	if err := database.DB.Raw("SELECT DISTINCT unnest(tags) FROM learning_challenges").Scan(&tags).Error; err != nil {
+	// Get distinct tags (unnest the text array), optionally scoped to a challenge type
+	tagsQuery := "SELECT DISTINCT unnest(tags) FROM learning_challenges"
+	args := []interface{}{}
+	if challengeType != "" {
+		tagsQuery += " WHERE type = ?"
+		args = append(args, challengeType)
+	}
+	if err := database.DB.Raw(tagsQuery, args...).Scan(&tags).Error; err != nil {
 		return nil, nil, err
 	}
 
