@@ -687,6 +687,11 @@
       "blocked_notice": "You have blocked {{name}}"
     }
   },
+  "combat": {
+    "action_queued": "Unstable connection: your action will be sent once reconnected",
+    "action_flushed": "Reconnected: {{count}} action(s) resent",
+    "action_dropped": "Lost {{count}} action(s) due to a prolonged disconnect"
+  },
   "items": {
     "types": {
       "consumable": "Consumable",

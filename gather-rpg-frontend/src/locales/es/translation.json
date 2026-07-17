@@ -694,6 +694,11 @@
       "blocked_notice": "Has bloqueado a {{name}}"
     }
   },
+  "combat": {
+    "action_queued": "Conexión inestable: tu acción se enviará al reconectar",
+    "action_flushed": "Reconectado: {{count}} acción(es) reenviada(s)",
+    "action_dropped": "Se perdieron {{count}} acción(es) por desconexión prolongada"
+  },
   "items": {
     "types": {
       "consumable": "Consumible",

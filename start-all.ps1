@@ -10,29 +10,47 @@ if ([string]::IsNullOrEmpty($ScriptDir)) {
 Write-Host "`n--- Starting Odyssey Development Environment ---" -ForegroundColor Cyan
 Write-Host "Project directory: $ScriptDir" -ForegroundColor Gray
 
-# Check if Docker Daemon is running
-$DockerRunning = $false
-try {
-    docker ps > $null 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        $DockerRunning = $true
-    }
-} catch {
-    $DockerRunning = $false
-}
+# ---------------------------------------------------------------------------
+# Local Postgres/Redis (Docker) toggle
+# ---------------------------------------------------------------------------
+# ACTIVO: gather-rpg-backend\.env y voice\backend\.env apuntan a la Postgres/
+# Redis REMOTA en EC2 (18.221.199.221) mientras estemos en desarrollo, para
+# que lo que corras local quede guardado en la BD real. Por eso los
+# contenedores Docker locales (Postgres, Redis y Evolution) no hacen falta y
+# este script los omite por defecto.
+#
+# Cuando los .env vuelvan a apuntar a la base de datos local, pon esto en
+# $true para que el script levante los contenedores otra vez.
+$UseLocalDatabase = $false
 
-# 1. Docker Containers
-if ($DockerRunning) {
-    Write-Host "[1/4] Starting Docker containers (Postgres, Redis & Evolution)..." -ForegroundColor Green
-    Set-Location -Path "$ScriptDir\gather-rpg-backend"
-    docker-compose up -d
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[WARNING] Failed to start Docker containers. Continuing anyway..." -ForegroundColor Yellow
+# 1. Docker Containers (Postgres, Redis & Evolution) — solo si $UseLocalDatabase
+if ($UseLocalDatabase) {
+    # Check if Docker Daemon is running
+    $DockerRunning = $false
+    try {
+        docker ps > $null 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $DockerRunning = $true
+        }
+    } catch {
+        $DockerRunning = $false
     }
-    Set-Location -Path "$ScriptDir"
+
+    if ($DockerRunning) {
+        Write-Host "[1/4] Starting Docker containers (Postgres, Redis & Evolution)..." -ForegroundColor Green
+        Set-Location -Path "$ScriptDir\gather-rpg-backend"
+        docker-compose up -d
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[WARNING] Failed to start Docker containers. Continuing anyway..." -ForegroundColor Yellow
+        }
+        Set-Location -Path "$ScriptDir"
+    } else {
+        Write-Host "[1/4] Docker is NOT running. Skipping Docker containers (Postgres, Redis & Evolution)." -ForegroundColor Yellow
+        Write-Host "      (If you need local services, please start Docker Desktop and run the script again)" -ForegroundColor DarkGray
+    }
 } else {
-    Write-Host "[1/4] Docker is NOT running. Skipping Docker containers (Postgres, Redis & Evolution)." -ForegroundColor Yellow
-    Write-Host "      (If you need local services, please start Docker Desktop and run the script again)" -ForegroundColor DarkGray
+    Write-Host "[1/4] Skipping local Docker containers (Postgres/Redis/Evolution): .env apunta a la BD remota en EC2." -ForegroundColor Yellow
+    Write-Host "      (Pon `$UseLocalDatabase = `$true en este script si necesitas la BD local, incl. Evolution/WhatsApp)" -ForegroundColor DarkGray
 }
 
 # 2. Go Backend

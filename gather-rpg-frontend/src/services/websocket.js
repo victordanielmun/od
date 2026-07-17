@@ -6,6 +6,13 @@ class WebSocketClient {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.isConnected = false;
+
+        // Messages queued via sendReliable() while the socket was down, flushed on
+        // reconnect. Bounded and time-limited so a long outage doesn't replay a pile
+        // of stale combat actions (e.g. attacking an enemy that died/despawned ages ago).
+        this.pendingReliable = [];
+        this.maxReliableQueue = 10;
+        this.reliableMaxAgeMs = 4000;
     }
 
     connect(token) {
@@ -29,6 +36,7 @@ class WebSocketClient {
             this.isConnected = true;
             this.reconnectAttempts = 0;
             this.emit('connection_status', { status: 'connected' });
+            this._flushReliableQueue();
         };
 
         this.ws.onmessage = (event) => {
@@ -97,6 +105,38 @@ class WebSocketClient {
         return false;
     }
 
+    // Like send(), but for one-shot actions the player already committed to (combat
+    // hits, item use) that must not vanish silently on a connection blip: if the
+    // socket is down, the message is queued and replayed as soon as it reconnects
+    // instead of being dropped. Returns true if sent immediately, false if queued.
+    sendReliable(type, payload) {
+        if (this.isReady()) {
+            this.ws.send(JSON.stringify({ type, payload }));
+            return true;
+        }
+        if (this.pendingReliable.length >= this.maxReliableQueue) {
+            this.pendingReliable.shift();
+        }
+        this.pendingReliable.push({ type, payload, ts: Date.now() });
+        this.emit('reliable_queued', { type, payload });
+        return false;
+    }
+
+    _flushReliableQueue() {
+        if (this.pendingReliable.length === 0) return;
+        const now = Date.now();
+        const queued = this.pendingReliable;
+        this.pendingReliable = [];
+
+        const fresh = queued.filter(m => now - m.ts <= this.reliableMaxAgeMs);
+        const droppedCount = queued.length - fresh.length;
+
+        fresh.forEach(m => this.ws.send(JSON.stringify({ type: m.type, payload: m.payload })));
+
+        if (fresh.length > 0) this.emit('reliable_flushed', { count: fresh.length });
+        if (droppedCount > 0) this.emit('reliable_dropped', { count: droppedCount });
+    }
+
     on(type, callback) {
         if (!this.listeners.has(type)) {
             this.listeners.set(type, new Set());
@@ -134,6 +174,9 @@ class WebSocketClient {
             this.ws = null;
             this.isConnected = false;
         }
+        // A deliberate disconnect (logout, leaving the map) invalidates whatever
+        // combat actions were queued for the old session — don't replay them later.
+        this.pendingReliable = [];
     }
 
     __reset() {

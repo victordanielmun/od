@@ -216,6 +216,10 @@ export class TilePlacer {
       if (metadata.role !== undefined)         sprite.data.set('role', metadata.role);
       if (metadata.state !== undefined)        sprite.data.set('state', metadata.state);
       if (metadata.facing !== undefined)       sprite.data.set('facing', metadata.facing);
+      if (metadata.movementType !== undefined) sprite.data.set('movementType', metadata.movementType);
+      if (metadata.waypoints !== undefined)    sprite.data.set('waypoints', metadata.waypoints);
+      if (metadata.autoDialogue !== undefined)      sprite.data.set('autoDialogue', metadata.autoDialogue);
+      if (metadata.autoCloseDialogue !== undefined) sprite.data.set('autoCloseDialogue', metadata.autoCloseDialogue);
       // Soportar tanto missionIds (array) como missionId (legacy singular)
       if (metadata.missionIds !== undefined) {
         sprite.data.set('missionIds', metadata.missionIds);
