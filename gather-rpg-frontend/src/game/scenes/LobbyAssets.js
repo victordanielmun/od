@@ -2,6 +2,7 @@ import { loadCharacterSprites } from '../config/CharacterConfig';
 import { loadNPCSprites } from '../config/NPCConfig';
 import { loadEnemySprites } from '../config/EnemyConfig';
 import { loadBossSprites } from '../config/BossConfig';
+import { versioned } from '../config/assetVersion';
 
 // Editor tile marker textures generated at runtime (one per tile type).
 const TILE_TYPES = [
@@ -119,7 +120,7 @@ export function preloadLobbyAssets(scene) {
   createTileTextures(scene);
 
   ATLASES.forEach(([key, image, json]) => {
-    if (!scene.textures.exists(key)) scene.load.atlas(key, image, json);
+    if (!scene.textures.exists(key)) scene.load.atlas(key, versioned(image), versioned(json));
   });
 }
 
@@ -133,7 +134,7 @@ export function loadDeferredLobbyAssets(scene, onComplete) {
   loadNPCSprites(scene);
 
   AUDIO_KEYS.forEach(([key, path]) => {
-    if (!scene.cache.audio.exists(key)) scene.load.audio(key, path);
+    if (!scene.cache.audio.exists(key)) scene.load.audio(key, versioned(path));
   });
 
   // Nothing new to fetch (warm cache / restart) → run the callback now and emit

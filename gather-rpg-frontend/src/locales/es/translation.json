@@ -478,6 +478,13 @@
       "controls_always": "Siempre Activados",
       "controls_never": "Desactivados (Ocultar)",
       "controls_desc": "Permite forzar o desactivar la visualización del control táctil en pantalla en caso de que se haya activado por error.",
+      "controls_layout": "Disposición",
+      "controls_dpad_left": "D-pad izq.",
+      "controls_dpad_right": "D-pad der.",
+      "controls_size": "Tamaño",
+      "controls_opacity": "Opacidad",
+      "controls_offset": "Altura desde el borde",
+      "controls_reset": "Restablecer controles",
       "language": "Idioma",
       "language_desc": "Tu idioma nativo. Define en qué idioma aparece la ayuda traducida bajo cada frase de los NPC. Se guarda en tu cuenta."
     },
@@ -537,7 +544,8 @@
       "exit": "Teletransporte...",
       "press_e_custom": "Presiona [E]: {{text}}",
       "press_e_read": "Presiona [E] para leer",
-      "no_destination": "⚠ Edif. sin destino configurado"
+      "no_destination": "⚠ Edif. sin destino configurado",
+      "follow_me": "¡Por aquí! ¡Sígueme!"
     },
     "editor": {
       "title": "Editor de Mapa",
@@ -673,7 +681,10 @@
       "stay_here": "Seguir aquí",
       "cooperative_badge": "🤝 Misión cooperativa",
       "competitive_badge": "⚔️ Misión competitiva",
-      "invite_friends": "Invitar amigos"
+      "invite_friends": "Invitar amigos",
+      "mode_individual": "👤 Modo Individual · Tu progreso es personal",
+      "mode_cooperative": "🤝 Modo Cooperativo · Luchen juntos por el objetivo",
+      "mode_competitive": "⚔️ Modo Competitivo · Sé el primero en conseguirlo"
     },
     "block": {
       "title": "Bloquear usuario",

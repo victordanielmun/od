@@ -184,7 +184,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const handleKaraokeComplete = (res) => {
         if (!res) return;
         if (res.task_completed || res.mission_newly_completed) {
-            fetchActiveMission(currentSceneKey, true);
+            fetchActiveMission(currentSceneKey);
         }
         if (res.mission_newly_completed) {
             setCompletedMissionData(res.mission_details);
@@ -680,7 +680,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
             if (data.task_completed || data.mission_newly_completed) {
                 console.log("[NPCDialogue] Task or Mission completed! Refreshing active mission...");
-                fetchActiveMission(currentSceneKey, true);
+                fetchActiveMission(currentSceneKey);
             }
 
             // Visual confirmation that the current task was completed (distinct from the

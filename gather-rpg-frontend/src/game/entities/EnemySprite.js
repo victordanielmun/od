@@ -123,22 +123,33 @@ export default class EnemySprite extends NPCSprite {
     
     // Actualizar estado de la animación
     if (data.fsm_state) {
-        const wasSkill = this.fsm === STATES.SKILL;
-        const wasCharge = this.fsm === STATES.CHARGE;
-        this._changeState(data.fsm_state);
-        // El stun (hurt/knocked) es autoritativo del servidor. Mantener el timer
-        // local arriba mientras el server siga mandando ese estado, para que la
-        // FSM local no salga sola del aturdimiento entre ticks (evita parpadeo).
-        if (data.fsm_state === 'hurt' || data.fsm_state === 'knocked') {
-            this.stateTimer = 250;
-        }
-        // El AoE del boss se dispara una sola vez, al entrar en 'skill'.
-        if (this.fsm === STATES.SKILL && !wasSkill) {
-            this._doSkill();
-        }
-        // Reiniciar el flag de contacto al iniciar una nueva embestida.
-        if (this.fsm === STATES.CHARGE && !wasCharge) {
-            this._chargeHitDealt = false;
+        // Ventana de predicción local (predictHit): al conectar un golpe, este cliente
+        // ya puso hurt/knocked sin esperar el round-trip al servidor. Los updates en
+        // vuelo que traen el estado ANTERIOR al golpe (chase/attack/...) no deben
+        // cancelar esa predicción; los estados que son CONSECUENCIA de un golpe
+        // (hurt/knocked/dead/ninja_card) entran siempre y disuelven la predicción.
+        const hitOutcome = data.fsm_state === 'hurt' || data.fsm_state === 'knocked' ||
+                           data.fsm_state === 'dead' || data.fsm_state === 'ninja_card';
+        const predicting = this._predictedHurtUntil && this.scene.time.now < this._predictedHurtUntil;
+        if (!predicting || hitOutcome) {
+            if (hitOutcome) this._predictedHurtUntil = 0;
+            const wasSkill = this.fsm === STATES.SKILL;
+            const wasCharge = this.fsm === STATES.CHARGE;
+            this._changeState(data.fsm_state);
+            // El stun (hurt/knocked) es autoritativo del servidor. Mantener el timer
+            // local arriba mientras el server siga mandando ese estado, para que la
+            // FSM local no salga sola del aturdimiento entre ticks (evita parpadeo).
+            if (data.fsm_state === 'hurt' || data.fsm_state === 'knocked') {
+                this.stateTimer = 250;
+            }
+            // El AoE del boss se dispara una sola vez, al entrar en 'skill'.
+            if (this.fsm === STATES.SKILL && !wasSkill) {
+                this._doSkill();
+            }
+            // Reiniciar el flag de contacto al iniciar una nueva embestida.
+            if (this.fsm === STATES.CHARGE && !wasCharge) {
+                this._chargeHitDealt = false;
+            }
         }
     }
 
@@ -359,6 +370,38 @@ export default class EnemySprite extends NPCSprite {
         knockbackVec.y * (force * 0.4)
       );
     }
+  }
+
+  // ─── Predicción local del golpe ───────────────────────────────────────────
+  // Reproduce el hurt/knocked EN EL MISMO FRAME del impacto, sin esperar el
+  // round-trip al servidor (con el tick de IA de 100ms el flinch llegaba
+  // 100-250ms tarde y el hitstop congelaba la pose equivocada). El estado real
+  // sigue siendo autoritativo: syncFromServer deja pasar los estados que son
+  // consecuencia del golpe (hurt/knocked/dead/ninja_card) y, si el server nunca
+  // confirma el stun, el stateTimer local expira y la FSM vuelve sola a chase.
+  predictHit(isStrong = false) {
+    if (!this.active || this.fsm === STATES.DEAD) return;
+    // Durante la Ninja Card el enemigo está congelado esperando la respuesta:
+    // no pisar ese estado con un flinch local.
+    if (this.fsm === 'ninja_card') return;
+
+    this._predictedHurtUntil = this.scene.time.now + 400;
+
+    // Golpe encadenado durante un stun: re-disparar la animación de dolor para
+    // que cada impacto se lea (el server extiende HurtUntil por su lado). Un
+    // golpe fuerte durante un hurt normal sube el stun a knocked.
+    if (this.fsm === STATES.HURT || this.fsm === STATES.KNOCKED) {
+      if (isStrong && this.fsm === STATES.HURT) {
+        this._changeState(STATES.KNOCKED);
+        return;
+      }
+      const key = `${this._animPrefix()}-${this._resolveAnim(this.fsm)}`;
+      if (this.scene.anims.exists(key)) this.sprite.play(key);
+      this.stateTimer = Math.max(this.stateTimer, STATE_DURATION[this.fsm] ?? 350);
+      return;
+    }
+
+    this._changeState(isStrong ? STATES.KNOCKED : STATES.HURT);
   }
 
   // ─── Update — motor de la FSM ─────────────────────────────────────────────

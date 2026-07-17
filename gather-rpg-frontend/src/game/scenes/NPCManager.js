@@ -2,6 +2,7 @@ import { useGameStore } from '../../store/gameStore';
 import { NPCSprite } from '../entities/NPCSprite';
 import { STATE_TO_ANIM } from '../config/NPCConfig';
 import api from '../../services/api';
+import i18n from '../../i18n';
 
 const Phaser = window.Phaser;
 
@@ -398,7 +399,7 @@ export class NPCManager {
           }
           if (time > (data.nextWaitShout || 0)) {
             if (typeof npc.showDialogueBubble === 'function') {
-              npc.showDialogueBubble('¡Por aquí! ¡Sígueme!');
+              npc.showDialogueBubble(i18n.t('lobby.interactions.follow_me'));
             }
             data.nextWaitShout = time + 4000;
           }

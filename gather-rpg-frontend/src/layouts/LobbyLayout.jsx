@@ -471,25 +471,38 @@ export const LobbyLayout = () => {
 
       {/* Mission Welcome Banner */}
       {showMissionBanner && activeMission && currentSceneKey !== 'lobby' && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-top-10 duration-1000 pointer-events-none">
-          <div className="bg-black/60 backdrop-blur-xl border-t-4 border-b-4 border-yellow-500/50 p-4 sm:p-8 shadow-[0_0_50px_rgba(234,179,8,0.3)] flex flex-col items-center w-[90vw] sm:min-w-[500px] sm:w-auto rounded-2xl">
-            <div className="text-yellow-500 font-extrabold text-[10px] sm:text-xs uppercase tracking-[0.5em] mb-2 opacity-80 text-center">{t('lobby.mission.started_banner')}</div>
-            <h1 className="text-white font-extrabold text-3xl sm:text-5xl uppercase tracking-tighter drop-shadow-2xl mb-4 text-center break-words max-w-full">
+        <div className="absolute top-16 sm:top-24 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-top-10 duration-1000 pointer-events-none">
+          <div className="bg-black/60 backdrop-blur-xl border-t-4 border-b-4 border-yellow-500/50 p-3 sm:p-8 shadow-[0_0_50px_rgba(234,179,8,0.3)] flex flex-col items-center w-[calc(100vw-2rem)] max-w-md sm:max-w-none sm:min-w-[500px] sm:w-auto rounded-2xl">
+            <div className="text-yellow-500 font-extrabold text-[10px] sm:text-xs uppercase tracking-[0.5em] mb-1.5 sm:mb-2 opacity-80 text-center">{t('lobby.mission.started_banner')}</div>
+            <h1 className="text-white font-extrabold text-2xl sm:text-5xl uppercase tracking-tighter drop-shadow-2xl mb-3 sm:mb-4 text-center break-words max-w-full">
               {activeMission.title}
             </h1>
             <div className="h-0.5 w-32 bg-gradient-to-r from-transparent via-yellow-500 to-transparent"></div>
-            <div className="mt-4 text-yellow-200/70 font-serif italic text-sm sm:text-lg tracking-wide text-center max-w-md px-2">
+            <div className="mt-3 sm:mt-4 text-yellow-200/70 font-serif italic text-xs sm:text-lg tracking-wide text-center max-w-md px-2 line-clamp-2 sm:line-clamp-none">
               {(!i18n.language.startsWith('en') ? (activeMission.description || activeMission.description_en) : (activeMission.description_en || activeMission.description)) || activeMission.scene_key || t('lobby.mission.mysterious_adventure')}
             </div>
+            {['individual', 'cooperative', 'competitive'].includes(activeMission.mode) && (
+              <div className={`mt-3 sm:mt-4 text-[10px] sm:text-xs font-semibold px-3 py-1 rounded-full border text-center ${
+                activeMission.mode === 'cooperative'
+                  ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
+                  : activeMission.mode === 'competitive'
+                    ? 'bg-red-500/15 border-red-400/40 text-red-200'
+                    : 'bg-sky-500/15 border-sky-400/40 text-sky-200'
+              }`}>
+                {t(`lobby.mission.mode_${activeMission.mode}`)}
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* HUD & Tracker */}
+      {/* HUD & Tracker. El tracker se monta cuando el banner "Aventura Iniciada"
+          desaparece: ambos repiten título y descripción, y en móvil comparten la
+          franja superior, así que mostrarlos a la vez satura la pantalla. */}
       {!isEditorMode && (
         <>
           <BottomHUD />
-          <MissionTracker mission={activeMission} />
+          {!showMissionBanner && <MissionTracker mission={activeMission} />}
         </>
       )}
 

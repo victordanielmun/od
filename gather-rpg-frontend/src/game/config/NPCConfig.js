@@ -1,4 +1,5 @@
 import { animationsByNPC as generatedAnims } from '../../../public/npcs/_animationsByNPC_generated.js';
+import { versioned } from './assetVersion';
 
 export const AVAILABLE_NPCS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15']; // IDs de templateId en DB
 
@@ -68,7 +69,7 @@ export const loadNPCSprites = (scene) => {
       // Phaser's loader automatically skips files already loaded.
       if (sheet.json && !scene.textures.exists(key)) {
         console.log(`[NPCConfig] Queueing atlas: ${key}`);
-        scene.load.atlas(key, sheet.path, sheet.json);
+        scene.load.atlas(key, versioned(sheet.path), versioned(sheet.json));
       }
     });
   });

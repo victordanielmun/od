@@ -471,6 +471,13 @@
       "controls_always": "Always Enabled",
       "controls_never": "Disabled (Hide)",
       "controls_desc": "Allows you to force or disable the display of touch controls on screen in case they were activated by mistake.",
+      "controls_layout": "Layout",
+      "controls_dpad_left": "D-pad left",
+      "controls_dpad_right": "D-pad right",
+      "controls_size": "Size",
+      "controls_opacity": "Opacity",
+      "controls_offset": "Distance from bottom",
+      "controls_reset": "Reset controls",
       "language": "Language",
       "language_desc": "Your native language. It sets the language of the translated helper text shown under each NPC line. Saved to your account."
     },
@@ -530,7 +537,8 @@
       "exit": "Teleporting...",
       "press_e_custom": "Press [E]: {{text}}",
       "press_e_read": "Press [E] to read",
-      "no_destination": "⚠ Build without target configured"
+      "no_destination": "⚠ Build without target configured",
+      "follow_me": "This way! Follow me!"
     },
     "editor": {
       "title": "Map Editor",
@@ -666,7 +674,10 @@
       "stay_here": "Stay here",
       "cooperative_badge": "🤝 Cooperative mission",
       "competitive_badge": "⚔️ Competitive mission",
-      "invite_friends": "Invite friends"
+      "invite_friends": "Invite friends",
+      "mode_individual": "👤 Individual Mode · Your progress is personal",
+      "mode_cooperative": "🤝 Cooperative Mode · Fight together for the goal",
+      "mode_competitive": "⚔️ Competitive Mode · Be the first to claim it"
     },
     "block": {
       "title": "Block user",

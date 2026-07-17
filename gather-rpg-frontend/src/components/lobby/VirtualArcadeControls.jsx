@@ -1,10 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../../store/gameStore';
-import { Swords, Hand, RefreshCw, Flame, Zap, Sparkles } from 'lucide-react';
+import { Swords, Sword, Hand, RefreshCw, Flame, Zap, Sparkles } from 'lucide-react';
 
 export const VirtualArcadeControls = () => {
   const currentSceneKey = useGameStore(state => state.currentSceneKey);
+  const virtualControlsLayout = useGameStore(state => state.virtualControlsLayout);
   const containerRef = useRef(null);
+
+  // Preferencias del jugador (SettingsMenu → Config): lado del D-pad, tamaño,
+  // opacidad y separación del borde inferior. translateY/scale en vez de tocar
+  // `bottom` para no pisar las posiciones base responsive (bottom-14/md:bottom-6).
+  const { dpadSide = 'left', scale = 1, opacity = 1, offsetY = 0 } = virtualControlsLayout || {};
+  const actionsSide = dpadSide === 'left' ? 'right' : 'left';
+  const clusterStyle = (side) => ({
+    opacity,
+    transform: `translateY(-${offsetY}px) scale(${scale})`,
+    transformOrigin: side === 'left' ? 'bottom left' : 'bottom right',
+  });
+  const sideClasses = (side) => side === 'left' ? 'left-4 md:left-6' : 'right-4 md:right-6';
 
   // Track button active state for visual feedback
   const [activeInputs, setActiveInputs] = useState({
@@ -141,8 +154,11 @@ export const VirtualArcadeControls = () => {
       ref={containerRef}
       className="absolute inset-0 z-10 pointer-events-none select-none touch-none flex justify-between p-4 md:p-6"
     >
-      {/* LEFT SIDE: Directional D-Pad & Sprint (Shift) */}
-      <div className="absolute bottom-14 left-4 md:bottom-6 md:left-6 flex flex-col items-center md:flex-row md:items-end gap-2 md:gap-4 pointer-events-none">
+      {/* D-Pad & Sprint cluster (lado configurable en Ajustes) */}
+      <div
+        className={`absolute bottom-14 md:bottom-6 ${sideClasses(dpadSide)} flex flex-col items-center md:flex-row md:items-end gap-2 md:gap-4 pointer-events-none`}
+        style={clusterStyle(dpadSide)}
+      >
         {/* Sprint Button (Toggles on touch/click) */}
         <button
           data-action="shift"
@@ -237,11 +253,14 @@ export const VirtualArcadeControls = () => {
         </div>
       </div>
 
-      {/* RIGHT SIDE: Action Buttons (Arcade curved layout) */}
-      <div className="absolute bottom-14 right-4 md:bottom-6 md:right-6 pointer-events-none">
+      {/* Action Buttons cluster (lado opuesto al D-pad) */}
+      <div
+        className={`absolute bottom-14 md:bottom-6 ${sideClasses(actionsSide)} pointer-events-none`}
+        style={clusterStyle(actionsSide)}
+      >
         {isCombat ? (
           /* Combat Map Action Cluster */
-          <div className="relative w-36 h-30 md:w-80 md:h-56 select-none pointer-events-none">
+          <div className="relative w-48 h-32 md:w-80 md:h-56 select-none pointer-events-none">
             {/* Top Row Actions */}
             {/* Potion (Q) */}
             <button
@@ -249,7 +268,7 @@ export const VirtualArcadeControls = () => {
               onMouseDown={() => handleButtonPress('potion', true)}
               onMouseUp={() => handleButtonPress('potion', false)}
               onMouseLeave={() => handleButtonPress('potion', false)}
-              className={`absolute top-0.5 right-28 w-10 h-10 md:top-0 md:right-56 md:w-16 md:h-16 border text-emerald-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+              className={`absolute top-1 right-36 w-11 h-11 md:top-0 md:right-56 md:w-16 md:h-16 border text-emerald-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
                 activeInputs.potion
                   ? 'bg-emerald-500/35 border-emerald-400/40 text-white scale-90 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
                   : 'bg-emerald-600/10 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.15)]'
@@ -266,7 +285,7 @@ export const VirtualArcadeControls = () => {
               onMouseDown={() => handleButtonPress('manaPotion', true)}
               onMouseUp={() => handleButtonPress('manaPotion', false)}
               onMouseLeave={() => handleButtonPress('manaPotion', false)}
-              className={`absolute top-0.5 right-19 w-10 h-10 md:top-0 md:right-40 md:w-16 md:h-16 border text-sky-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+              className={`absolute top-1 right-24 w-11 h-11 md:top-0 md:right-40 md:w-16 md:h-16 border text-sky-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
                 activeInputs.manaPotion
                   ? 'bg-sky-500/35 border-sky-400/40 text-white scale-90 shadow-[0_0_15px_rgba(14,165,233,0.4)]'
                   : 'bg-sky-600/10 border-sky-500/20 shadow-[0_0_10px_rgba(14,165,233,0.15)]'
@@ -283,7 +302,7 @@ export const VirtualArcadeControls = () => {
               onMouseDown={() => handleButtonPress('throw', true)}
               onMouseUp={() => handleButtonPress('throw', false)}
               onMouseLeave={() => handleButtonPress('throw', false)}
-              className={`absolute top-0.5 right-10 w-10 h-10 md:top-0 md:right-24 md:w-16 md:h-16 border text-teal-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+              className={`absolute top-1 right-12 w-11 h-11 md:top-0 md:right-24 md:w-16 md:h-16 border text-teal-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
                 activeInputs.throw
                   ? 'bg-teal-500/35 border-teal-400/40 text-white scale-90 shadow-[0_0_15px_rgba(20,184,166,0.4)]'
                   : 'bg-teal-600/10 border-teal-500/20 shadow-[0_0_10px_rgba(20,184,166,0.15)]'
@@ -300,7 +319,7 @@ export const VirtualArcadeControls = () => {
               onMouseDown={() => handleButtonPress('interact', true)}
               onMouseUp={() => handleButtonPress('interact', false)}
               onMouseLeave={() => handleButtonPress('interact', false)}
-              className={`absolute top-1 right-0 w-10 h-10 md:top-2 md:right-8 md:w-16 md:h-16 border text-amber-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+              className={`absolute top-1 right-0 w-11 h-11 md:top-2 md:right-8 md:w-16 md:h-16 border text-amber-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
                 activeInputs.interact
                   ? 'bg-amber-500/35 border-amber-400/40 text-white scale-90 shadow-[0_0_15px_rgba(245,158,11,0.4)]'
                   : 'bg-amber-600/10 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.15)]'
@@ -318,7 +337,7 @@ export const VirtualArcadeControls = () => {
               onMouseDown={() => handleButtonPress('dash', true)}
               onMouseUp={() => handleButtonPress('dash', false)}
               onMouseLeave={() => handleButtonPress('dash', false)}
-              className={`absolute bottom-0.5 right-28 w-10 h-10 md:bottom-2 md:right-52 md:w-16 md:h-16 border text-slate-200 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+              className={`absolute bottom-1 right-36 w-11 h-11 md:bottom-2 md:right-52 md:w-16 md:h-16 border text-slate-200 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
                 activeInputs.dash
                   ? 'bg-slate-500/35 border-slate-400/40 text-white scale-90 shadow-[0_0_15px_rgba(100,116,139,0.4)]'
                   : 'bg-slate-600/10 border-slate-500/20 shadow-[0_0_8px_rgba(100,116,139,0.15)]'
@@ -335,7 +354,7 @@ export const VirtualArcadeControls = () => {
               onMouseDown={() => handleButtonPress('combo', true)}
               onMouseUp={() => handleButtonPress('combo', false)}
               onMouseLeave={() => handleButtonPress('combo', false)}
-              className={`absolute bottom-4 right-19 w-10 h-10 md:bottom-2 md:right-36 md:w-16 md:h-16 border text-cyan-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+              className={`absolute bottom-1 right-24 w-11 h-11 md:bottom-2 md:right-36 md:w-16 md:h-16 border text-cyan-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
                 activeInputs.combo
                   ? 'bg-cyan-500/35 border-cyan-400/40 text-white scale-90 shadow-[0_0_18px_rgba(6,182,212,0.5)]'
                   : 'bg-cyan-600/10 border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
@@ -352,15 +371,15 @@ export const VirtualArcadeControls = () => {
               onMouseDown={() => handleButtonPress('attack', true)}
               onMouseUp={() => handleButtonPress('attack', false)}
               onMouseLeave={() => handleButtonPress('attack', false)}
-              className={`absolute bottom-0.5 right-10 w-10 h-10 md:bottom-2 md:right-20 md:w-16 md:h-16 border text-red-200 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+              className={`absolute bottom-1 right-12 w-11 h-11 md:bottom-2 md:right-20 md:w-16 md:h-16 border text-red-200 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
                 activeInputs.attack
                   ? 'bg-red-500/45 border-red-400/50 text-white scale-90 shadow-[0_0_20px_rgba(239,68,68,0.5)]'
                   : 'bg-red-600/12 border-red-500/20 shadow-[0_0_12px_rgba(239,68,68,0.25)]'
               }`}
-              title="Attack (J)"
+              title="Quick Strike (J)"
             >
-              <Swords className="w-4 h-4 md:w-5 md:h-5 animate-pulse" />
-              <span className="text-[6px] md:text-[9px] font-black tracking-wide">ATTACK</span>
+              <Sword className="w-4 h-4 md:w-5 md:h-5 animate-pulse" />
+              <span className="text-[6px] md:text-[9px] font-black tracking-wide">QUICK</span>
             </button>
 
             {/* Spell (L) */}
@@ -369,7 +388,7 @@ export const VirtualArcadeControls = () => {
               onMouseDown={() => handleButtonPress('spell', true)}
               onMouseUp={() => handleButtonPress('spell', false)}
               onMouseLeave={() => handleButtonPress('spell', false)}
-              className={`absolute bottom-0.5 right-0 w-10 h-10 md:bottom-2 md:right-4 md:w-16 md:h-16 border text-purple-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+              className={`absolute bottom-1 right-0 w-11 h-11 md:bottom-2 md:right-4 md:w-16 md:h-16 border text-purple-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
                 activeInputs.spell
                   ? 'bg-purple-500/35 border-purple-400/40 text-white scale-90 shadow-[0_0_15px_rgba(168,85,247,0.4)]'
                   : 'bg-purple-600/10 border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.15)]'

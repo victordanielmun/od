@@ -1,4 +1,5 @@
 import { animationsByCharacter } from '../../../public/characters/_animationsByCharacter_generated.js';
+import { versioned } from './assetVersion';
 
 // Los IDs de los personajes se detectan automáticamente desde el script generado
 const AVAILABLE_CHARACTERS = Object.keys(animationsByCharacter);
@@ -55,9 +56,9 @@ export const loadCharacterSprites = (scene) => {
           }
         }
         if (sheet.json) {
-          scene.load.atlas(key, sheet.path, sheet.json);
+          scene.load.atlas(key, versioned(sheet.path), versioned(sheet.json));
         } else {
-          scene.load.spritesheet(key, sheet.path, {
+          scene.load.spritesheet(key, versioned(sheet.path), {
             frameWidth: 48, frameHeight: 48
           });
         }

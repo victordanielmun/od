@@ -1,4 +1,5 @@
 import { animationsByEnemy as generatedAnims } from '../../../public/enemys/_animationsByEnemy_generated.js';
+import { versioned } from './assetVersion';
 
 export const AVAILABLE_ENEMIES = ['1', '2', '3', '4'];
 
@@ -32,7 +33,7 @@ export const loadEnemySprites = (scene) => {
     enemy.sheets.forEach(sheet => {
       const key = `enemy-${enemy.id}-${sheet.type}`;
       if (sheet.json && !scene.textures.exists(key)) {
-        scene.load.atlas(key, sheet.path, sheet.json);
+        scene.load.atlas(key, versioned(sheet.path), versioned(sheet.json));
       }
     });
   });

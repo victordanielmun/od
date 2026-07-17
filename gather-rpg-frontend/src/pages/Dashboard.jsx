@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore';
 import { CharacterIdleRenderer } from '../components/dashboard/CharacterIdleRenderer';
 import { CHARACTER_CONFIG } from '../game/config/CharacterConfig';
 import { useAssetPreloader } from '../hooks/useAssetPreloader';
+import { ASSET_VERSION } from '../game/config/assetVersion';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { GuestUpgradeModal } from '../components/auth/GuestUpgradeModal';
@@ -817,8 +818,10 @@ export const Dashboard = () => {
           </button>
 
           {/* Cache-warming progress: shown until every asset is in the browser
-              cache. Non-blocking — the button works at any point. */}
-          {!done && (
+              cache. Non-blocking — the button works at any point. With a warm
+              HTTP cache the bar settles almost instantly; the "cached" line stays
+              visible so it's clear the warm-up ran (and which art version). */}
+          {!done ? (
             <div className="w-full max-w-sm flex flex-col items-center gap-1.5">
               <div className="w-full h-1.5 bg-gray-900 rounded-full border border-white/5 overflow-hidden">
                 <div
@@ -832,6 +835,10 @@ export const Dashboard = () => {
                   : `Caching world assets ${loaded}/${total}`}
               </span>
             </div>
+          ) : (
+            <span className="text-[10px] uppercase tracking-widest text-gray-600 font-mono">
+              ✓ World assets cached ({total}) · art v{ASSET_VERSION}
+            </span>
           )}
         </div>
 

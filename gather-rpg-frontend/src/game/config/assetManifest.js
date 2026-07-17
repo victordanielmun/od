@@ -11,6 +11,7 @@ import { ENEMY_CONFIG } from './EnemyConfig';
 import { BOSS_CONFIG } from './BossConfig';
 import { NPC_CONFIG } from './NPCConfig';
 import { ATLASES, AUDIO_KEYS } from '../scenes/LobbyAssets';
+import { versioned } from './assetVersion';
 
 // Mirrors the "optional combo sheet" guard in loadCharacterSprites(): only warm
 // an optional sheet if the character's animations actually reference it, so we
@@ -51,7 +52,9 @@ function buildCriticalUrls() {
   ENEMY_CONFIG.enemies.forEach((e) => urls.push(...sheetUrls(e.sheets)));
   BOSS_CONFIG.bosses.forEach((b) => urls.push(...sheetUrls(b.sheets)));
 
-  return [...new Set(urls)];
+  // versioned() al final (no en sheetUrls) para aplicarlo exactamente una vez
+  // por URL, igual que hacen los loaders de Phaser en el momento de cargar.
+  return [...new Set(urls)].map(versioned);
 }
 
 // DEFERRED — the heavy, non-blocking set the lobby streams in after the map is
@@ -64,7 +67,7 @@ function buildDeferredUrls() {
   NPC_CONFIG.npcs.forEach((n) => urls.push(...sheetUrls(n.sheets)));
   AUDIO_KEYS.forEach(([, path]) => urls.push(path));
 
-  return [...new Set(urls)];
+  return [...new Set(urls)].map(versioned);
 }
 
 export const CRITICAL_ASSETS = buildCriticalUrls();

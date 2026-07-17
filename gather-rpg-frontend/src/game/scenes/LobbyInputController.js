@@ -2,6 +2,8 @@ const Phaser = window.Phaser;
 
 // Combat action keys → CombatSystem handler name. Each only fires while the
 // canvas is focused and the player isn't typing in an HTML field.
+// J = golpe rápido (lock corto, se puede machacar). K = combo de 3 golpes
+// (más lento, más daño, encadena combo1→combo2→combo3_finisher). Ver CombatSystem.
 const COMBAT_KEYS = [
   ['J', 'handlePlayerAttack'],
   ['K', 'handlePlayerCombo'],

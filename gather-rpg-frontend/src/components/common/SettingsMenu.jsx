@@ -11,7 +11,7 @@ import { LanguageSwitcher } from './LanguageSwitcher';
 export default function SettingsMenu({ onClose, initialTab = 'config' }) {
     const { t } = useTranslation();
     const { musicVolume, sfxVolume, voiceVolume, setVolume } = useAudioStore();
-    const { activeChat, sendPrivateMessage, chatRequests, acceptChatRequest, rejectChatRequest, sendEmoji, inventory, fetchInventory, useItem, virtualControlsMode, setVirtualControlsMode, activeScrollId, activeThrowableId, setActiveScroll, setActiveThrowable } = useGameStore();
+    const { activeChat, sendPrivateMessage, chatRequests, acceptChatRequest, rejectChatRequest, sendEmoji, inventory, fetchInventory, useItem, virtualControlsMode, setVirtualControlsMode, virtualControlsLayout, setVirtualControlsLayout, resetVirtualControlsLayout, activeScrollId, activeThrowableId, setActiveScroll, setActiveThrowable } = useGameStore();
 
     // ¿Esta entrada de inventario es el pergamino/arrojadizo activo de combate?
     const isActiveSlot = (inv) =>
@@ -55,10 +55,10 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
             <div
                 ref={menuRef}
-                className="bg-[var(--color-base-dark)] border-4 border-[var(--color-gold)] rounded-none shadow-[0_20px_50px_rgba(0,0,0,0.8)] w-full max-w-xl overflow-hidden text-[var(--color-pure-white)] font-sans flex flex-col max-h-[85vh] relative"
+                className="bg-[var(--color-base-dark)] border-4 border-[var(--color-gold)] rounded-none shadow-[0_20px_50px_rgba(0,0,0,0.8)] w-full max-w-xl overflow-hidden text-[var(--color-pure-white)] font-sans flex flex-col max-h-[92vh] sm:max-h-[85vh] relative"
                 style={{ outline: '2px solid var(--color-accent-blue)', outlineOffset: '-8px' }}
             >
                 {/* Decorative Corners */}
@@ -68,8 +68,8 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
                 <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-yellow-400/30 z-50 pointer-events-none"></div>
 
                 {/* Header & Tabs */}
-                <div className="bg-[var(--color-accent-blue)] border-b-4 border-[var(--color-gold)] p-4 pt-6">
-                    <div className="flex items-center justify-between mb-4">
+                <div className="bg-[var(--color-accent-blue)] border-b-4 border-[var(--color-gold)] p-3 pt-5 sm:p-4 sm:pt-6">
+                    <div className="flex items-center justify-between mb-3 sm:mb-4">
                         <h3 className="flex items-center gap-2 font-black uppercase text-sm tracking-[0.2em] text-[var(--color-gold)] font-medieval drop-shadow-sm">
                             {t('lobby.menu.title')}
                         </h3>
@@ -78,22 +78,22 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
                         </button>
                     </div>
                     
-                    <div className="flex gap-2">
-                        <button 
+                    <div className="flex gap-1.5 sm:gap-2 items-stretch">
+                        <button
                             onClick={() => setActiveTab('notifications')}
-                            className={`flex-1 flex items-center justify-center gap-2 py-2 border-2 transition-all font-medieval uppercase tracking-widest text-[11px] ${activeTab === 'notifications' ? 'bg-[var(--color-orange-vibrant)] border-[var(--color-gold)] text-white shadow-[inset_0_2px_10px_rgba(255,255,255,0.2)]' : 'bg-[var(--color-accent-blue)] border-[var(--color-gold-dark)]/50 text-[var(--color-parchment-dark)] hover:text-[var(--color-gold)]'}`}
+                            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-1.5 sm:py-2 px-1 border-2 transition-all font-medieval uppercase tracking-wide sm:tracking-widest text-[9px] sm:text-[11px] leading-tight text-center ${activeTab === 'notifications' ? 'bg-[var(--color-orange-vibrant)] border-[var(--color-gold)] text-white shadow-[inset_0_2px_10px_rgba(255,255,255,0.2)]' : 'bg-[var(--color-accent-blue)] border-[var(--color-gold-dark)]/50 text-[var(--color-parchment-dark)] hover:text-[var(--color-gold)]'}`}
                         >
                             <Bell size={14} /> {t('lobby.menu.notifications')}
                         </button>
                         <button 
                             onClick={() => setActiveTab('inventory')}
-                            className={`flex-1 flex items-center justify-center gap-2 py-2 border-2 transition-all font-medieval uppercase tracking-widest text-[11px] ${activeTab === 'inventory' ? 'bg-[var(--color-orange-vibrant)] border-[var(--color-gold)] text-white shadow-[inset_0_2px_10px_rgba(255,255,255,0.2)]' : 'bg-[var(--color-accent-blue)] border-[var(--color-gold-dark)]/50 text-[var(--color-parchment-dark)] hover:text-[var(--color-gold)]'}`}
+                            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-1.5 sm:py-2 px-1 border-2 transition-all font-medieval uppercase tracking-wide sm:tracking-widest text-[9px] sm:text-[11px] leading-tight text-center ${activeTab === 'inventory' ? 'bg-[var(--color-orange-vibrant)] border-[var(--color-gold)] text-white shadow-[inset_0_2px_10px_rgba(255,255,255,0.2)]' : 'bg-[var(--color-accent-blue)] border-[var(--color-gold-dark)]/50 text-[var(--color-parchment-dark)] hover:text-[var(--color-gold)]'}`}
                         >
                             <Backpack size={14} /> {t('lobby.menu.inventory')}
                         </button>
                         <button 
                             onClick={() => setActiveTab('config')}
-                            className={`flex-1 flex items-center justify-center gap-2 py-2 border-2 transition-all font-medieval uppercase tracking-widest text-[11px] ${activeTab === 'config' ? 'bg-[var(--color-orange-vibrant)] border-[var(--color-gold)] text-white shadow-[inset_0_2px_10px_rgba(255,255,255,0.2)]' : 'bg-[var(--color-accent-blue)] border-[var(--color-gold-dark)]/50 text-[var(--color-parchment-dark)] hover:text-[var(--color-gold)]'}`}
+                            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-1.5 sm:py-2 px-1 border-2 transition-all font-medieval uppercase tracking-wide sm:tracking-widest text-[9px] sm:text-[11px] leading-tight text-center ${activeTab === 'config' ? 'bg-[var(--color-orange-vibrant)] border-[var(--color-gold)] text-white shadow-[inset_0_2px_10px_rgba(255,255,255,0.2)]' : 'bg-[var(--color-accent-blue)] border-[var(--color-gold-dark)]/50 text-[var(--color-parchment-dark)] hover:text-[var(--color-gold)]'}`}
                         >
                             <Settings size={14} /> {t('lobby.menu.config')}
                         </button>
@@ -101,7 +101,7 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
                 </div>
 
                 {/* Body Content */}
-                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar min-h-0">
+                <div className="flex-1 overflow-y-auto p-3 sm:p-6 custom-scrollbar min-h-0">
                     
                     {activeTab === 'notifications' && (
                         <div className="flex flex-col h-full space-y-4">
@@ -190,8 +190,8 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
                     )}
 
                     {activeTab === 'inventory' && (
-                        <div className="flex flex-col gap-6">
-                            <div className="grid grid-cols-5 gap-3">
+                        <div className="flex flex-col gap-4 sm:gap-6">
+                            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 sm:gap-3">
                                 {inventory.length > 0 ? (
                                     inventory.map((inv, i) => (
                                         <div 
@@ -228,10 +228,10 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
 
                             {/* Item Details Panel */}
                             {selectedItem && (
-                                <div className="animate-slide-up bg-[var(--color-parchment)] border-4 border-[var(--color-gold)] p-5 shadow-2xl relative overflow-hidden flex gap-5">
+                                <div className="animate-slide-up bg-[var(--color-parchment)] border-4 border-[var(--color-gold)] p-4 sm:p-5 shadow-2xl relative overflow-hidden flex flex-col sm:flex-row gap-4 sm:gap-5">
                                     <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/parchment.png")' }}></div>
                                     
-                                    <div className="w-24 h-24 flex-shrink-0 bg-[var(--color-base-dark)] border-4 border-[var(--color-gold)] flex items-center justify-center shadow-[inset_0_4px_10px_rgba(0,0,0,0.5)] relative overflow-hidden group">
+                                    <div className="w-20 h-20 sm:w-24 sm:h-24 mx-auto sm:mx-0 flex-shrink-0 bg-[var(--color-base-dark)] border-4 border-[var(--color-gold)] flex items-center justify-center shadow-[inset_0_4px_10px_rgba(0,0,0,0.5)] relative overflow-hidden group">
                                         <div className="absolute inset-0 bg-gradient-to-tr from-[var(--color-gold)]/10 to-transparent"></div>
                                         <ItemIcon 
                                             iconKey={selectedItem.item?.icon_key} 
@@ -243,8 +243,8 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
                                     
                                     <div className="flex-1 flex flex-col justify-between relative z-10">
                                         <div>
-                                            <div className="flex items-center justify-between mb-1">
-                                                <h4 className="text-xl font-medieval uppercase tracking-tight text-[var(--color-base-dark)]">{selectedItem.item?.name}</h4>
+                                            <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                                                <h4 className="text-lg sm:text-xl font-medieval uppercase tracking-tight text-[var(--color-base-dark)]">{selectedItem.item?.name}</h4>
                                                 <span className="text-[10px] font-medieval bg-[var(--color-accent-blue)] text-[var(--color-gold)] px-3 py-1 border border-[var(--color-gold-dark)] shadow-sm">
                                                     {t(`items.types.${selectedItem.item?.item_type}`, { defaultValue: (selectedItem.item?.item_type || '').replace(/_/g, ' ') })}
                                                 </span>
@@ -315,7 +315,7 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
                     )}
 
                     {activeTab === 'config' && (
-                        <div className="space-y-8 py-4">                             <div className="flex flex-col gap-3">
+                        <div className="space-y-6 sm:space-y-8 py-2 sm:py-4">                             <div className="flex flex-col gap-3">
                                 <div className="flex justify-between items-center">
                                     <label className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-gold-dark)]"><Music size={16} /> {t('lobby.menu.music')}</label>
                                     <span className="text-sm font-mono text-[var(--color-parchment-dark)]">{Math.round(musicVolume * 100)}%</span>
@@ -356,12 +356,80 @@ export default function SettingsMenu({ onClose, initialTab = 'config' }) {
                                 <p className="text-[10px] text-[var(--color-parchment-dark)] italic">
                                     {t('lobby.menu.controls_desc')}
                                 </p>
+
+                                {/* Ajustes de disposición: solo tienen sentido si los controles pueden verse */}
+                                {virtualControlsMode !== 'never' && (
+                                    <div className="flex flex-col gap-4 mt-1 bg-black/25 border border-[var(--color-gold-dark)]/30 p-3">
+                                        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+                                            <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--color-gold-dark)]">{t('lobby.menu.controls_layout')}</label>
+                                            <div className="flex border-2 border-[var(--color-gold-dark)]/60">
+                                                <button
+                                                    onClick={() => setVirtualControlsLayout({ dpadSide: 'left' })}
+                                                    className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                                                        (virtualControlsLayout?.dpadSide || 'left') === 'left'
+                                                            ? 'bg-[var(--color-orange-vibrant)] text-white'
+                                                            : 'bg-black/40 text-[var(--color-parchment-dark)] hover:text-[var(--color-gold)]'
+                                                    }`}
+                                                >
+                                                    {t('lobby.menu.controls_dpad_left')}
+                                                </button>
+                                                <button
+                                                    onClick={() => setVirtualControlsLayout({ dpadSide: 'right' })}
+                                                    className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                                                        virtualControlsLayout?.dpadSide === 'right'
+                                                            ? 'bg-[var(--color-orange-vibrant)] text-white'
+                                                            : 'bg-black/40 text-[var(--color-parchment-dark)] hover:text-[var(--color-gold)]'
+                                                    }`}
+                                                >
+                                                    {t('lobby.menu.controls_dpad_right')}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--color-gold-dark)]">{t('lobby.menu.controls_size')}</label>
+                                                <span className="text-xs font-mono text-[var(--color-parchment-dark)]">{Math.round((virtualControlsLayout?.scale ?? 1) * 100)}%</span>
+                                            </div>
+                                            <input type="range" min="0.7" max="1.5" step="0.05" value={virtualControlsLayout?.scale ?? 1}
+                                                   onChange={(e) => setVirtualControlsLayout({ scale: parseFloat(e.target.value) })}
+                                                   className="w-full h-1.5 bg-black/40 rounded-lg appearance-none cursor-pointer accent-[var(--color-gold)] shadow-inner" />
+                                        </div>
+
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--color-gold-dark)]">{t('lobby.menu.controls_opacity')}</label>
+                                                <span className="text-xs font-mono text-[var(--color-parchment-dark)]">{Math.round((virtualControlsLayout?.opacity ?? 1) * 100)}%</span>
+                                            </div>
+                                            <input type="range" min="0.3" max="1" step="0.05" value={virtualControlsLayout?.opacity ?? 1}
+                                                   onChange={(e) => setVirtualControlsLayout({ opacity: parseFloat(e.target.value) })}
+                                                   className="w-full h-1.5 bg-black/40 rounded-lg appearance-none cursor-pointer accent-[var(--color-gold)] shadow-inner" />
+                                        </div>
+
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--color-gold-dark)]">{t('lobby.menu.controls_offset')}</label>
+                                                <span className="text-xs font-mono text-[var(--color-parchment-dark)]">+{virtualControlsLayout?.offsetY ?? 0}px</span>
+                                            </div>
+                                            <input type="range" min="0" max="120" step="4" value={virtualControlsLayout?.offsetY ?? 0}
+                                                   onChange={(e) => setVirtualControlsLayout({ offsetY: parseInt(e.target.value, 10) })}
+                                                   className="w-full h-1.5 bg-black/40 rounded-lg appearance-none cursor-pointer accent-[var(--color-gold)] shadow-inner" />
+                                        </div>
+
+                                        <button
+                                            onClick={resetVirtualControlsLayout}
+                                            className="self-end text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-2 border-[var(--color-gold-dark)]/60 bg-black/40 text-[var(--color-parchment-dark)] hover:text-[var(--color-gold)] hover:border-[var(--color-gold)] transition-colors"
+                                        >
+                                            {t('lobby.menu.controls_reset')}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Native language — drives the translated helper text under each NPC line.
                                 Changing it persists to the user's record via the existing PUT endpoint. */}
                             <div className="flex flex-col gap-3 pt-4 border-t border-[var(--color-gold-dark)]/25">
-                                <div className="flex items-center justify-between">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
                                     <label className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-gold-dark)]"><Languages size={16} /> {t('lobby.menu.language')}</label>
                                     <LanguageSwitcher />
                                 </div>

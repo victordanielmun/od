@@ -38,6 +38,23 @@ function resolveSpellType(item) {
   return DEFAULT_SPELL;
 }
 
+// Tipos de tarea que habilitan el combate (atacar enemigos).
+const COMBAT_TASK_TYPES = ['defeat_enemy', 'kill_boss', 'kill_all'];
+
+// Cadencia de los dos estilos de ataque. El enemigo NO muere por HP: cuando un golpe lo
+// dejaría en 0 el servidor dispara la Ninja Card y es la respuesta correcta la que lo
+// mata. Así que lo único que importa es cuánto se tarda en tiempo real en llegar a ese
+// umbral → DPS = daño / lock. El daño es autoritativo del server (attackDamage en
+// hub_combat.go): basic 10 | combo1 10 | combo2 12 | combo3_finisher 20.
+//
+//   J (golpe rápido): 10 / 450ms           → ~22 DPS — poco compromiso, sueltas y te mueves.
+//   K (combo 1→2→3):  42 / (380+380+480)   → ~34 DPS — te clava en la secuencia, rinde ~1.5x.
+//
+// INVARIANTE: el combo debe rendir MÁS DPS que machacar J. Si no, J lo vuelve inútil —
+// nadie se comprometería a la secuencia larga si el golpe suelto llega antes a la card.
+const QUICK_ATTACK_LOCK = 450;
+const COMBO_LOCKS = { combo1: 380, combo2: 380, combo3_finisher: 480 };
+
 export class CombatSystem {
   constructor(scene, enemySystem) {
     this.scene = scene;
@@ -50,6 +67,7 @@ export class CombatSystem {
     this.playerMaxMp = 100;
     this.playerAttackIFrames = 0;
     this.isDead = false;
+    this._pendingDeath = false; // muerte recibida con una Ninja Card abierta (ver onPlayerDeath)
     this.isStunned = false;
     this.hurtStaggerUntil = 0; // hit-stop arcade: aturdimiento breve tras recibir un golpe
     this._attackLockUntil = 0; // "un swing a la vez": bloquea nuevos ataques (J/K) hasta que termina la animación en curso
@@ -88,6 +106,14 @@ export class CombatSystem {
     this.onPlayerDiedServer = () => this.onPlayerDeath();
     window.addEventListener('player-died-server', this.onPlayerDiedServer);
 
+    // Al cerrarse la Ninja Card, ejecutar la muerte que llegó mientras estaba abierta.
+    this.onNinjaCardClosed = () => {
+      if (!this._pendingDeath) return;
+      this._pendingDeath = false;
+      this.onPlayerDeath();
+    };
+    window.addEventListener('ninja-card-closed', this.onNinjaCardClosed);
+
     // Maná autoritativo del servidor: el server es la fuente de verdad (persistente,
     // compartida con el inventario/Sidebar). Reconciliamos el valor local al recibirlo.
     this.onPlayerMP = (e) => {
@@ -111,6 +137,7 @@ export class CombatSystem {
     window.removeEventListener('player-mp-update', this.onPlayerMP);
     window.removeEventListener('player-hp-update', this.onPlayerHP);
     window.removeEventListener('player-died-server', this.onPlayerDiedServer);
+    window.removeEventListener('ninja-card-closed', this.onNinjaCardClosed);
     this.scene.events.off('enemy-attack', this.onEnemyAttack);
     if (this.onResize) {
       this.scene.scale.off('resize', this.onResize, this);
@@ -301,6 +328,16 @@ export class CombatSystem {
     return this.scene.time.now < this.hurtStaggerUntil;
   }
 
+  // Devuelve true si la misión activa tiene al menos una tarea de combate
+  // (kill_all, defeat_enemy o kill_boss). El campo "type" de la misión no
+  // existe a nivel raíz — vive dentro de tasks[].type.
+  _isCombatMission(mission) {
+    if (!mission) return false;
+    const tasks = mission.tasks;
+    if (!Array.isArray(tasks) || tasks.length === 0) return false;
+    return tasks.some(t => COMBAT_TASK_TYPES.includes(t.type));
+  }
+
   // Hitstop: congela las animaciones de los sprites dados un instante (freeze-frames de
   // impacto). Recibe contenedores (PlayerSprite/EnemySprite) con un `.sprite` interno.
   _hitstop(targets, ms = HITSTOP_MS) {
@@ -322,8 +359,19 @@ export class CombatSystem {
 
   onPlayerDeath() {
     console.log("[CombatSystem] Player death (server-authoritative)");
-    if (this.isDead || useGameStore.getState().ninjaCardData) return;
-    
+    if (this.isDead) return;
+
+    // La penalización por fallar una Ninja Card ('player_takes_damage', 30) se aplica
+    // con el modal todavía abierto, así que el server manda player_died ANTES del
+    // resultado. Descartar la muerte aquí dejaba al jugador vivo con 0 HP para siempre
+    // (nadie la reintentaba): la aplazamos hasta que la card se cierre, y así además el
+    // jugador alcanza a leer "¡INCORRECTO!" antes de ver la pantalla de muerte.
+    if (useGameStore.getState().ninjaCardData) {
+      console.log('[CombatSystem] Death deferred: Ninja Card still open');
+      this._pendingDeath = true;
+      return;
+    }
+
     this.isDead = true;
     
     if (this.scene.player) {
@@ -338,6 +386,9 @@ export class CombatSystem {
 
   resetDeathState() {
     this.isDead = false;
+    // Descartar cualquier muerte aplazada: ya revivimos, no debe dispararse al cerrarse
+    // una card posterior.
+    this._pendingDeath = false;
     this.isStunned = false;
     this.playerHp = 100;
     // El maná no se resetea localmente: es autoritativo del servidor (se reenvía en el
@@ -350,7 +401,7 @@ export class CombatSystem {
     if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
     const activeMission = useGameStore.getState().activeMission;
-    if (activeMission && activeMission.type !== 'defeat_enemy') {
+    if (activeMission && !this._isCombatMission(activeMission)) {
       return;
     }
 
@@ -358,33 +409,31 @@ export class CombatSystem {
     // anterior. Así el daño se aplica UNA sola vez por golpe (no se spamea el collider).
     const now = this.scene.time.now;
     if (now < this._attackLockUntil) return;
-    const ATTACK_LOCK = 400; // duración de la animación 'combo1'
-    this._attackLockUntil = now + ATTACK_LOCK;
+    // Golpe rápido (J / clic): es la opción de POCO COMPROMISO, no la de más daño. Su
+    // lock lo deja por debajo del DPS del combo a propósito (ver QUICK_ATTACK_LOCK):
+    // sirve para picar y reposicionarte, no para machacar hasta la card.
+    this._attackLockUntil = now + QUICK_ATTACK_LOCK;
+    // Un golpe rápido interrumpe cualquier combo en curso: J y K son dos estilos
+    // de ataque separados, no se pueden alternar para "trampear" el combo de K.
+    this._comboStep = 0;
 
     const charId = this.scene.player.characterId || '1';
     // El ataque básico usa 'combo1' del sheet de combate. Antes pedía 'slash', que no
     // existe en las animaciones del personaje, así que el ataque básico no animaba nada.
     if (this.scene.anims.exists(`char-${charId}-combo1`)) {
-      this.scene.player.playAnimation('combo1', ATTACK_LOCK);
+      this.scene.player.playAnimation('combo1', QUICK_ATTACK_LOCK);
     }
 
-    let nearestEnemy = null;
-    let minDist = 120;
-
-    this.enemySystem.activeEnemies.forEach((enemy, id) => {
-      if (!enemy.active || enemy.fsm === 'dead') return;
-      const dist = window.Phaser.Math.Distance.Between(this.scene.player.x, this.scene.player.y, enemy.x, enemy.y);
-      if (dist < minDist) {
-        nearestEnemy = { id, enemy };
-        minDist = dist;
-      }
-    });
+    const nearestEnemy = this._findNearestEnemy(120);
 
     if (nearestEnemy) {
-      console.log(`[CombatSystem] Hit enemy ${nearestEnemy.id} at dist ${minDist.toFixed(1)}px`);
+      console.log(`[CombatSystem] Hit enemy ${nearestEnemy.id} at dist ${nearestEnemy.dist.toFixed(1)}px`);
       useGameStore.getState().sendPlayerAttack(nearestEnemy.id, 'basic');
-      
+
       const hitEnemy = nearestEnemy.enemy;
+      // Flinch en el frame del impacto (el server lo confirma ~100-250ms después);
+      // así el hitstop de abajo congela la pose de dolor, no la de caminar/atacar.
+      hitEnemy.predictHit?.(false);
       if (hitEnemy.sprite) {
         hitEnemy.sprite.setTint(0xff2222);
         this.scene.time.delayedCall(200, () => {
@@ -403,7 +452,7 @@ export class CombatSystem {
     if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
     const activeMission = useGameStore.getState().activeMission;
-    if (activeMission && activeMission.type !== 'defeat_enemy') {
+    if (activeMission && !this._isCombatMission(activeMission)) {
       const now = this.scene.time.now;
       if (now - (this._lastAttackBlockNotifyTime || 0) > 3000) {
         this._lastAttackBlockNotifyTime = now;
@@ -417,6 +466,9 @@ export class CombatSystem {
     // Esto evita que machacar K dispare varios golpes/colliders muy rápido.
     if (now < this._attackLockUntil) return;
 
+    // K (combo): cada golpe encadenado dentro de 1s sube de combo1 → combo2 →
+    // combo3_finisher, con más daño y lock más largo que el golpe rápido de J. Si pasa
+    // más de 1s sin pulsar K (o si se usó J, que resetea _comboStep) vuelve a empezar.
     if (now - (this._lastComboTime || 0) > 1000) {
       this._comboStep = 0;
     }
@@ -424,7 +476,6 @@ export class CombatSystem {
     const charId = this.scene.player.characterId || '1';
     let animKey = 'combo1';
     let hitRange = 120;
-    let lockDuration = 400;
 
     if (this._comboStep === 0) {
       animKey = 'combo1';
@@ -433,11 +484,13 @@ export class CombatSystem {
       animKey = 'combo2';
       this._comboStep = 2;
     } else if (this._comboStep === 2) {
+      // El finisher pega más lejos y es el que más daño hace (20 → el server además le
+      // aplica el stun largo 'knocked'): es la recompensa por encadenar los 3 golpes.
       animKey = 'combo3_finisher';
       hitRange = 160;
-      lockDuration = 600;
       this._comboStep = 0;
     }
+    const lockDuration = COMBO_LOCKS[animKey];
 
     this._lastComboTime = now;
     this._attackLockUntil = now + lockDuration; // bloquea hasta que acabe esta animación
@@ -447,22 +500,16 @@ export class CombatSystem {
       this.scene.player.playAnimation(animKey, lockDuration);
     }
 
-    let nearestEnemy = null;
-    let minDist = hitRange;
-    this.enemySystem.activeEnemies.forEach((enemy, id) => {
-      if (!enemy.active || enemy.fsm === 'dead') return;
-      const dist = window.Phaser.Math.Distance.Between(this.scene.player.x, this.scene.player.y, enemy.x, enemy.y);
-      if (dist < minDist) {
-        nearestEnemy = { id, enemy };
-        minDist = dist;
-      }
-    });
+    const nearestEnemy = this._findNearestEnemy(hitRange);
 
     if (nearestEnemy) {
       console.log(`[CombatSystem Combo] Hit enemy ${nearestEnemy.id} via combo ${animKey}`);
       useGameStore.getState().sendPlayerAttack(nearestEnemy.id, animKey);
-      
+
       const hitEnemy = nearestEnemy.enemy;
+      // Flinch en el frame del impacto (el server confirma después). El finisher
+      // hace 20 de daño = strongHitDamage del server → predicción knocked.
+      hitEnemy.predictHit?.(animKey === 'combo3_finisher');
       if (hitEnemy.sprite) {
         hitEnemy.sprite.setTint(0xff2222);
         this.scene.time.delayedCall(200, () => {
@@ -474,6 +521,23 @@ export class CombatSystem {
       this._hitstop([this.scene.player, hitEnemy]);
       this.scene.cameras?.main?.shake(50, 0.004);
     }
+  }
+
+  // Enemigo activo más cercano al jugador dentro de maxDist, o null. `filter`
+  // opcional restringe candidatos (p.ej. solo los que están delante del jugador).
+  _findNearestEnemy(maxDist, filter = null) {
+    let nearest = null;
+    let minDist = maxDist;
+    this.enemySystem.activeEnemies.forEach((enemy, id) => {
+      if (!enemy.active || enemy.fsm === 'dead') return;
+      if (filter && !filter(enemy)) return;
+      const dist = window.Phaser.Math.Distance.Between(this.scene.player.x, this.scene.player.y, enemy.x, enemy.y);
+      if (dist < minDist) {
+        nearest = { id, enemy, dist };
+        minDist = dist;
+      }
+    });
+    return nearest;
   }
 
   // Devuelve la entrada de inventario a usar para un tipo (scroll/throwable): el slot
@@ -496,7 +560,7 @@ export class CombatSystem {
     if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
     const activeMission = useGameStore.getState().activeMission;
-    if (activeMission && activeMission.type !== 'defeat_enemy') {
+    if (activeMission && !this._isCombatMission(activeMission)) {
       const now = this.scene.time.now;
       if (now - (this._lastAttackBlockNotifyTime || 0) > 3000) {
         this._lastAttackBlockNotifyTime = now;
@@ -676,7 +740,7 @@ export class CombatSystem {
     if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
     const activeMission = useGameStore.getState().activeMission;
-    if (activeMission && activeMission.type !== 'defeat_enemy') {
+    if (activeMission && !this._isCombatMission(activeMission)) {
       const now = this.scene.time.now;
       if (now - (this._lastAttackBlockNotifyTime || 0) > 3000) {
         this._lastAttackBlockNotifyTime = now;
@@ -746,7 +810,20 @@ export class CombatSystem {
     if (hasSprite) fitProjectile(proj);
     proj.setDepth(this.scene.player.depth + 10);
     const direction = this.scene.player.sprite.flipX ? -1 : 1;
-    proj.body.setVelocityX(direction * 400);
+    // Auto-aim solo si se lanza "bien": hay un enemigo DELANTE del jugador (mismo
+    // lado que el facing) y alcanzable (400px/s × 1.5s de vida ≈ 600px; apuntamos
+    // hasta 500px). Entonces el proyectil sale angulado hacia él, igual que hace el
+    // thrower enemigo. Si el más cercano está detrás, no se gira: sale recto.
+    const THROW_SPEED = 400;
+    const target = this._findNearestEnemy(500, (e) => (e.x - this.scene.player.x) * direction > 0);
+    if (target) {
+      // Ángulo desde el punto de spawn del proyectil (y-20), no desde el centro del
+      // jugador: a corta distancia el desfase se nota y el tiro pasaba por encima.
+      const angle = Math.atan2(target.enemy.y - proj.y, target.enemy.x - proj.x);
+      proj.body.setVelocity(Math.cos(angle) * THROW_SPEED, Math.sin(angle) * THROW_SPEED);
+    } else {
+      proj.body.setVelocityX(direction * THROW_SPEED);
+    }
     proj.body.setAllowGravity(false);
     // Spin the throwable as it travels (tumbling), in the throw direction.
     proj.body.setAngularVelocity(direction * 540);
@@ -773,6 +850,9 @@ export class CombatSystem {
         const instanceId = enemy.config?.instance_id || enemy.npcId;
         // Pasamos el id del item arrojado para que el servidor use su effect_value como daño.
         useGameStore.getState().sendPlayerAttack(instanceId, 'throw', itemEntry.item?.id);
+        // Flinch en el frame del impacto. El server usa el effect_value del item como
+        // daño y aplica knocked si llega a strongHitDamage (20): misma regla aquí.
+        enemy.predictHit?.((itemEntry.item?.effect_value ?? 0) >= 20);
         this._spawnHitEffect(enemy.x, enemy.y);
         if (enemy.sprite) {
           enemy.sprite.setTint(0x00ffff);

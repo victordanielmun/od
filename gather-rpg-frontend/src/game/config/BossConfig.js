@@ -2,6 +2,7 @@
 // (hojas base/combat/avatar), pero cargada desde /boss/ y registrada con claves
 // 'boss-<id>-<sheet>' / animaciones 'boss-<id>-<anim>'.
 import { animationsByCharacter as animationsByBoss } from '../../../public/boss/_animationsByCharacter_generated.js';
+import { versioned } from './assetVersion';
 
 export const AVAILABLE_BOSSES = Object.keys(animationsByBoss);
 
@@ -39,7 +40,7 @@ export const loadBossSprites = (scene) => {
     boss.sheets.forEach(sheet => {
       const key = `boss-${boss.id}-${sheet.type}`;
       if (!scene.textures.exists(key)) {
-        scene.load.atlas(key, sheet.path, sheet.json);
+        scene.load.atlas(key, versioned(sheet.path), versioned(sheet.json));
       }
     });
   });

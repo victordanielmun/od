@@ -7,6 +7,29 @@ import { useNotificationStore } from './notificationStore';
 import { usePeerStore } from './peerStore';
 import i18n from '../i18n';
 
+// Preferencias de los controles táctiles. Se persisten en localStorage porque
+// son ajustes de dispositivo (no de cuenta) y deben sobrevivir recargas.
+const VIRTUAL_CONTROLS_LAYOUT_DEFAULTS = {
+    dpadSide: 'left', // 'left' = D-pad izquierda / acciones derecha (por defecto)
+    scale: 1,         // factor de tamaño de ambos clústeres (0.7–1.5)
+    opacity: 1,       // opacidad de los controles (0.3–1)
+    offsetY: 0,       // px extra de separación desde el borde inferior (0–120)
+};
+
+const loadVirtualControlsMode = () => {
+    const stored = localStorage.getItem('virtual_controls_mode');
+    return ['auto', 'always', 'never'].includes(stored) ? stored : 'auto';
+};
+
+const loadVirtualControlsLayout = () => {
+    try {
+        const stored = JSON.parse(localStorage.getItem('virtual_controls_layout') || '{}');
+        return { ...VIRTUAL_CONTROLS_LAYOUT_DEFAULTS, ...stored };
+    } catch {
+        return { ...VIRTUAL_CONTROLS_LAYOUT_DEFAULTS };
+    }
+};
+
 export const useGameStore = create(subscribeWithSelector((set, get) => ({
     isConnected: false,
     players: new Map(),
@@ -26,9 +49,22 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     challengeMessages: [],
     activeMission: null,
     inventory: [],
-    virtualControlsMode: 'auto', // 'auto' | 'always' | 'never'
+    virtualControlsMode: loadVirtualControlsMode(), // 'auto' | 'always' | 'never'
+    virtualControlsLayout: loadVirtualControlsLayout(), // { dpadSide, scale, opacity, offsetY }
 
-    setVirtualControlsMode: (mode) => set({ virtualControlsMode: mode }),
+    setVirtualControlsMode: (mode) => {
+        localStorage.setItem('virtual_controls_mode', mode);
+        set({ virtualControlsMode: mode });
+    },
+    setVirtualControlsLayout: (partial) => set(state => {
+        const layout = { ...state.virtualControlsLayout, ...partial };
+        localStorage.setItem('virtual_controls_layout', JSON.stringify(layout));
+        return { virtualControlsLayout: layout };
+    }),
+    resetVirtualControlsLayout: () => {
+        localStorage.removeItem('virtual_controls_layout');
+        set({ virtualControlsLayout: { ...VIRTUAL_CONTROLS_LAYOUT_DEFAULTS } });
+    },
 
     // Ninja Cards
     ninjaCardData: null,
@@ -70,6 +106,37 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
 
                 wsClient.on('connection_status', ({ status }) => {
                     set({ isConnected: status === 'connected' });
+                });
+
+                // Feedback for combat actions (player_attack/player_hit) sent via
+                // sendReliable while the socket was down: queued now, resolved once
+                // we reconnect (either replayed, or dropped if the outage ran long).
+                // Throttled so a burst of combo hits during one outage shows one
+                // toast, not one per hit.
+                let lastQueuedNotifyAt = 0;
+                wsClient.on('reliable_queued', () => {
+                    const now = Date.now();
+                    if (now - lastQueuedNotifyAt < 2000) return;
+                    lastQueuedNotifyAt = now;
+                    useNotificationStore.getState().addNotification(
+                        'warning',
+                        i18n.t('combat.action_queued'),
+                        3000
+                    );
+                });
+                wsClient.on('reliable_flushed', ({ count }) => {
+                    useNotificationStore.getState().addNotification(
+                        'info',
+                        i18n.t('combat.action_flushed', { count }),
+                        3000
+                    );
+                });
+                wsClient.on('reliable_dropped', ({ count }) => {
+                    useNotificationStore.getState().addNotification(
+                        'error',
+                        i18n.t('combat.action_dropped', { count }),
+                        4000
+                    );
                 });
 
                 wsClient.on('init_state', (state) => {
@@ -541,16 +608,10 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                 });
 
                 wsClient.on('enemy_died', (payload) => {
-                    // Dispatch to Phaser scenes
+                    // Dispatch to Phaser scenes. Sin toast propio: la muerte ya se
+                    // ve en el juego y enemy_kill_progress notifica el conteo; con
+                    // ambos se apilaban 2 toasts por cada kill.
                     window.dispatchEvent(new CustomEvent('enemy-died-broadcast', { detail: payload }));
-                    
-                    // Show notification if it was a player who killed it
-                    if (payload.killed_by) {
-                        const myId = String(useAuthStore.getState().user?.id || '');
-                        if (String(payload.killed_by) === myId) {
-                            useNotificationStore.getState().addNotification('success', '⚔️ ¡Enemigo derrotado!');
-                        }
-                    }
                 });
 
                 wsClient.on('enemy_kill_progress', (payload) => {
@@ -730,7 +791,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
         wsClient.send('request_map_join', { scene_key: sceneKey, type, invite_code: inviteCode });
     },
 
-    fetchActiveMission: async (sceneKey, silent = false) => {
+    fetchActiveMission: async (sceneKey) => {
         // No se limpia la misión activa de entrada: una misión puede abarcar varias
         // escenas (p. ej. la de Amy manda a comprar ítems a la pet_store). Si al
         // teletransportarte a una escena sin misión propia borráramos activeMission,
@@ -747,23 +808,10 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
 
             if (mission) {
                 // La escena tiene su propia misión activa: reemplaza la anterior.
+                // El modo (individual/coop/competitivo) ya no se anuncia con un
+                // toast aparte: se muestra como chip dentro del banner "Aventura
+                // Iniciada" para no apilar 3 avisos al iniciar la misión.
                 set({ activeMission: mission });
-
-                if (!silent) {
-                    // Multi-user mission mode notifications
-                    const { addNotification } = useNotificationStore.getState();
-                    switch (mission?.mode) {
-                        case 'cooperative':
-                            addNotification('info', "🤝 Modo Cooperativo: ¡Luchen juntos por el objetivo!");
-                            break;
-                        case 'competitive':
-                            addNotification('warning', "⚔️ Modo Competitivo: ¡Sé el primero en conseguirlo!");
-                            break;
-                        case 'individual':
-                            addNotification('info', "👤 Modo Individual: Tu progreso es personal.");
-                            break;
-                    }
-                }
             } else {
                 // La escena no tiene misión activa. Solo se limpia el tracker si la
                 // misión activa PERTENECE a esta escena (se completó/quitó aquí). Si
@@ -946,6 +994,9 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
             window.dispatchEvent(new CustomEvent('phaser-enable-input'));
             const canvas = document.querySelector('canvas');
             if (canvas) canvas.focus();
+            // El servidor puede matarnos con la card abierta (penalización por fallar):
+            // CombatSystem aplaza esa muerte y la ejecuta al recibir este evento.
+            window.dispatchEvent(new CustomEvent('ninja-card-closed'));
         }
     },
 
@@ -956,7 +1007,9 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
             // El servidor decide el daño según attack_type; el cliente solo informa el tipo.
             // Para arrojables se manda el item_id: el servidor lee su effect_value de la BD
             // (daño definido por el admin), nunca un valor de daño enviado por el cliente.
-            wsClient.send('player_attack', {
+            // sendReliable (no send): un combo aterrizado no debe perderse en silencio si
+            // el socket está caído en ese instante — se encola y se reenvía al reconectar.
+            wsClient.sendReliable('player_attack', {
                 target_instance_id: enemyInstanceId,
                 attack_type: attackType,
                 ...(itemId ? { item_id: itemId } : {}),
@@ -969,7 +1022,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     sendPlayerHit: (enemyInstanceId) => {
         const roomId = get().currentRoomId;
         if (roomId && enemyInstanceId) {
-            wsClient.send('player_hit', { enemy_instance_id: enemyInstanceId, room_id: roomId });
+            wsClient.sendReliable('player_hit', { enemy_instance_id: enemyInstanceId, room_id: roomId });
         }
     },
 

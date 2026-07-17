@@ -4,9 +4,13 @@ import { useTranslation } from 'react-i18next';
 const MissionTracker = ({ mission }) => {
   const { t, i18n } = useTranslation();
   
-  // Load initial collapse state from localStorage
+  // Load initial collapse state from localStorage. Sin preferencia guardada,
+  // en pantallas pequeñas arranca colapsado: expandido ocupa casi todo el ancho
+  // y tapa el juego justo después del banner de inicio de misión.
   const [isCollapsed, setIsCollapsed] = useState(() => {
-    return localStorage.getItem('mission_tracker_collapsed') === 'true';
+    const stored = localStorage.getItem('mission_tracker_collapsed');
+    if (stored !== null) return stored === 'true';
+    return window.matchMedia('(max-width: 767px)').matches;
   });
 
   // Sync state changes to localStorage

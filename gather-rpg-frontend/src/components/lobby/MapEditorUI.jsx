@@ -240,7 +240,9 @@ export const MapEditorUI = ({ gameRef }) => {
           state: mapFaceToBodyState(metadata.state || 'idle'),
           facing: metadata.facing || 'right',
           movementType: metadata.movementType || metadata.movement_type || 'static',
-          waypoints: Array.isArray(metadata.waypoints) ? metadata.waypoints : []
+          waypoints: Array.isArray(metadata.waypoints) ? metadata.waypoints : [],
+          autoDialogue: !!metadata.autoDialogue,
+          autoCloseDialogue: !!metadata.autoCloseDialogue
         };
         setNpcMeta(nm);
         dispatchEditorCommand('setNPCMetadata', nm);
