@@ -53,19 +53,20 @@ const PrivateRoute = ({ children }) => {
 };
 
 // Catch-all for unknown routes: send authenticated users to the dashboard and
-// everyone else to login, instead of rendering a blank page.
+// everyone else to the landing, instead of rendering a blank page.
 const NotFoundRedirect = () => {
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
-  return <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />;
+  return <Navigate to={isAuthenticated ? '/dashboard' : '/'} replace />;
 };
 
 function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<Navigate to="/login" />} />
+        <Route path="/" element={<PlayLanding />} />
+        {/* Enlaces antiguos a /play (QRs, redes) siguen funcionando */}
+        <Route path="/play" element={<Navigate to="/" replace />} />
         <Route path="/event" element={<LandingPage />} />
-        <Route path="/play" element={<PlayLanding />} />
 
         {/* Resource Routes */}
         <Route path="/rules" element={<ChallengeRules />} />

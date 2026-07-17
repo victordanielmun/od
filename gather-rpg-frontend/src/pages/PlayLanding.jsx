@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { CharacterIdleRenderer } from '../components/dashboard/CharacterIdleRenderer';
+import { DialogueDemo } from '../components/landing/DialogueDemo';
 import {
   Swords,
   Brain,
@@ -18,7 +19,40 @@ import {
   Shield,
   Coins,
   Award,
+  Instagram,
+  Facebook,
 } from 'lucide-react';
+
+const TikTokIcon = ({ size = 18, className = '' }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
+  </svg>
+);
+
+const SOCIALS = [
+  {
+    label: 'TikTok',
+    href: 'https://www.tiktok.com/@odisearpg',
+    icon: TikTokIcon,
+  },
+  {
+    label: 'Instagram',
+    href: 'https://www.instagram.com/playodisearpg/',
+    icon: Instagram,
+  },
+  {
+    label: 'Facebook',
+    href: 'https://www.facebook.com/playodisearpg/',
+    icon: Facebook,
+  },
+];
 
 const FEATURES = [
   {
@@ -68,6 +102,8 @@ const FEATURES = [
     glow: 'bg-amber-600/10',
     title: 'Misiones premium',
     desc: 'Desbloquea contenido exclusivo y avanza más rápido con la membresía.',
+    to: '/membership',
+    linkLabel: 'Ver planes',
   },
 ];
 
@@ -129,19 +165,26 @@ export const PlayLanding = () => {
               Odisea RPG
             </span>
           </div>
+          <nav className="hidden md:flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-gray-400">
+            <a href="#demo" className="px-3 py-2 hover:text-yellow-400 transition-colors">Demo</a>
+            <a href="#caracteristicas" className="px-3 py-2 hover:text-yellow-400 transition-colors">Características</a>
+            <a href="#como-funciona" className="px-3 py-2 hover:text-yellow-400 transition-colors">Cómo funciona</a>
+          </nav>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/login')}
-              className="hidden sm:inline-flex text-xs font-bold uppercase tracking-wider text-gray-300 hover:text-yellow-400 transition-colors px-3 py-2 cursor-pointer"
-            >
-              Iniciar sesión
-            </button>
+            {!isAuthenticated && (
+              <button
+                onClick={() => navigate('/login')}
+                className="hidden sm:inline-flex text-xs font-bold uppercase tracking-wider text-gray-300 hover:text-yellow-400 transition-colors px-3 py-2 cursor-pointer"
+              >
+                Iniciar sesión
+              </button>
+            )}
             <button
               onClick={handlePlayNow}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 text-black text-xs font-extrabold uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.25)] hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] hover:scale-105 active:scale-95 transition-all cursor-pointer"
             >
               <Gamepad2 size={16} />
-              <span>Jugar</span>
+              <span>{isAuthenticated ? 'Entrar' : 'Jugar'}</span>
             </button>
           </div>
         </div>
@@ -157,6 +200,11 @@ export const PlayLanding = () => {
             <img
               src="/banners/home.jpg"
               alt="Odisea RPG — Level up your English"
+              width="1645"
+              height="1276"
+              // React 18 solo acepta el atributo en minúsculas; fetchPriority es React 19+
+              // eslint-disable-next-line react/no-unknown-property
+              fetchpriority="high"
               className="relative w-full h-auto rounded-2xl border-2 border-yellow-500/30 shadow-2xl"
             />
           </div>
@@ -196,8 +244,19 @@ export const PlayLanding = () => {
           </div>
         </section>
 
+        {/* Live dialogue demo */}
+        <section id="demo" className="pb-16 scroll-mt-20">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl sm:text-3xl font-extrabold font-medieval uppercase tracking-wide bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-500 bg-clip-text text-transparent">
+              Míralo en acción
+            </h2>
+            <p className="text-gray-400 text-sm mt-2">Así es una conversación con tu coach de IA dentro del juego</p>
+          </div>
+          <DialogueDemo onPlay={handlePlayNow} />
+        </section>
+
         {/* Feature grid */}
-        <section className="pb-16">
+        <section id="caracteristicas" className="pb-16 scroll-mt-20">
           <div className="text-center mb-10">
             <h2 className="text-2xl sm:text-3xl font-extrabold font-medieval uppercase tracking-wide bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-500 bg-clip-text text-transparent">
               Todo un mundo por explorar
@@ -206,7 +265,7 @@ export const PlayLanding = () => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {FEATURES.map(({ icon: Icon, color, ring, glow, title, desc }) => (
+            {FEATURES.map(({ icon: Icon, color, ring, glow, title, desc, to, linkLabel }) => (
               <div
                 key={title}
                 className={`bg-black/40 backdrop-blur-md border ${ring} rounded-2xl p-6 shadow-2xl transition-all hover:-translate-y-1 relative overflow-hidden`}
@@ -217,13 +276,22 @@ export const PlayLanding = () => {
                 </div>
                 <h3 className="font-bold text-white font-medieval uppercase tracking-wide text-sm mb-2">{title}</h3>
                 <p className="text-gray-400 text-sm leading-relaxed">{desc}</p>
+                {to && (
+                  <Link
+                    to={to}
+                    className="relative z-10 inline-flex items-center gap-1 mt-3 text-xs font-bold uppercase tracking-wider text-yellow-400 hover:text-yellow-300 transition-colors"
+                  >
+                    <span>{linkLabel}</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Link>
+                )}
               </div>
             ))}
           </div>
         </section>
 
         {/* How it works */}
-        <section className="pb-16">
+        <section id="como-funciona" className="pb-16 scroll-mt-20">
           <div className="bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-6 sm:p-10 shadow-2xl">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
               <div className="lg:col-span-5 flex flex-col items-center justify-center bg-gray-950/60 border border-white/5 rounded-xl p-6 min-h-[220px]">
@@ -300,12 +368,34 @@ export const PlayLanding = () => {
 
       {/* Footer */}
       <footer className="border-t border-white/10 bg-black/40 backdrop-blur-md relative z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-500">
-          <span>© {new Date().getFullYear()} Odisea RPG. Todos los derechos reservados.</span>
-          <div className="flex items-center gap-5">
-            <a href="/terms" className="hover:text-yellow-400 transition-colors">Términos</a>
-            <a href="/privacy" className="hover:text-yellow-400 transition-colors">Privacidad</a>
-            <a href="/code-of-conduct" className="hover:text-yellow-400 transition-colors">Código de conducta</a>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-4">
+          {/* Social networks */}
+          <div className="flex flex-col items-center gap-2">
+            <span className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Síguenos</span>
+            <div className="flex items-center gap-3">
+              {SOCIALS.map(({ label, href, icon: Icon }) => (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Odisea RPG en ${label}`}
+                  title={label}
+                  className="p-2.5 rounded-xl bg-gray-950/60 border border-white/10 text-gray-400 hover:text-yellow-400 hover:border-yellow-500/40 hover:scale-110 active:scale-95 transition-all"
+                >
+                  <Icon size={18} />
+                </a>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-500 border-t border-white/5 pt-4">
+            <span>© {new Date().getFullYear()} Odisea RPG. Todos los derechos reservados.</span>
+            <div className="flex items-center gap-5">
+              <Link to="/terms" className="hover:text-yellow-400 transition-colors">Términos</Link>
+              <Link to="/privacy" className="hover:text-yellow-400 transition-colors">Privacidad</Link>
+              <Link to="/code-of-conduct" className="hover:text-yellow-400 transition-colors">Código de conducta</Link>
+            </div>
           </div>
         </div>
       </footer>
