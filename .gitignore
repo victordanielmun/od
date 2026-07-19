@@ -52,4 +52,6 @@ voice/backend/uvicorn_*.txt
 # OS
 .DS_Store
 Thumbs.db
-.grepai/
+.grepai/.env.ec2
+od3.pem
+od2.pem
