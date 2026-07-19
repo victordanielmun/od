@@ -38,14 +38,18 @@ func main() {
 
 	// Seeds que antes corrían en el arranque (cmd/server/main.go).
 	database.SeedAdminUser()
-	database.SeedLearningChallenges()
 	database.SeedMotivations()
 	database.SeedGuides()
 	database.SeedSkillsAndItems()
 
 	// Seeds de contenido de inglés (antes ya eran de ejecución única).
 	database.SeedConversationPhrases()
-	database.SeedPhrasalVerbChallenges()
+
+	// Los learning challenges ya NO se siembran desde código: el catálogo
+	// predeterminado vive en seed_challenges.sql (raíz del repo) y se carga con
+	// psql — ver RECONSTRUCCION_EC2.md. (SeedLearningChallenges y
+	// SeedPhrasalVerbChallenges quedaron obsoletos; re-agregarlos duplicaría
+	// contenido que el catálogo SQL ya cubre.)
 
 	log.Println("[Seed] Done.")
 }

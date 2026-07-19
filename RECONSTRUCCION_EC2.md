@@ -54,20 +54,30 @@ go run ./cmd/seed
 ```
 
 Crea: **usuario admin `admin@odyssey.dev` / `Admin123!`** (¡cambiar el password
-en producción!), 6 retos base, catálogo de motivaciones WhatsApp, skills
-(Fire Rain/Wave/Nova) + scrolls + pociones + daga, frases del guía y retos de
-phrasal verbs.
+en producción!), catálogo de motivaciones WhatsApp, skills (Fire Rain/Wave/Nova)
++ scrolls + pociones + daga y frases del guía. Los learning challenges ya NO se
+siembran desde código — vienen del SQL del paso 4.
 
-## 4. Retos de nivel básico (SQL masivo)
+## 4. Catálogo predeterminado de learning challenges
+
+`seed_challenges.sql` (raíz del repo) es la fuente canónica: ~452 retos de
+vocabulary + pronunciation en beginner/intermediate/advanced (Card Ninja).
+La tabla necesita default de UUID (una sola vez) y timestamps al final:
 
 ```bash
-docker exec -i gather_postgres psql -U postgres -d gather_rpg < /home/ec2-user/od/basic_challenges.sql
+docker exec gather_postgres psql -U postgres -d gather_rpg -c 'ALTER TABLE learning_challenges ALTER COLUMN id SET DEFAULT gen_random_uuid();'
+docker exec -i gather_postgres psql -U postgres -d gather_rpg -v ON_ERROR_STOP=1 -1 < /home/ec2-user/od/seed_challenges.sql
+docker exec gather_postgres psql -U postgres -d gather_rpg -c "
+  DELETE FROM learning_challenges a USING learning_challenges b
+   WHERE a.type=b.type AND a.question=b.question AND a.difficulty=b.difficulty AND a.ctid > b.ctid;
+  UPDATE learning_challenges SET created_at=now(), updated_at=now() WHERE created_at IS NULL;"
 ```
+
+(Los viejos `basic_challenges.sql` y `learning_challenges.csv` quedaron
+obsoletos: su contenido fue reemplazado por este catálogo.)
 
 ## 5. Contenido vía panel admin (login con el admin del paso 3)
 
-- **Retos adicionales**: importar `learning_challenges.csv` (import CSV del
-  admin de retos).
 - **Mapas**: importar `map_export.json` (admin de mapas).
 - **Misiones y NPCs**: no tienen seed en código; recrearlas en el panel admin.
   `seed_data.sql` solo tiene una misión de ejemplo; el formato de inserción
