@@ -1264,3 +1264,432 @@ VALUES
 
 
 
+
+
+-- ============================================================
+-- AMPLIACIÓN DEL CATÁLOGO (2026-07-18) — sets adicionales
+-- Mismas reglas de los sets originales. Convención de autoría:
+-- option1 = respuesta correcta; el UPDATE final de este archivo
+-- baraja la posición real en todas las filas de vocabulary.
+-- ============================================================
+
+-- ==========================================
+-- Card Ninja — VOCABULARY / Beginner (Set 6)
+-- Enfoque: profesiones, lugares, frutas, cuerpo 2, casa,
+-- útiles escolares, adjetivos, estaciones, bebidas,
+-- animales 2 y números faltantes (3, 4, 7, 9)
+-- ==========================================
+
+INSERT INTO learning_challenges
+(type, question, option1, option2, option3, correct_option, explanation_es, question_es, tags, difficulty, language_learning, phonetic, requires_audio, audio_url)
+VALUES
+
+-- Profesiones
+('vocabulary', '"Maestro / profesor" en inglés es:', 'teacher', 'driver', 'cook', 1, '"Teacher" significa maestro o profesor.', 'Traduce la palabra', '{vocabulary,jobs}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Médico" en inglés es:', 'doctor', 'farmer', 'nurse', 1, '"Doctor" significa médico.', 'Traduce la palabra', '{vocabulary,jobs}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Enfermera / enfermero" en inglés es:', 'nurse', 'teacher', 'pilot', 1, '"Nurse" significa enfermera o enfermero.', 'Traduce la palabra', '{vocabulary,jobs}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Cocinero" en inglés es:', 'cook', 'doctor', 'singer', 1, '"Cook" significa cocinero.', 'Traduce la palabra', '{vocabulary,jobs}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Conductor / chofer" en inglés es:', 'driver', 'nurse', 'farmer', 1, '"Driver" significa conductor o chofer.', 'Traduce la palabra', '{vocabulary,jobs}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Granjero" en inglés es:', 'farmer', 'cook', 'teacher', 1, '"Farmer" significa granjero.', 'Traduce la palabra', '{vocabulary,jobs}', 'beginner', 'english', NULL, false, NULL),
+
+-- Lugares
+('vocabulary', 'What is this? 🏫', 'school', 'beach', 'farm', 1, '"School" significa escuela.', '¿Qué es esto?', '{vocabulary,places}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🏥', 'hospital', 'store', 'park', 1, '"Hospital" significa hospital.', '¿Qué es esto?', '{vocabulary,places}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🏞️', 'park', 'church', 'school', 1, '"Park" significa parque.', '¿Qué es esto?', '{vocabulary,places}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🏖️', 'beach', 'farm', 'hospital', 1, '"Beach" significa playa.', '¿Qué es esto?', '{vocabulary,places}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🏪', 'store', 'park', 'church', 1, '"Store" significa tienda.', '¿Qué es esto?', '{vocabulary,places}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? ⛪', 'church', 'school', 'beach', 1, '"Church" significa iglesia.', '¿Qué es esto?', '{vocabulary,places}', 'beginner', 'english', NULL, false, NULL),
+
+-- Frutas
+('vocabulary', 'What is this? 🍊', 'orange', 'plum', 'fig', 1, '"Orange" significa naranja.', '¿Qué es esto?', '{vocabulary,food}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🍇', 'grape', 'melon', 'kiwi', 1, '"Grape" significa uva.', '¿Qué es esto?', '{vocabulary,food}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🍓', 'strawberry', 'melon', 'fig', 1, '"Strawberry" significa fresa.', '¿Qué es esto?', '{vocabulary,food}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🍉', 'watermelon', 'kiwi', 'plum', 1, '"Watermelon" significa sandía.', '¿Qué es esto?', '{vocabulary,food}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🍋', 'lemon', 'grape', 'peach', 1, '"Lemon" significa limón.', '¿Qué es esto?', '{vocabulary,food}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🍐', 'pear', 'orange', 'cherry', 1, '"Pear" significa pera.', '¿Qué es esto?', '{vocabulary,food}', 'beginner', 'english', NULL, false, NULL),
+
+-- Cuerpo 2
+('vocabulary', '"Cabeza" en inglés es:', 'head', 'foot', 'arm', 1, '"Head" significa cabeza.', 'Traduce la palabra', '{vocabulary,body}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Nariz" en inglés es:', 'nose', 'ear', 'leg', 1, '"Nose" significa nariz.', 'Traduce la palabra', '{vocabulary,body}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Boca" en inglés es:', 'mouth', 'eye', 'hand', 1, '"Mouth" significa boca.', 'Traduce la palabra', '{vocabulary,body}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Oreja" en inglés es:', 'ear', 'nose', 'head', 1, '"Ear" significa oreja.', 'Traduce la palabra', '{vocabulary,body}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Pierna" en inglés es:', 'leg', 'mouth', 'foot', 1, '"Leg" significa pierna.', 'Traduce la palabra', '{vocabulary,body}', 'beginner', 'english', NULL, false, NULL),
+
+-- Casa / habitaciones
+('vocabulary', '"Cocina" en inglés es:', 'kitchen', 'garden', 'bedroom', 1, '"Kitchen" significa cocina (la habitación).', 'Traduce la palabra', '{vocabulary,home}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Baño" en inglés es:', 'bathroom', 'kitchen', 'garden', 1, '"Bathroom" significa baño.', 'Traduce la palabra', '{vocabulary,home}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Dormitorio" en inglés es:', 'bedroom', 'bathroom', 'yard', 1, '"Bedroom" significa dormitorio o cuarto.', 'Traduce la palabra', '{vocabulary,home}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Jardín" en inglés es:', 'garden', 'bedroom', 'kitchen', 1, '"Garden" significa jardín.', 'Traduce la palabra', '{vocabulary,home}', 'beginner', 'english', NULL, false, NULL),
+
+-- Útiles escolares
+('vocabulary', 'What is this? ✏️', 'pencil', 'ruler', 'glue', 1, '"Pencil" significa lápiz.', '¿Qué es esto?', '{vocabulary,school}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🖊️', 'pen', 'map', 'box', 1, '"Pen" significa bolígrafo o lapicero.', '¿Qué es esto?', '{vocabulary,school}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 📏', 'ruler', 'pencil', 'bag', 1, '"Ruler" significa regla.', '¿Qué es esto?', '{vocabulary,school}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? ✂️', 'scissors', 'pen', 'tape', 1, '"Scissors" significa tijeras.', '¿Qué es esto?', '{vocabulary,school}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🎒', 'backpack', 'ruler', 'desk', 1, '"Backpack" significa mochila.', '¿Qué es esto?', '{vocabulary,school}', 'beginner', 'english', NULL, false, NULL),
+
+-- Adjetivos básicos
+('vocabulary', '"Grande" en inglés es:', 'big', 'thin', 'round', 1, '"Big" significa grande.', 'Traduce la palabra', '{vocabulary,adjectives}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Pequeño" en inglés es:', 'small', 'tall', 'wide', 1, '"Small" significa pequeño.', 'Traduce la palabra', '{vocabulary,adjectives}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Caliente" en inglés es:', 'hot', 'wet', 'dark', 1, '"Hot" significa caliente.', 'Traduce la palabra', '{vocabulary,adjectives}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Frío" en inglés es:', 'cold', 'soft', 'dry', 1, '"Cold" significa frío.', 'Traduce la palabra', '{vocabulary,adjectives}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Feliz" en inglés es:', 'happy', 'angry', 'tired', 1, '"Happy" significa feliz.', 'Traduce la palabra', '{vocabulary,adjectives}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Triste" en inglés es:', 'sad', 'glad', 'calm', 1, '"Sad" significa triste.', 'Traduce la palabra', '{vocabulary,adjectives}', 'beginner', 'english', NULL, false, NULL),
+
+-- Estaciones
+('vocabulary', '"Verano" en inglés es:', 'summer', 'winter', 'fall', 1, '"Summer" significa verano.', 'Traduce la palabra', '{vocabulary,seasons}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Invierno" en inglés es:', 'winter', 'spring', 'summer', 1, '"Winter" significa invierno.', 'Traduce la palabra', '{vocabulary,seasons}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Primavera" en inglés es:', 'spring', 'fall', 'winter', 1, '"Spring" significa primavera.', 'Traduce la palabra', '{vocabulary,seasons}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', '"Otoño" en inglés es:', 'fall', 'summer', 'spring', 1, '"Fall" significa otoño (en británico también se dice "autumn").', 'Traduce la palabra', '{vocabulary,seasons}', 'beginner', 'english', NULL, false, NULL),
+
+-- Bebidas
+('vocabulary', '"Café (la bebida)" en inglés es:', 'coffee', 'tea', 'milk', 1, '"Coffee" significa café. (El emoji ☕ ya se usa en la carta de "cup".)', 'Traduce la palabra', '{vocabulary,food}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🍵', 'tea', 'juice', 'soup', 1, '"Tea" significa té.', '¿Qué es esto?', '{vocabulary,food}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🧃', 'juice', 'coffee', 'water', 1, '"Juice" significa jugo.', '¿Qué es esto?', '{vocabulary,food}', 'beginner', 'english', NULL, false, NULL),
+
+-- Animales 2
+('vocabulary', 'What is this? 🐟', 'fish', 'crab', 'seal', 1, '"Fish" significa pez o pescado.', '¿Qué es esto?', '{vocabulary,animals}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🦁', 'lion', 'deer', 'goat', 1, '"Lion" significa león.', '¿Qué es esto?', '{vocabulary,animals}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🐵', 'monkey', 'wolf', 'crab', 1, '"Monkey" significa mono.', '¿Qué es esto?', '{vocabulary,animals}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'What is this? 🐰', 'rabbit', 'seal', 'deer', 1, '"Rabbit" significa conejo.', '¿Qué es esto?', '{vocabulary,animals}', 'beginner', 'english', NULL, false, NULL),
+
+-- Números faltantes
+('vocabulary', 'How many? 🍎🍎🍎', 'three', 'eight', 'one', 1, '"Three" significa tres.', '¿Cuántos hay?', '{vocabulary,numbers}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'How many? 🍎🍎🍎🍎', 'four', 'ten', 'eight', 1, '"Four" significa cuatro.', '¿Cuántos hay?', '{vocabulary,numbers}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'How many? 🍎🍎🍎🍎🍎🍎🍎', 'seven', 'two', 'six', 1, '"Seven" significa siete.', '¿Cuántos hay?', '{vocabulary,numbers}', 'beginner', 'english', NULL, false, NULL),
+('vocabulary', 'How many? 🍎🍎🍎🍎🍎🍎🍎🍎🍎', 'nine', 'one', 'five', 1, '"Nine" significa nueve.', '¿Cuántos hay?', '{vocabulary,numbers}', 'beginner', 'english', NULL, false, NULL);
+
+
+-- ==========================================
+-- Card Ninja — VOCABULARY / Intermediate (Set 9)
+-- Enfoque: Phrasal verbs — grupos "AWAY" / "BACK" / "OVER"
+-- ==========================================
+
+INSERT INTO learning_challenges
+(type, question, option1, option2, option3, correct_option, explanation_es, question_es, tags, difficulty, language_learning, phonetic, requires_audio, audio_url)
+VALUES
+
+('vocabulary', 'The dog _____ from home. 🐕', 'ran away', 'gave away', 'put away', 1, '"Run away" = escaparse / huir.', 'El perro _____ de casa.', '{phrasal-verb,away}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'Please _____ your toys. 🧸', 'put away', 'throw away', 'run away', 1, '"Put away" = guardar algo en su lugar.', 'Por favor _____ tus juguetes.', '{phrasal-verb,away}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'I _____ my old clothes to charity. 👕', 'gave away', 'put away', 'took away', 1, '"Give away" = regalar / donar.', '_____ mi ropa vieja a la caridad.', '{phrasal-verb,away}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'Don''t _____ the receipt. 🧾', 'throw away', 'give away', 'run away', 1, '"Throw away" = botar / tirar a la basura.', 'No _____ el recibo.', '{phrasal-verb,away}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'She''ll _____ from her trip next week. ✈️', 'come back', 'give back', 'pay back', 1, '"Come back" = regresar / volver.', 'Ella _____ de su viaje la próxima semana.', '{phrasal-verb,back}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'Please _____ my pen. 🖊️', 'give back', 'come back', 'call back', 1, '"Give back" = devolver algo.', 'Por favor _____ mi bolígrafo.', '{phrasal-verb,back}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'I''m busy — I''ll _____ later. 📞', 'call back', 'come back', 'give back', 1, '"Call back" = devolver la llamada.', 'Estoy ocupado — _____ más tarde.', '{phrasal-verb,back}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'You must _____ the money you owe. 💰', 'pay back', 'call back', 'give back', 1, '"Pay back" = pagar una deuda / devolver dinero.', 'Debes _____ el dinero que debes.', '{phrasal-verb,back}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'It took me weeks to _____ the flu. 🤒', 'get over', 'take over', 'hand over', 1, '"Get over" = superar / recuperarse de algo.', 'Me tomó semanas _____ la gripe.', '{phrasal-verb,over}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'Robots might _____ some jobs. 🤖', 'take over', 'get over', 'hand over', 1, '"Take over" = tomar el control / apoderarse.', 'Los robots podrían _____ algunos trabajos.', '{phrasal-verb,over}', 'intermediate', 'english', NULL, false, NULL);
+
+
+-- ==========================================
+-- Card Ninja — VOCABULARY / Intermediate (Set 10)
+-- Enfoque: Colocaciones MAKE vs DO (error clásico hispanohablante)
+-- ==========================================
+
+INSERT INTO learning_challenges
+(type, question, option1, option2, option3, correct_option, explanation_es, question_es, tags, difficulty, language_learning, phonetic, requires_audio, audio_url)
+VALUES
+
+('vocabulary', 'I need to _____ a decision. 🤔', 'make', 'do', 'take', 1, 'Se dice "make a decision", nunca "do a decision".', 'Necesito _____ una decisión.', '{collocations,make-do}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'Did you _____ your homework? 📚', 'do', 'make', 'give', 1, 'Se dice "do homework", nunca "make homework".', '¿Hiciste tu tarea?', '{collocations,make-do}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'I always _____ mistakes when I rush. 😅', 'make', 'do', 'have', 1, 'Se dice "make a mistake" (cometer un error).', 'Siempre _____ errores cuando me apuro.', '{collocations,make-do}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'Let me _____ a phone call. 📞', 'make', 'do', 'give', 1, 'Se dice "make a phone call" (hacer una llamada).', 'Déjame _____ una llamada.', '{collocations,make-do}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'I have to _____ the dishes. 🍽️', 'do', 'make', 'set', 1, 'Se dice "do the dishes" (lavar los platos).', 'Tengo que _____ los platos.', '{collocations,make-do}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'Don''t _____ so much noise! 🔊', 'make', 'do', 'put', 1, 'Se dice "make noise" (hacer ruido).', '¡No _____ tanto ruido!', '{collocations,make-do}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', 'I want to _____ new friends. 👋', 'make', 'do', 'get', 1, 'Se dice "make friends" (hacer amigos).', 'Quiero _____ nuevos amigos.', '{collocations,make-do}', 'intermediate', 'english', NULL, false, NULL);
+
+
+-- ==========================================
+-- Card Ninja — VOCABULARY / Intermediate (Set 11)
+-- Enfoque: Vocabulario de viajes
+-- ==========================================
+
+INSERT INTO learning_challenges
+(type, question, option1, option2, option3, correct_option, explanation_es, question_es, tags, difficulty, language_learning, phonetic, requires_audio, audio_url)
+VALUES
+
+('vocabulary', '"Equipaje" en inglés es:', 'luggage', 'ticket', 'passport', 1, '"Luggage" significa equipaje (también "baggage").', 'Traduce la palabra', '{vocabulary,travel}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Vuelo" en inglés es:', 'flight', 'journey', 'cruise', 1, '"Flight" significa vuelo.', 'Traduce la palabra', '{vocabulary,travel}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Pasaporte" en inglés es:', 'passport', 'luggage', 'ticket', 1, '"Passport" significa pasaporte.', 'Traduce la palabra', '{vocabulary,travel}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Aduana" en inglés es:', 'customs', 'costumes', 'tickets', 1, '"Customs" significa aduana. ¡Ojo!: "costumes" son disfraces.', 'Traduce la palabra', '{vocabulary,travel}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Puerta de embarque" en inglés es:', 'gate', 'door', 'port', 1, 'En el aeropuerto, la puerta de embarque es "gate", no "door".', 'Traduce la palabra', '{vocabulary,travel}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Destino" en inglés es:', 'destination', 'destiny', 'departure', 1, '"Destination" es el destino de un viaje. "Destiny" es el destino como suerte.', 'Traduce la palabra', '{vocabulary,travel}', 'intermediate', 'english', NULL, false, NULL);
+
+
+-- ==========================================
+-- Card Ninja — VOCABULARY / Intermediate (Set 12)
+-- Enfoque: Vocabulario de salud
+-- ==========================================
+
+INSERT INTO learning_challenges
+(type, question, option1, option2, option3, correct_option, explanation_es, question_es, tags, difficulty, language_learning, phonetic, requires_audio, audio_url)
+VALUES
+
+('vocabulary', '"Dolor de cabeza" en inglés es:', 'headache', 'stomachache', 'backache', 1, '"Headache" significa dolor de cabeza.', 'Traduce la palabra', '{vocabulary,health}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Medicamento" en inglés es:', 'medicine', 'surgery', 'bandage', 1, '"Medicine" significa medicamento o medicina.', 'Traduce la palabra', '{vocabulary,health}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Cita médica" en inglés es:', 'appointment', 'prescription', 'emergency', 1, '"Appointment" es una cita médica o profesional.', 'Traduce la palabra', '{vocabulary,health}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Fiebre" en inglés es:', 'fever', 'flu', 'pain', 1, '"Fever" significa fiebre.', 'Traduce la palabra', '{vocabulary,health}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Tos" en inglés es:', 'cough', 'sneeze', 'snore', 1, '"Cough" significa tos. "Sneeze" es estornudo.', 'Traduce la palabra', '{vocabulary,health}', 'intermediate', 'english', NULL, false, NULL);
+
+
+-- ==========================================
+-- Card Ninja — VOCABULARY / Intermediate (Set 13)
+-- Enfoque: Dinero y compras
+-- ==========================================
+
+INSERT INTO learning_challenges
+(type, question, option1, option2, option3, correct_option, explanation_es, question_es, tags, difficulty, language_learning, phonetic, requires_audio, audio_url)
+VALUES
+
+('vocabulary', '"Descuento" en inglés es:', 'discount', 'refund', 'deposit', 1, '"Discount" significa descuento.', 'Traduce la palabra', '{vocabulary,money}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Recibo" en inglés es:', 'receipt', 'recipe', 'ticket', 1, '"Receipt" es el recibo de compra. ¡Ojo!: "recipe" es receta de cocina.', 'Traduce la palabra', '{vocabulary,money}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Reembolso" en inglés es:', 'refund', 'discount', 'deposit', 1, '"Refund" significa reembolso o devolución de dinero.', 'Traduce la palabra', '{vocabulary,money}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Efectivo" en inglés es:', 'cash', 'card', 'coin', 1, '"Cash" significa dinero en efectivo.', 'Traduce la palabra', '{vocabulary,money}', 'intermediate', 'english', NULL, false, NULL);
+
+
+-- ==========================================
+-- Card Ninja — VOCABULARY / Intermediate (Set 14)
+-- Enfoque: Falsos amigos (Set 2)
+-- ==========================================
+
+INSERT INTO learning_challenges
+(type, question, option1, option2, option3, correct_option, explanation_es, question_es, tags, difficulty, language_learning, phonetic, requires_audio, audio_url)
+VALUES
+
+('vocabulary', '"Carpet" significa:', 'alfombra', 'carpeta', 'cortina', 1, '"Carpet" = alfombra. "Carpeta" en inglés es "folder".', 'Traduce la palabra', '{vocabulary,false-friends}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Lecture" significa:', 'conferencia / clase', 'lectura', 'biblioteca', 1, '"Lecture" = conferencia o clase magistral. "Lectura" en inglés es "reading".', 'Traduce la palabra', '{vocabulary,false-friends}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Assist" significa:', 'ayudar', 'asistir a un evento', 'insistir', 1, '"Assist" = ayudar. "Asistir" (ir a un lugar) en inglés es "attend".', 'Traduce la palabra', '{vocabulary,false-friends}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Argument" significa:', 'discusión / pelea', 'argumento de película', 'acuerdo', 1, '"Argument" = discusión. El argumento de una película es "plot".', 'Traduce la palabra', '{vocabulary,false-friends}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Notice" significa:', 'aviso / notar', 'noticia', 'permiso', 1, '"Notice" = aviso o notar algo. "Noticia" en inglés es "news".', 'Traduce la palabra', '{vocabulary,false-friends}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Pretend" significa:', 'fingir', 'pretender / intentar', 'prometer', 1, '"Pretend" = fingir. "Pretender" en inglés es "intend" o "try".', 'Traduce la palabra', '{vocabulary,false-friends}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Soap" significa:', 'jabón', 'sopa', 'espuma', 1, '"Soap" = jabón. "Sopa" en inglés es "soup".', 'Traduce la palabra', '{vocabulary,false-friends}', 'intermediate', 'english', NULL, false, NULL),
+('vocabulary', '"Vase" significa:', 'florero', 'vaso', 'botella', 1, '"Vase" = florero. "Vaso" en inglés es "glass".', 'Traduce la palabra', '{vocabulary,false-friends}', 'intermediate', 'english', NULL, false, NULL);
+
+
+-- ==========================================
+-- Card Ninja — VOCABULARY / Advanced (Set 5)
+-- Enfoque: Modismos / Idioms (Set 2)
+-- ==========================================
+
+INSERT INTO learning_challenges
+(type, question, option1, option2, option3, correct_option, explanation_es, question_es, tags, difficulty, language_learning, phonetic, requires_audio, audio_url)
+VALUES
+
+('vocabulary', '"Bite the bullet" significa:', 'armarse de valor y hacerlo', 'morder una bala', 'comer muy rápido', 1, '"Bite the bullet" = decidirse a hacer algo difícil o desagradable de una vez.', '¿Qué significa esta expresión?', '{vocabulary,idioms}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', '"Hit the nail on the head" significa:', 'dar en el clavo / acertar', 'clavar un clavo', 'golpearse la cabeza', 1, '"Hit the nail on the head" = acertar exactamente con lo que se dice.', '¿Qué significa esta expresión?', '{vocabulary,idioms}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', '"Cut corners" significa:', 'hacer algo a medias para ahorrar', 'cortar esquinas de papel', 'conducir en zigzag', 1, '"Cut corners" = ahorrar tiempo o dinero haciendo algo con menos calidad.', '¿Qué significa esta expresión?', '{vocabulary,idioms}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', '"Break a leg" significa:', 'mucha suerte (en el escenario)', 'rómpete una pierna', 'baila con energía', 1, '"Break a leg" = desearle suerte a alguien antes de una presentación.', '¿Qué significa esta expresión?', '{vocabulary,idioms}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', '"Burn the midnight oil" significa:', 'trabajar hasta muy tarde', 'quemar aceite a medianoche', 'desperdiciar recursos', 1, '"Burn the midnight oil" = quedarse trabajando o estudiando hasta la madrugada.', '¿Qué significa esta expresión?', '{vocabulary,idioms}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', '"Beat around the bush" significa:', 'dar rodeos sin ir al grano', 'golpear un arbusto', 'buscar algo perdido', 1, '"Beat around the bush" = evitar hablar directamente de un tema.', '¿Qué significa esta expresión?', '{vocabulary,idioms}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', '"Call it a day" significa:', 'dar por terminada la jornada', 'llamar durante el día', 'agendar una cita', 1, '"Call it a day" = decidir que ya se trabajó suficiente por hoy.', '¿Qué significa esta expresión?', '{vocabulary,idioms}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', '"Get out of hand" significa:', 'salirse de control', 'soltarse de la mano', 'terminar una tarea', 1, '"Get out of hand" = descontrolarse una situación.', '¿Qué significa esta expresión?', '{vocabulary,idioms}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', '"Miss the boat" significa:', 'perder la oportunidad', 'perder un barco real', 'llegar temprano', 1, '"Miss the boat" = dejar pasar una oportunidad por actuar tarde.', '¿Qué significa esta expresión?', '{vocabulary,idioms}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', '"Get cold feet" significa:', 'arrepentirse por nervios', 'tener los pies fríos', 'enfermarse de gripe', 1, '"Get cold feet" = acobardarse justo antes de hacer algo importante.', '¿Qué significa esta expresión?', '{vocabulary,idioms}', 'advanced', 'english', NULL, false, NULL);
+
+
+-- ==========================================
+-- Card Ninja — VOCABULARY / Advanced (Set 6)
+-- Enfoque: Pares de palabras que se confunden (lend/borrow,
+-- say/tell, remind/remember, affect/effect...)
+-- ==========================================
+
+INSERT INTO learning_challenges
+(type, question, option1, option2, option3, correct_option, explanation_es, question_es, tags, difficulty, language_learning, phonetic, requires_audio, audio_url)
+VALUES
+
+('vocabulary', 'Can you _____ me your pen? 🖊️', 'lend', 'borrow', 'rent', 1, '"Lend" = prestar A alguien. "Borrow" = pedir prestado DE alguien.', '¿Me puedes _____ tu bolígrafo?', '{vocabulary,confusing-words}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', 'I need to _____ money from the bank. 🏦', 'borrow', 'lend', 'owe', 1, '"Borrow" = pedir prestado. El banco te presta ("lends"), tú pides prestado ("borrow").', 'Necesito _____ dinero del banco.', '{vocabulary,confusing-words}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', 'Please _____ me to call my mom. 📞', 'remind', 'remember', 'repeat', 1, '"Remind" = recordarle algo A OTRO. "Remember" = recordar uno mismo.', 'Por favor _____ que llame a mi mamá.', '{vocabulary,confusing-words}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', 'I can''t _____ his name. 🤔', 'remember', 'remind', 'memorize', 1, '"Remember" = recordar uno mismo. "Remind" necesita otra persona.', 'No puedo _____ su nombre.', '{vocabulary,confusing-words}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', 'She didn''t _____ a word at the meeting. 🤐', 'say', 'tell', 'speak', 1, '"Say" no lleva persona como objeto directo; "tell" sí ("tell me").', 'Ella no _____ una palabra en la reunión.', '{vocabulary,confusing-words}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', 'Can you _____ me the truth? 🙏', 'tell', 'say', 'talk', 1, '"Tell" lleva persona: "tell me". Con "say" sería "say it to me".', '¿Puedes _____ la verdad?', '{vocabulary,confusing-words}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', 'The weather can _____ your mood. 🌧️', 'affect', 'effect', 'infect', 1, '"Affect" es el verbo (afectar); "effect" es el sustantivo (efecto).', 'El clima puede _____ tu estado de ánimo.', '{vocabulary,confusing-words}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', '_____ at that painting! 🖼️', 'Look', 'See', 'Watch', 1, '"Look at" = mirar con intención. "See" = ver sin querer. "Watch" = observar algo en movimiento.', '¡_____ esa pintura!', '{vocabulary,confusing-words}', 'advanced', 'english', NULL, false, NULL);
+
+
+-- ==========================================
+-- Card Ninja — VOCABULARY / Advanced (Set 7)
+-- Enfoque: Registro formal (equivalente formal de verbos comunes)
+-- ==========================================
+
+INSERT INTO learning_challenges
+(type, question, option1, option2, option3, correct_option, explanation_es, question_es, tags, difficulty, language_learning, phonetic, requires_audio, audio_url)
+VALUES
+
+('vocabulary', 'Formal synonym of "find out":', 'discover', 'invent', 'search', 1, '"Discover" es el equivalente formal de "find out" (descubrir).', 'Sinónimo formal de "find out"', '{vocabulary,formal-register}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', 'Formal synonym of "ask for":', 'request', 'question', 'answer', 1, '"Request" es el equivalente formal de "ask for" (solicitar).', 'Sinónimo formal de "ask for"', '{vocabulary,formal-register}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', 'Formal synonym of "need":', 'require', 'desire', 'acquire', 1, '"Require" es el equivalente formal de "need" (requerir).', 'Sinónimo formal de "need"', '{vocabulary,formal-register}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', 'Formal synonym of "help":', 'assist', 'insist', 'resist', 1, '"Assist" es el equivalente formal de "help" (ayudar).', 'Sinónimo formal de "help"', '{vocabulary,formal-register}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', 'Formal synonym of "get":', 'obtain', 'contain', 'maintain', 1, '"Obtain" es el equivalente formal de "get" (obtener).', 'Sinónimo formal de "get"', '{vocabulary,formal-register}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', 'Formal synonym of "show":', 'demonstrate', 'decorate', 'dominate', 1, '"Demonstrate" es el equivalente formal de "show" (demostrar).', 'Sinónimo formal de "show"', '{vocabulary,formal-register}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', 'Formal synonym of "end":', 'conclude', 'include', 'exclude', 1, '"Conclude" es el equivalente formal de "end" (concluir).', 'Sinónimo formal de "end"', '{vocabulary,formal-register}', 'advanced', 'english', NULL, false, NULL),
+('vocabulary', 'Formal synonym of "use":', 'utilize', 'realize', 'apologize', 1, '"Utilize" es el equivalente formal de "use" (utilizar).', 'Sinónimo formal de "use"', '{vocabulary,formal-register}', 'advanced', 'english', NULL, false, NULL);
+
+
+-- ==========================================
+-- Card Ninja — PRONUNCIATION / Beginner (Set 6)
+-- Enfoque: sh vs ch, sonido "h", letras mudas 2, "oo" corta vs
+-- larga, palabras irregulares y frases de cortesía
+-- ==========================================
+
+INSERT INTO learning_challenges
+(type, question, option1, option2, option3, correct_option, explanation_es, question_es, tags, difficulty, language_learning, phonetic, requires_audio, audio_url)
+VALUES
+
+-- sh vs ch
+('pronunciation', 'Shoes', 'Shoes', '', '', 1, 'Zapatos. La "sh" es suave y continua, como pedir silencio.', '', '{"pronunciation","sh-ch"}', 'beginner', 'english', '/ʃuːz/', true, NULL),
+('pronunciation', 'Choose', 'Choose', '', '', 1, 'Elegir. La "ch" es explosiva, distinta de la "sh" de "shoes".', '', '{"pronunciation","sh-ch"}', 'beginner', 'english', '/tʃuːz/', true, NULL),
+('pronunciation', 'Watch', 'Watch', '', '', 1, 'Mirar / reloj. Termina en "ch" explosiva, distinta de "wash".', '', '{"pronunciation","sh-ch"}', 'beginner', 'english', '/wɑːtʃ/', true, NULL),
+('pronunciation', 'Wash', 'Wash', '', '', 1, 'Lavar. Termina en "sh" suave, distinta de "watch".', '', '{"pronunciation","sh-ch"}', 'beginner', 'english', '/wɑːʃ/', true, NULL),
+('pronunciation', 'Chicken', 'Chicken', '', '', 1, 'Pollo. Empieza con "ch" explosiva. No confundir con "kitchen" (cocina).', '', '{"pronunciation","sh-ch"}', 'beginner', 'english', '/ˈtʃɪkɪn/', true, NULL),
+('pronunciation', 'Kitchen', 'Kitchen', '', '', 1, 'Cocina. La "ch" va en medio. No confundir con "chicken" (pollo).', '', '{"pronunciation","sh-ch"}', 'beginner', 'english', '/ˈkɪtʃɪn/', true, NULL),
+
+-- Sonido "h" (sí se pronuncia, aspirada — error común omitirla)
+('pronunciation', 'Hello', 'Hello', '', '', 1, 'Hola. La "h" SÍ se pronuncia en inglés, con aire aspirado.', '', '{"pronunciation","h-sound"}', 'beginner', 'english', '/həˈloʊ/', true, NULL),
+('pronunciation', 'Hungry', 'Hungry', '', '', 1, 'Hambriento. La "h" inicial se aspira, no es muda como en español.', '', '{"pronunciation","h-sound"}', 'beginner', 'english', '/ˈhʌŋɡri/', true, NULL),
+('pronunciation', 'Hospital', 'Hospital', '', '', 1, 'Hospital. La "h" se aspira y el acento va en la primera sílaba: HOS-pi-tal.', '', '{"pronunciation","h-sound"}', 'beginner', 'english', '/ˈhɑːspɪtəl/', true, NULL),
+
+-- Letras mudas 2
+('pronunciation', 'Island', 'Island', '', '', 1, 'Isla. La "s" es muda: se dice "AI-land".', '', '{"pronunciation","silent-letters"}', 'beginner', 'english', '/ˈaɪlənd/', true, NULL),
+('pronunciation', 'Listen', 'Listen', '', '', 1, 'Escuchar. La "t" es muda: se dice "LI-sen".', '', '{"pronunciation","silent-letters"}', 'beginner', 'english', '/ˈlɪsən/', true, NULL),
+('pronunciation', 'Wednesday', 'Wednesday', '', '', 1, 'Miércoles. La primera "d" es muda: se dice "WENZ-day".', '', '{"pronunciation","silent-letters"}', 'beginner', 'english', '/ˈwenzdeɪ/', true, NULL),
+('pronunciation', 'Half', 'Half', '', '', 1, 'Mitad. La "l" es muda: se dice "HAF".', '', '{"pronunciation","silent-letters"}', 'beginner', 'english', '/hæf/', true, NULL),
+('pronunciation', 'Walk', 'Walk', '', '', 1, 'Caminar. La "l" es muda: se dice "WOK".', '', '{"pronunciation","silent-letters"}', 'beginner', 'english', '/wɔːk/', true, NULL),
+
+-- "oo" corta vs larga
+('pronunciation', 'Book', 'Book', '', '', 1, 'Libro. La "oo" aquí es CORTA y relajada.', '', '{"pronunciation","vowels"}', 'beginner', 'english', '/bʊk/', true, NULL),
+('pronunciation', 'Moon', 'Moon', '', '', 1, 'Luna. La "oo" aquí es LARGA, se alarga más que en "book".', '', '{"pronunciation","vowels"}', 'beginner', 'english', '/muːn/', true, NULL),
+('pronunciation', 'Good', 'Good', '', '', 1, 'Bueno. La "oo" es corta, como en "book".', '', '{"pronunciation","vowels"}', 'beginner', 'english', '/ɡʊd/', true, NULL),
+('pronunciation', 'Food', 'Food', '', '', 1, 'Comida. La "oo" es larga, como en "moon".', '', '{"pronunciation","vowels"}', 'beginner', 'english', '/fuːd/', true, NULL),
+
+-- Palabras irregulares frecuentes
+('pronunciation', 'Women', 'Women', '', '', 1, 'Mujeres. Se pronuncia "WI-min", la "o" suena como "i". Clásica trampa.', '', '{"pronunciation","irregular"}', 'beginner', 'english', '/ˈwɪmɪn/', true, NULL),
+('pronunciation', 'People', 'People', '', '', 1, 'Gente. Se pronuncia "PI-pol", la "eo" suena como "i" larga.', '', '{"pronunciation","irregular"}', 'beginner', 'english', '/ˈpiːpəl/', true, NULL),
+('pronunciation', 'Clothes', 'Clothes', '', '', 1, 'Ropa. Se pronuncia casi como "close", en UNA sola sílaba.', '', '{"pronunciation","irregular"}', 'beginner', 'english', '/kloʊðz/', true, NULL),
+
+-- Números 2
+('pronunciation', 'Fifteen', 'Fifteen', '', '', 1, 'Quince. El acento va al FINAL, distinto de "fifty" (cincuenta).', '', '{"pronunciation","numbers"}', 'beginner', 'english', '/ˌfɪfˈtiːn/', true, NULL),
+('pronunciation', 'Fifty', 'Fifty', '', '', 1, 'Cincuenta. El acento va al PRINCIPIO, distinto de "fifteen" (quince).', '', '{"pronunciation","numbers"}', 'beginner', 'english', '/ˈfɪfti/', true, NULL),
+
+-- Frases de cortesía
+('pronunciation', 'Excuse me', 'Excuse me', '', '', 1, 'Disculpe / permiso.', '', '{"pronunciation","phrases","greetings"}', 'beginner', 'english', '/ɪkˈskjuːz miː/', true, NULL),
+('pronunciation', 'You''re welcome', 'You''re welcome', '', '', 1, 'De nada.', '', '{"pronunciation","phrases","greetings"}', 'beginner', 'english', '/jʊr ˈwelkəm/', true, NULL),
+('pronunciation', 'I''m sorry', 'I''m sorry', '', '', 1, 'Lo siento.', '', '{"pronunciation","phrases","greetings"}', 'beginner', 'english', '/aɪm ˈsɑːri/', true, NULL),
+('pronunciation', 'How are you?', 'How are you?', '', '', 1, '¿Cómo estás?', '', '{"pronunciation","phrases","greetings"}', 'beginner', 'english', '/haʊ ɑːr juː/', true, NULL);
+
+
+-- ==========================================
+-- Card Ninja — PRONUNCIATION / Intermediate (Set 6)
+-- Enfoque: más pares sustantivo/verbo, sonido "zh", th sorda vs
+-- sonora, homófonos 2, letras mudas difíciles y palabras largas 2
+-- ==========================================
+
+INSERT INTO learning_challenges
+(type, question, option1, option2, option3, correct_option, explanation_es, question_es, tags, difficulty, language_learning, phonetic, requires_audio, audio_url)
+VALUES
+
+-- Acento sustantivo vs verbo (set 2)
+('pronunciation', 'OBject (noun)', 'OBject', '', '', 1, 'Objeto (sustantivo). El acento va en la primera sílaba.', '', '{"pronunciation","stress-shift"}', 'intermediate', 'english', '/ˈɑːbdʒɪkt/', true, NULL),
+('pronunciation', 'obJECT (verb)', 'obJECT', '', '', 1, 'Objetar / oponerse (verbo). El acento va en la segunda sílaba.', '', '{"pronunciation","stress-shift"}', 'intermediate', 'english', '/əbˈdʒekt/', true, NULL),
+('pronunciation', 'INcrease (noun)', 'INcrease', '', '', 1, 'Aumento (sustantivo). El acento va en la primera sílaba.', '', '{"pronunciation","stress-shift"}', 'intermediate', 'english', '/ˈɪnkriːs/', true, NULL),
+('pronunciation', 'inCREASE (verb)', 'inCREASE', '', '', 1, 'Aumentar (verbo). El acento va en la segunda sílaba.', '', '{"pronunciation","stress-shift"}', 'intermediate', 'english', '/ɪnˈkriːs/', true, NULL),
+('pronunciation', 'PERmit (noun)', 'PERmit', '', '', 1, 'Permiso (sustantivo). El acento va en la primera sílaba.', '', '{"pronunciation","stress-shift"}', 'intermediate', 'english', '/ˈpɜːrmɪt/', true, NULL),
+('pronunciation', 'perMIT (verb)', 'perMIT', '', '', 1, 'Permitir (verbo). El acento va en la segunda sílaba.', '', '{"pronunciation","stress-shift"}', 'intermediate', 'english', '/pərˈmɪt/', true, NULL),
+
+-- Sonido "zh" /ʒ/ (no existe en español)
+('pronunciation', 'Usually', 'Usually', '', '', 1, 'Usualmente. La "s" suena como "zh", vibrada y suave: "IU-zhuali".', '', '{"pronunciation","zh-sound"}', 'intermediate', 'english', '/ˈjuːʒuəli/', true, NULL),
+('pronunciation', 'Pleasure', 'Pleasure', '', '', 1, 'Placer. La "s" suena como "zh": "PLE-zher".', '', '{"pronunciation","zh-sound"}', 'intermediate', 'english', '/ˈpleʒər/', true, NULL),
+('pronunciation', 'Measure', 'Measure', '', '', 1, 'Medir / medida. La "s" suena como "zh": "ME-zher".', '', '{"pronunciation","zh-sound"}', 'intermediate', 'english', '/ˈmeʒər/', true, NULL),
+('pronunciation', 'Decision', 'Decision', '', '', 1, 'Decisión. La "s" suena como "zh": "di-SI-zhon".', '', '{"pronunciation","zh-sound"}', 'intermediate', 'english', '/dɪˈsɪʒən/', true, NULL),
+
+-- th sorda vs sonora (pares breath/breathe, bath/bathe)
+('pronunciation', 'Breath', 'Breath', '', '', 1, 'Respiración (sustantivo). Vocal corta y "th" sorda: "breth".', '', '{"pronunciation","th-pairs"}', 'intermediate', 'english', '/breθ/', true, NULL),
+('pronunciation', 'Breathe', 'Breathe', '', '', 1, 'Respirar (verbo). Vocal larga y "th" sonora: "briidh".', '', '{"pronunciation","th-pairs"}', 'intermediate', 'english', '/briːð/', true, NULL),
+('pronunciation', 'Bath', 'Bath', '', '', 1, 'Baño (sustantivo). "th" sorda al final.', '', '{"pronunciation","th-pairs"}', 'intermediate', 'english', '/bæθ/', true, NULL),
+('pronunciation', 'Bathe', 'Bathe', '', '', 1, 'Bañarse (verbo). Vocal larga y "th" sonora al final.', '', '{"pronunciation","th-pairs"}', 'intermediate', 'english', '/beɪð/', true, NULL),
+
+-- Homófonos 2
+('pronunciation', 'Piece', 'Piece', '', '', 1, 'Pedazo. Suena exactamente igual que "peace" (paz).', '', '{"pronunciation","homophones"}', 'intermediate', 'english', '/piːs/', true, NULL),
+('pronunciation', 'Break', 'Break', '', '', 1, 'Romper / descanso. Suena exactamente igual que "brake" (freno).', '', '{"pronunciation","homophones"}', 'intermediate', 'english', '/breɪk/', true, NULL),
+('pronunciation', 'Flour', 'Flour', '', '', 1, 'Harina. Suena exactamente igual que "flower" (flor).', '', '{"pronunciation","homophones"}', 'intermediate', 'english', '/ˈflaʊər/', true, NULL),
+('pronunciation', 'Wear', 'Wear', '', '', 1, 'Vestir / usar ropa. Suena exactamente igual que "where" (dónde).', '', '{"pronunciation","homophones"}', 'intermediate', 'english', '/wer/', true, NULL),
+
+-- Letras mudas difíciles
+('pronunciation', 'Receipt', 'Receipt', '', '', 1, 'Recibo. La "p" es muda: "ri-SIIT".', '', '{"pronunciation","silent-letters"}', 'intermediate', 'english', '/rɪˈsiːt/', true, NULL),
+('pronunciation', 'Doubt', 'Doubt', '', '', 1, 'Duda. La "b" es muda: "DAUT".', '', '{"pronunciation","silent-letters"}', 'intermediate', 'english', '/daʊt/', true, NULL),
+('pronunciation', 'Castle', 'Castle', '', '', 1, 'Castillo. La "t" es muda: "CA-sol".', '', '{"pronunciation","silent-letters"}', 'intermediate', 'english', '/ˈkæsəl/', true, NULL),
+('pronunciation', 'Muscle', 'Muscle', '', '', 1, 'Músculo. La "c" es muda: "MA-sol".', '', '{"pronunciation","silent-letters"}', 'intermediate', 'english', '/ˈmʌsəl/', true, NULL),
+('pronunciation', 'Subtle', 'Subtle', '', '', 1, 'Sutil. La "b" es muda: "SA-tol".', '', '{"pronunciation","silent-letters"}', 'intermediate', 'english', '/ˈsʌtəl/', true, NULL),
+
+-- Palabras largas 2
+('pronunciation', 'Temperature', 'Temperature', '', '', 1, 'Temperatura. Se comprime a 3 sílabas: "TEM-pra-cher".', '', '{"pronunciation","multisyllable"}', 'intermediate', 'english', '/ˈtemprətʃər/', true, NULL),
+('pronunciation', 'Literature', 'Literature', '', '', 1, 'Literatura. Se comprime: "LI-tra-cher", acento en la primera sílaba.', '', '{"pronunciation","multisyllable"}', 'intermediate', 'english', '/ˈlɪtrətʃər/', true, NULL),
+('pronunciation', 'Development', 'Development', '', '', 1, 'Desarrollo. El acento va en la segunda sílaba: di-VE-lop-ment.', '', '{"pronunciation","multisyllable"}', 'intermediate', 'english', '/dɪˈveləpmənt/', true, NULL),
+('pronunciation', 'Environment', 'Environment', '', '', 1, 'Medio ambiente. El acento va en la segunda sílaba: en-VAI-ron-ment.', '', '{"pronunciation","multisyllable"}', 'intermediate', 'english', '/ɪnˈvaɪrənmənt/', true, NULL);
+
+
+-- ==========================================
+-- Card Ninja — PRONUNCIATION / Advanced (Set 3)
+-- Enfoque: palabras notoriamente difíciles, familias de acento,
+-- habla conectada (didja/wouldja) y un trabalenguas
+-- ==========================================
+
+INSERT INTO learning_challenges
+(type, question, option1, option2, option3, correct_option, explanation_es, question_es, tags, difficulty, language_learning, phonetic, requires_audio, audio_url)
+VALUES
+
+-- Palabras notoriamente difíciles
+('pronunciation', 'Squirrel', 'Squirrel', '', '', 1, 'Ardilla. Una de las palabras más difíciles: "SKWIR-rol", la "rr" sin vibrar.', '', '{"pronunciation","hard-words"}', 'advanced', 'english', '/ˈskwɜːrəl/', true, NULL),
+('pronunciation', 'Colonel', 'Colonel', '', '', 1, 'Coronel. Se pronuncia "KER-nel" — no se pronuncia como se escribe en absoluto.', '', '{"pronunciation","hard-words"}', 'advanced', 'english', '/ˈkɜːrnəl/', true, NULL),
+('pronunciation', 'Choir', 'Choir', '', '', 1, 'Coro. Se pronuncia "KWAIER", el "ch" suena como "kw".', '', '{"pronunciation","hard-words"}', 'advanced', 'english', '/ˈkwaɪər/', true, NULL),
+('pronunciation', 'Rural', 'Rural', '', '', 1, 'Rural. Dos "r" inglesas seguidas de "l" — difícil incluso para nativos.', '', '{"pronunciation","hard-words"}', 'advanced', 'english', '/ˈrʊrəl/', true, NULL),
+('pronunciation', 'Sixth', 'Sixth', '', '', 1, 'Sexto. El grupo final "ksth" exige practicar la transición: "SIKS-z".', '', '{"pronunciation","hard-words"}', 'advanced', 'english', '/sɪksθ/', true, NULL),
+('pronunciation', 'February', 'February', '', '', 1, 'Febrero. La primera "r" casi desaparece: "FEB-iu-eri".', '', '{"pronunciation","hard-words"}', 'advanced', 'english', '/ˈfebrueri/', true, NULL),
+('pronunciation', 'Entrepreneur', 'Entrepreneur', '', '', 1, 'Emprendedor. Palabra francesa: "an-tre-pre-NER", acento al final.', '', '{"pronunciation","hard-words"}', 'advanced', 'english', '/ˌɑːntrəprəˈnɜːr/', true, NULL),
+('pronunciation', 'Phenomenon', 'Phenomenon', '', '', 1, 'Fenómeno. El acento va en la segunda sílaba: fe-NO-me-non.', '', '{"pronunciation","hard-words"}', 'advanced', 'english', '/fəˈnɑːmɪnən/', true, NULL),
+('pronunciation', 'Genre', 'Genre', '', '', 1, 'Género (de cine/música). Empieza con el sonido "zh" francés: "ZHAN-ra".', '', '{"pronunciation","hard-words"}', 'advanced', 'english', '/ˈʒɑːnrə/', true, NULL),
+('pronunciation', 'Drawer', 'Drawer', '', '', 1, 'Cajón. Se pronuncia en UNA sílaba: "DROR", no "dra-wer".', '', '{"pronunciation","hard-words"}', 'advanced', 'english', '/drɔːr/', true, NULL),
+
+-- Familias de acento (la sílaba fuerte se mueve al derivar la palabra)
+('pronunciation', 'PHOtograph', 'PHOtograph', '', '', 1, 'Fotografía (la foto). El acento va en la PRIMERA sílaba: FO-to-graf.', '', '{"pronunciation","stress-shift"}', 'advanced', 'english', '/ˈfoʊtəɡræf/', true, NULL),
+('pronunciation', 'phoTOgraphy', 'phoTOgraphy', '', '', 1, 'Fotografía (el arte). El acento SALTA a la segunda sílaba: fo-TO-gra-fi.', '', '{"pronunciation","stress-shift"}', 'advanced', 'english', '/fəˈtɑːɡrəfi/', true, NULL),
+
+-- Habla conectada (reducciones de preguntas)
+('pronunciation', 'Did you eat yet?', 'Did you eat yet?', '', '', 1, '¿Ya comiste? En habla rápida "did you" suena como "didja": "DI-dya iit yet".', '', '{"pronunciation","connected-speech"}', 'advanced', 'english', '/dɪdʒuː iːt jet/', true, NULL),
+('pronunciation', 'Would you mind?', 'Would you mind?', '', '', 1, '¿Te importaría? "Would you" se funde en "wouldja": "WU-dya maind".', '', '{"pronunciation","connected-speech"}', 'advanced', 'english', '/wʊdʒuː maɪnd/', true, NULL),
+('pronunciation', 'What do you mean?', 'What do you mean?', '', '', 1, '¿Qué quieres decir? En habla rápida suena como "whaddaya mean".', '', '{"pronunciation","connected-speech"}', 'advanced', 'english', '/ˌwʌt də juː miːn/', true, NULL),
+
+-- Trabalenguas
+('pronunciation', 'She sells seashells', 'She sells seashells', '', '', 1, 'Ella vende conchas de mar. Trabalenguas clásico para dominar "s" vs "sh".', '', '{"pronunciation","tongue-twisters"}', 'advanced', 'english', '/ʃiː selz ˈsiːʃelz/', true, NULL);
+
+
+-- ============================================================
+-- BARAJAR LA RESPUESTA CORRECTA (solo vocabulary)
+-- Mueve la respuesta correcta a una posición aleatoria (1-3)
+-- para que no siempre sea la opción 1. Las filas de pronunciation
+-- NO se tocan: no son opción múltiple (option2/3 vacías) y el
+-- backend espera correct_option=1 en ellas.
+-- Idempotente: intercambia la posición actual de la correcta con
+-- una aleatoria, así que puede correrse las veces que sea.
+-- ============================================================
+
+UPDATE learning_challenges c SET
+  option1 = CASE
+      WHEN r.pos = 1 THEN (CASE c.correct_option WHEN 1 THEN c.option1 WHEN 2 THEN c.option2 ELSE c.option3 END)
+      WHEN c.correct_option = 1 THEN (CASE r.pos WHEN 2 THEN c.option2 ELSE c.option3 END)
+      ELSE c.option1 END,
+  option2 = CASE
+      WHEN r.pos = 2 THEN (CASE c.correct_option WHEN 1 THEN c.option1 WHEN 2 THEN c.option2 ELSE c.option3 END)
+      WHEN c.correct_option = 2 THEN (CASE r.pos WHEN 1 THEN c.option1 ELSE c.option3 END)
+      ELSE c.option2 END,
+  option3 = CASE
+      WHEN r.pos = 3 THEN (CASE c.correct_option WHEN 1 THEN c.option1 WHEN 2 THEN c.option2 ELSE c.option3 END)
+      WHEN c.correct_option = 3 THEN (CASE r.pos WHEN 1 THEN c.option1 ELSE c.option2 END)
+      ELSE c.option3 END,
+  correct_option = r.pos
+FROM (
+  SELECT id, (floor(random()*3)::int + 1) AS pos
+  FROM learning_challenges
+  WHERE type = 'vocabulary' AND option2 <> '' AND option3 <> ''
+) r
+WHERE c.id = r.id;
