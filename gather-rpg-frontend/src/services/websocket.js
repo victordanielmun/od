@@ -61,7 +61,16 @@ class WebSocketClient {
             console.log(`WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason}`);
             this.isConnected = false;
             this.emit('connection_status', { status: 'disconnected' });
-            
+
+            // 4001 = the server replaced this session because the same user
+            // connected from another tab/device. Reconnecting would kick that
+            // newer session and both tabs would fight forever, so this one
+            // stays disconnected and the UI tells the player why.
+            if (event.code === 4001) {
+                this.emit('session_replaced', {});
+                return;
+            }
+
             // Don't reconnect if it was a semi-controlled close or unauthorized
             if (event.code !== 1000 && event.code !== 1001) {
                 this.attemptReconnect(token);

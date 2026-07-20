@@ -30,8 +30,13 @@ type Client struct {
 	RoomID      string
 	ChallengeID string
 
-	// Buffered channel of outbound messages.
-	send chan []byte
+	// Buffered channel of outbound messages. Cerrado exactamente una vez por
+	// Close(); closed+closeMu protegen cada envío para que un broadcast tardío
+	// jamás escriba en un canal cerrado (esa carrera paniqueaba y tumbaba el
+	// servidor entero).
+	send    chan []byte
+	closeMu sync.RWMutex
+	closed  bool
 
 	// Rate Limiter for position updates
 	// 20 updates per second, burst of 20
@@ -194,6 +199,13 @@ func (c *Client) SendJSON(v interface{}) {
 		log.Printf("Error marshalling JSON: %v", err)
 		return
 	}
+	// El read-lock coexiste con otros envíos pero excluye a Close(): un send a
+	// canal cerrado panicearía incluso dentro del select.
+	c.closeMu.RLock()
+	defer c.closeMu.RUnlock()
+	if c.closed {
+		return
+	}
 	select {
 	case c.send <- data:
 	default:
@@ -208,6 +220,32 @@ func (c *Client) SendError(msg string) {
 	})
 }
 
+// Close cierra el canal de salida una sola vez. Idempotente: el write-lock
+// espera a que terminen los SendJSON en curso y el flag hace que cualquier
+// envío o cierre posterior sea un no-op silencioso.
 func (c *Client) Close() {
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	if c.closed {
+		return
+	}
+	c.closed = true
 	close(c.send)
+}
+
+// CloseSessionReplaced es el close code (rango 4000+ reservado a la aplicación)
+// que recibe una conexión cuando el mismo usuario se conecta desde otro lugar.
+// El frontend NO debe auto-reconectar al verlo: si dos pestañas reconectan tras
+// cada kick se patean mutuamente para siempre (ping-pong infinito).
+const CloseSessionReplaced = 4001
+
+// NotifySessionReplaced envía el close frame con ese código antes de que el hub
+// desregistre la conexión pateada. WriteControl es seguro en concurrencia con
+// WritePump, así que puede llamarse desde la goroutine del hub.
+func (c *Client) NotifySessionReplaced() {
+	deadline := time.Now().Add(writeWait)
+	if err := c.Conn.WriteControl(websocket.CloseMessage,
+		websocket.FormatCloseMessage(CloseSessionReplaced, "session replaced"), deadline); err != nil {
+		log.Printf("[Client] Failed to send session-replaced close frame to %s: %v", c.ID, err)
+	}
 }

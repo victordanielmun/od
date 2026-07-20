@@ -125,6 +125,9 @@ func (h *Hub) Run() {
 			for _, oldClient := range toRemove {
 				log.Printf("Kicking existing connection for user: %s", oldClient.ID)
 				oldClient.SendError("Sessión cerrada: Has iniciado sesión en otro lugar.")
+				// Close code 4001: la pestaña pateada sabe que fue reemplazada y no
+				// auto-reconecta (sin esto, dos pestañas abiertas se kickean en bucle).
+				oldClient.NotifySessionReplaced()
 				h.handleUnregister(oldClient)
 			}
 

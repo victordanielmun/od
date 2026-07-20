@@ -108,6 +108,17 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                     set({ isConnected: status === 'connected' });
                 });
 
+                // El servidor cerró ESTA conexión (close 4001) porque el mismo
+                // usuario abrió el juego en otra pestaña/dispositivo. No hay
+                // reintento: esta ventana queda fuera del mundo a propósito.
+                wsClient.on('session_replaced', () => {
+                    useNotificationStore.getState().addNotification(
+                        'error',
+                        i18n.t('ws.session_replaced'),
+                        10000
+                    );
+                });
+
                 // Feedback for combat actions (player_attack/player_hit) sent via
                 // sendReliable while the socket was down: queued now, resolved once
                 // we reconnect (either replayed, or dropped if the outage ran long).
