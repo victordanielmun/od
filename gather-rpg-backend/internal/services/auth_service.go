@@ -145,13 +145,21 @@ func (s *AuthService) LoginGuest(characterIDs []string, nativeLang string, devic
 		randomCharID = strconv.Itoa(charSeed.Intn(3) + 1)
 	}
 
+	// Guests never pick a language explicitly. An empty value would normalize to
+	// English, which silently disables every native-helper translation, so default
+	// to Spanish (the product's primary audience). Changeable from the Dashboard.
+	guestLang := utils.NormalizeLang(nativeLang)
+	if strings.TrimSpace(nativeLang) == "" {
+		guestLang = "es"
+	}
+
 	user := &models.User{
 		Username:       username,
 		Email:          email,
 		Password:       string(hashedPassword),
 		IsGuest:        true,
 		CharacterID:    randomCharID,
-		NativeLanguage: utils.NormalizeLang(nativeLang),
+		NativeLanguage: guestLang,
 	}
 
 	// Use a transaction to create both user and player stats

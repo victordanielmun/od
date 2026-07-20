@@ -15,8 +15,9 @@ type User struct {
 	Role        string         `gorm:"not null;default:'user'" json:"role"` // "admin", "user"
 	// NativeLanguage is the player's first language as an ISO-639-1 code (e.g. "es", "pt", "fr").
 	// English ("en") is always the language being learned. Helper text (challenge explanations,
-	// NPC translations) is produced in this language. Defaults to "en" (immersion / no helper).
-	NativeLanguage string         `gorm:"type:varchar(10);not null;default:'en'" json:"native_language"`
+	// NPC translations) is produced in this language. Defaults to "es" (primary audience);
+	// picking "en" means immersion mode (no helper translations).
+	NativeLanguage string         `gorm:"type:varchar(10);not null;default:'es'" json:"native_language"`
 	IsGuest        bool           `gorm:"not null;default:false" json:"is_guest"`
 	CharacterID    string         `gorm:"not null;default:'1'" json:"character_id"`
 	HasChosenSprite bool          `gorm:"not null;default:false" json:"has_chosen_sprite"`
