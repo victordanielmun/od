@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { IMAGES, EVENT_DETAILS } from './constants';
 
 const Hero = () => {
+  const { t } = useTranslation();
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
@@ -113,15 +115,15 @@ const Hero = () => {
         </div>
 
         <p className="font-tech text-xl sm:text-2xl md:text-3xl text-neon-blue mb-12 tracking-[0.2em] uppercase neon-text-glow">
-          Level up your English
+          {t('landing.hero.tagline')}
         </p>
 
         {/* Countdown Timer */}
         <div className="flex justify-center gap-4 sm:gap-8 mb-16">
-          <TimeUnit value={timeLeft.days} label="DÍAS" />
-          <TimeUnit value={timeLeft.hours} label="HRS" />
-          <TimeUnit value={timeLeft.minutes} label="MIN" />
-          <TimeUnit value={timeLeft.seconds} label="SEG" />
+          <TimeUnit value={timeLeft.days} label={t('landing.hero.days')} />
+          <TimeUnit value={timeLeft.hours} label={t('landing.hero.hours')} />
+          <TimeUnit value={timeLeft.minutes} label={t('landing.hero.minutes')} />
+          <TimeUnit value={timeLeft.seconds} label={t('landing.hero.seconds')} />
         </div>
 
         <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
@@ -132,7 +134,7 @@ const Hero = () => {
             <div className="absolute inset-0 w-full h-full bg-neon-purple/20 border border-neon-purple/50 transform skew-x-12 transition-all group-hover:bg-neon-purple/40 group-hover:scale-105"></div>
             <div className="absolute inset-0 w-full h-full border-t border-b border-neon-purple scale-x-0 group-hover:scale-x-100 transition-transform duration-500"></div>
             <span className="relative font-pixel text-sm text-white group-hover:text-neon-yellow transition-colors flex items-center gap-2">
-              REGISTRARSE AHORA
+              {t('landing.hero.register_now')}
               <span className="block w-2 h-2 bg-neon-yellow animate-ping"></span>
             </span>
           </a>
@@ -141,7 +143,7 @@ const Hero = () => {
             href="#challenges"
             className="font-tech text-lg text-gray-400 hover:text-white border-b border-transparent hover:border-neon-blue transition-all"
           >
-            VER DESAFÍOS_
+            {t('landing.hero.view_challenges')}
           </a>
         </div>
       </div>

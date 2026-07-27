@@ -8,6 +8,7 @@ import { ASSET_VERSION } from '../game/config/assetVersion';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { GuestUpgradeModal } from '../components/auth/GuestUpgradeModal';
+import { LANGUAGES } from '../components/common/LanguageSwitcher';
 import { 
   LogOut, 
   Users, 
@@ -62,8 +63,9 @@ const COUNTRY_CODES = [
 ];
 
 export const Dashboard = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user, logout, isGuest } = useAuthStore();
+  const setNativeLanguage = useAuthStore(s => s.setNativeLanguage);
   const isPremium = useAuthStore(s => s.isPremium);
   const fetchBillingStatus = useAuthStore(s => s.fetchBillingStatus);
   const navigate = useNavigate();
@@ -290,6 +292,15 @@ export const Dashboard = () => {
     } finally {
       setSavingSprite(false);
     }
+  };
+
+  const handleNativeLanguageChange = async (e) => {
+    const code = e.target.value;
+    // Mirror LanguageSwitcher: the UI chrome follows the choice (en/es bundles;
+    // others fall back to English text) and the backend persists it so every
+    // helper translation (NPC dialogue, challenges) resolves into it.
+    i18n.changeLanguage(code);
+    await setNativeLanguage(code);
   };
 
   const handleEnglishLevelChange = async (e) => {
@@ -632,6 +643,27 @@ export const Dashboard = () => {
                 English Training Profile
               </h2>
 
+              {/* Native language drives every helper translation (NPC dialogue,
+                  challenge hints). Shown to guests too — they never pick one at
+                  signup, so this is their only place to change it. */}
+              <div className="flex justify-between items-center bg-indigo-950/30 border border-indigo-500/10 rounded-xl p-3 mb-4">
+                <span className="text-gray-400 text-sm flex items-center gap-2">
+                  <Globe size={16} className="text-indigo-400" />
+                  {t('dashboard.native_language', 'Native Language')}
+                </span>
+                <select
+                  value={user?.native_language || 'es'}
+                  onChange={handleNativeLanguageChange}
+                  className="bg-indigo-950 text-yellow-400 border border-indigo-500/50 rounded-lg text-xs font-bold tracking-wider p-1.5 focus:outline-none focus:border-indigo-400 cursor-pointer shadow-md"
+                >
+                  {LANGUAGES.map(lang => (
+                    <option key={lang.code} value={lang.code} className="bg-gray-950 text-white">
+                      {lang.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {guestStatus ? (
                 <div className="py-6 text-center text-sm text-gray-400">
                   <p>Register an account to unlock complete English training tracking and quests.</p>
@@ -901,6 +933,7 @@ export const Dashboard = () => {
                           <span className="col-span-4 text-sm font-medium text-gray-200 truncate flex items-center gap-2">
                             {entry.username}
                             {isMe && <span className="text-[9px] uppercase font-bold text-yellow-400 bg-yellow-500/15 border border-yellow-500/30 px-1.5 py-0.5 rounded">You</span>}
+                            {entry.is_guest && !isMe && <span className="text-[9px] uppercase font-bold text-sky-300 bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.5 rounded">Guest</span>}
                           </span>
                           <span className="col-span-2 text-center">
                             <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${

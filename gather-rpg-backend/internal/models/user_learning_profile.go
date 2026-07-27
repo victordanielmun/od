@@ -38,4 +38,5 @@ type LeaderboardEntry struct {
 	EnglishLevel DifficultyLevel `json:"english_level"`
 	TotalXP      int             `json:"total_xp"`
 	WeeklyScore  int             `json:"weekly_score"`
+	IsGuest      bool            `json:"is_guest"`
 }

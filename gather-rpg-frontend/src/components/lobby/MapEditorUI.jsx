@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Hammer, Save, Download, Upload, X, Undo2, Redo2, Trash2,
   Paintbrush, Eraser, Square, ChevronDown, ChevronUp, Pause, Play,
-  Camera, User, MapPin, Pipette, Zap, Swords
+  Camera, User, MapPin, Pipette, Zap
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import api from '../../services/api';
 import { normalizeBehavior } from '../../game/config/enemyBehaviors';
+import { versioned } from '../../game/config/assetVersion';
 import { InfoSignEditor } from './InfoSignEditor';
 
 const TILE_COLORS = {
@@ -63,7 +64,7 @@ const FloorGrid = ({ active, onSelect }) => (
         >
           <div style={{
             width: '100%', height: '100%',
-            backgroundImage: 'url(/terrain/terrain-spritesheet.png)',
+            backgroundImage: `url(${versioned('/terrain/terrain-spritesheet.png')})`,
             backgroundSize: '800% 800%',
             backgroundPosition: `${(col / 7) * 100}% ${(row / 7) * 100}%`,
             imageRendering: 'pixelated',
@@ -81,13 +82,13 @@ const SpriteJsonGrid = ({ jsonPath, imgPath, active, onSelect, scaleTarget = 32 
     const imgs = Array.isArray(imgPath) ? imgPath : [imgPath];
     
     Promise.all(paths.map((p, idx) => 
-      fetch(p).then(r => r.json()).then(d => {
+      fetch(versioned(p)).then(r => r.json()).then(d => {
         const matchingImg = imgs[idx] || imgs[0];
         return d.frames
           .filter(f => f.sourceSize.w > 10 && f.sourceSize.h > 10)
           .map(f => ({
             ...f,
-            _imagePath: matchingImg
+            _imagePath: versioned(matchingImg)
           }));
       })
     ))
@@ -136,6 +137,16 @@ export const MapEditorUI = ({ gameRef }) => {
   const { t } = useTranslation();
   const isAdmin = useAuthStore(s => s.isAdmin());
   const adminCheck = isAdmin;
+
+  // Helpers estables (solo leen refs/URL) para poder usarlos como deps de efectos.
+  const getScene = useCallback(() =>
+    gameRef.current?.scene?.getScene('LobbyScene') || gameRef.current?.scene?.scenes?.[0], [gameRef]);
+
+  const getMapKey = useCallback(() => {
+    const sc = getScene();
+    if (sc && sc.currentMapKey) return sc.currentMapKey;
+    return new URLSearchParams(window.location.search).get('edit_map') || 'lobby';
+  }, [getScene]);
 
   const [isEditorActive, setIsEditorActive] = useState(false);
   const [moveMode, setMoveMode] = useState('character'); // Default to character mode as requested
@@ -355,7 +366,7 @@ export const MapEditorUI = ({ gameRef }) => {
         if (md?.defaultSpawnX != null) spawnX = md.defaultSpawnX;
         if (md?.defaultSpawnY != null) spawnY = md.defaultSpawnY;
         if (md?.bgmTrack) bgm = md.bgmTrack;
-      } catch { }
+      } catch { /* map_data corrupto: se usan los defaults */ }
       setCurrentSettings({
         width: w, height: h,
         isPublic: !!map.is_public,
@@ -379,7 +390,7 @@ export const MapEditorUI = ({ gameRef }) => {
         hasInitializedSettings.current = true;
       }
     }
-  }, [availableMaps, isEditorActive]);
+  }, [availableMaps, isEditorActive, getMapKey, getScene]);
 
   // Sync currentSettings back to Phaser scene whenever they change. Guarded so the
   // initial React defaults can't overwrite the spawn/dims loaded from the DB before
@@ -390,7 +401,7 @@ export const MapEditorUI = ({ gameRef }) => {
     if (sc && typeof sc.updateMapMetadata === 'function') {
       sc.updateMapMetadata(currentSettings);
     }
-  }, [currentSettings, isEditorActive]);
+  }, [currentSettings, isEditorActive, getScene]);
 
   useEffect(() => {
     if (!isEditorActive) return;
@@ -449,14 +460,46 @@ export const MapEditorUI = ({ gameRef }) => {
       } else if (n++ < 20) setTimeout(tryOpen, 500);
     };
     setTimeout(tryOpen, 1000);
+  }, [isAdmin, getScene]);
+
+  // Estos efectos deben registrarse ANTES del early-return de abajo: los hooks
+  // tienen que ejecutarse en el mismo orden en todos los renders (rules-of-hooks).
+  useEffect(() => {
+    dispatchEditorCommand('setNPCMetadata', npcMeta);
+  }, [npcMeta]);
+
+  useEffect(() => {
+    dispatchEditorCommand('setPickupMetadata', pickupMeta);
+  }, [pickupMeta]);
+
+  useEffect(() => {
+    dispatchEditorCommand('setEnemyMetadata', enemyMeta);
+  }, [enemyMeta]);
+
+  useEffect(() => {
+    dispatchEditorCommand('setFurnitureMetadata', furnitureMeta);
+  }, [furnitureMeta]);
+
+  useEffect(() => {
+    const handleSyncWaypoints = (e) => {
+      setNpcMeta(prev => ({ ...prev, waypoints: e.detail || [] }));
+    };
+    window.addEventListener('editor-sync-npc-waypoints', handleSyncWaypoints);
+    return () => {
+      window.removeEventListener('editor-sync-npc-waypoints', handleSyncWaypoints);
+    };
   }, []);
+
+  useEffect(() => {
+    if (activeTile !== 'npc' || !isEditorActive) {
+      setEditingNpcRoute(false);
+      dispatchEditorCommand('setEditingNpcRouteMode', false);
+    }
+  }, [activeTile, isEditorActive]);
 
   if (!adminCheck) return null;
 
   /* ─── helpers ─── */
-  const getScene = () =>
-    gameRef.current?.scene?.getScene('LobbyScene') || gameRef.current?.scene?.scenes?.[0];
-
   const toggleEditor = () => {
     const next = !isEditorActive;
     const tryToggle = (n = 0) => {
@@ -498,38 +541,6 @@ export const MapEditorUI = ({ gameRef }) => {
   const updateNpcMeta = (k, v) => { 
     setNpcMeta(prev => ({ ...prev, [k]: k === 'state' ? mapFaceToBodyState(v) : v })); 
   };
-  useEffect(() => {
-    dispatchEditorCommand('setNPCMetadata', npcMeta);
-  }, [npcMeta]);
-
-  useEffect(() => {
-    dispatchEditorCommand('setPickupMetadata', pickupMeta);
-  }, [pickupMeta]);
-
-  useEffect(() => {
-    dispatchEditorCommand('setEnemyMetadata', enemyMeta);
-  }, [enemyMeta]);
-
-  useEffect(() => {
-    dispatchEditorCommand('setFurnitureMetadata', furnitureMeta);
-  }, [furnitureMeta]);
-
-  useEffect(() => {
-    const handleSyncWaypoints = (e) => {
-      setNpcMeta(prev => ({ ...prev, waypoints: e.detail || [] }));
-    };
-    window.addEventListener('editor-sync-npc-waypoints', handleSyncWaypoints);
-    return () => {
-      window.removeEventListener('editor-sync-npc-waypoints', handleSyncWaypoints);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (activeTile !== 'npc' || !isEditorActive) {
-      setEditingNpcRoute(false);
-      dispatchEditorCommand('setEditingNpcRouteMode', false);
-    }
-  }, [activeTile, isEditorActive]);
   const selectMoveMode = (mode) => { setMoveMode(mode); dispatchEditorCommand('setMoveMode', mode); };
   const updatePlayerSpeed = (val) => {
     const s = parseInt(val);
@@ -537,11 +548,6 @@ export const MapEditorUI = ({ gameRef }) => {
     dispatchEditorCommand('setPlayerSpeed', s);
   };
 
-  const getMapKey = () => {
-    const sc = getScene();
-    if (sc && sc.currentMapKey) return sc.currentMapKey;
-    return new URLSearchParams(window.location.search).get('edit_map') || 'lobby';
-  };
   const currentMapKey = getMapKey();
 
   const saveToServer = () => {
@@ -657,23 +663,6 @@ export const MapEditorUI = ({ gameRef }) => {
   };
 
   const total = (stats.walls || 0) + (stats.floors || 0) + (stats.forest || 0) + (stats.builds || 0) + (stats.spawns || 0) + (stats.npcZones || 0) + (stats.pickups || 0) + (stats.storeTiles || 0) + (stats.furniture || 0) + (stats.furniture2 || 0) + (stats.furniture3 || 0) + (stats.exits || 0);
-
-  const TILE_TYPE_TO_STAT = {
-    wall: 'stat_walls',
-    floor: 'stat_floors',
-    forest: 'stat_forests',
-    build: 'stat_builds',
-    spawn: 'stat_spawns',
-    npc: 'stat_npcs',
-    item: 'stat_pickups',
-    collider: 'stat_colliders',
-    store: 'stat_store',
-    furniture: 'stat_furniture',
-    furniture2: 'stat_furniture2',
-    furniture3: 'stat_furniture3',
-    exit: 'stat_exits',
-    enemy: 'stat_enemies',
-  };
 
   /* ─── render ─── */
   return (
@@ -1523,7 +1512,6 @@ export const MapEditorUI = ({ gameRef }) => {
             <Section title={`${t('lobby.editor.stats')} · ${total} tiles`} defaultOpen={false}>
               <div className="grid grid-cols-2 gap-1">
                 {TILE_TYPES.map(t_obj => {
-                  const key = TILE_TYPE_TO_STAT[t_obj.id] || `${t_obj.id}s`;
                   const cnt = stats[t_obj.id === 'npc' ? 'npcZones' : (t_obj.id === 'item' ? 'pickups' : (t_obj.id === 'enemy' ? 'enemySpawns' : (t_obj.id === 'furniture' ? 'furniture' : (t_obj.id === 'furniture2' ? 'furniture2' : (t_obj.id === 'furniture3' ? 'furniture3' : `${t_obj.id}s`)))))] || 0;
                   return (
                     <div key={t_obj.id} className="flex items-center gap-1.5 text-[9px] text-gray-400">

@@ -96,9 +96,14 @@ export const useAuthStore = create((set, get) => ({
       }
 
       const characterIds = CHARACTER_CONFIG.characters.map(c => c.id);
-      const response = await api.post('/auth/guest', { 
-        character_ids: characterIds, 
-        native_language: currentLang(),
+      // Guests never choose a language explicitly: a browser detected as English
+      // would store native_language='en' and silently disable all helper
+      // translations (the app teaches English). Default those to Spanish; any
+      // other UI language passes through. Changeable later from the Dashboard.
+      const uiLang = currentLang();
+      const response = await api.post('/auth/guest', {
+        character_ids: characterIds,
+        native_language: uiLang === 'en' ? 'es' : uiLang,
         device_id: deviceId
       });
       const { token, user } = response.data;

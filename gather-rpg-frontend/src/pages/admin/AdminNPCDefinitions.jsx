@@ -151,6 +151,8 @@ export const AdminNPCDefinitions = () => {
     const [error, setError] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingDef, setEditingDef] = useState(null);
+    // Error propio del modal: el banner de `error` queda tapado por el overlay.
+    const [formError, setFormError] = useState(null);
     const [availableVoices, setAvailableVoices] = useState([]);
     const [formData, setFormData] = useState({ 
         name: '', 
@@ -205,6 +207,14 @@ export const AdminNPCDefinitions = () => {
             gift_item_id: formData.gift_item_id === "" ? null : formData.gift_item_id
         };
 
+        // Misma validación que hace el backend (400 "Merchants must have a Shop ID"),
+        // adelantada aquí para mostrar el motivo dentro del modal.
+        if (formData.type === 'merchant' && !submissionData.shop_id) {
+            setFormError(t('admin.npc_definitions.errors.merchant_needs_shop'));
+            return;
+        }
+        setFormError(null);
+
         try {
             if (editingDef) {
                 await api.put(`/admin/npc-definitions/${editingDef.id}`, submissionData);
@@ -225,7 +235,7 @@ export const AdminNPCDefinitions = () => {
             });
             fetchData();
         } catch (err) {
-            setError(t('admin.npc_definitions.errors.save'));
+            setFormError(err.response?.data?.error || t('admin.npc_definitions.errors.save'));
         }
     };
 
@@ -252,6 +262,7 @@ export const AdminNPCDefinitions = () => {
             shop_id: ''
         });
         setInstances([]);
+        setFormError(null);
         setIsModalOpen(true);
     };
 
@@ -305,7 +316,8 @@ export const AdminNPCDefinitions = () => {
         setInstances([]);
         setInstanceFormData({});
         fetchInstancesForDef(def.id);
-        
+
+        setFormError(null);
         setIsModalOpen(true);
     };
 
@@ -703,6 +715,13 @@ export const AdminNPCDefinitions = () => {
                                             ))}
                                         </div>
                                     )}
+                                </div>
+                            )}
+
+                            {formError && (
+                                <div className="mt-4 bg-red-900/20 border border-red-900/50 text-red-400 p-3 rounded-lg flex items-center gap-2 text-sm">
+                                    <AlertCircle size={16} />
+                                    <span>{formError}</span>
                                 </div>
                             )}
 

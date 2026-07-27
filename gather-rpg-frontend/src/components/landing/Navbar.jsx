@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Menu, X } from 'lucide-react';
 import { IMAGES } from './constants';
+import LanguageSwitcher from '../common/LanguageSwitcher';
 
 const Navbar = () => {
   const { t } = useTranslation();
@@ -25,7 +26,7 @@ const Navbar = () => {
           </div>
           
           <div className="hidden md:block">
-            <div className="ml-10 flex items-baseline space-x-8">
+            <div className="ml-10 flex items-center space-x-8">
               {navLinks.map((link) => (
                 <a
                   key={link.name}
@@ -41,10 +42,12 @@ const Navbar = () => {
               >
                 {t('landing.navbar.join')}
               </a>
+              <LanguageSwitcher />
             </div>
           </div>
-          
-          <div className="-mr-2 flex md:hidden">
+
+          <div className="-mr-2 flex md:hidden items-center gap-2">
+            <LanguageSwitcher />
             <button
               onClick={() => setIsOpen(!isOpen)}
               className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none"

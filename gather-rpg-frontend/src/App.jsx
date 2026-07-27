@@ -45,7 +45,7 @@ const PrivateRoute = ({ children }) => {
 
   // Force registered users (not guests) to complete companion guide onboarding
   const isGuest = user?.is_guest || user?.username?.startsWith('Guest_') || false;
-  if (!isGuest && user && !user.companion_npc_id) {
+  if (!isGuest && user && user.role !== 'admin' && !user.companion_npc_id) {
     return <Navigate to="/register" replace />;
   }
 
@@ -59,11 +59,19 @@ const NotFoundRedirect = () => {
   return <Navigate to={isAuthenticated ? '/dashboard' : '/'} replace />;
 };
 
+// Raíz: con sesión activa no hay razón para ver la landing — directo al
+// dashboard. Un token huérfano no genera bucle: el interceptor de api.js lo
+// limpia al primer 401 y devuelve aquí, donde ya se renderiza la landing.
+const HomeRoute = () => {
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  return isAuthenticated ? <Navigate to="/dashboard" replace /> : <PlayLanding />;
+};
+
 function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<PlayLanding />} />
+        <Route path="/" element={<HomeRoute />} />
         {/* Enlaces antiguos a /play (QRs, redes) siguen funcionando */}
         <Route path="/play" element={<Navigate to="/" replace />} />
         <Route path="/event" element={<LandingPage />} />

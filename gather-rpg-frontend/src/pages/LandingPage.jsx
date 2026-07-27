@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import Navbar from '../components/landing/Navbar';
 import Hero from '../components/landing/Hero';
 import Challenges from '../components/landing/Challenges';
@@ -6,6 +7,7 @@ import Registration from '../components/landing/Registration';
 import Footer from '../components/landing/Footer';
 
 function LandingPage() {
+  const { t } = useTranslation();
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -33,19 +35,19 @@ function LandingPage() {
            <div className="max-w-7xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
               <div className="space-y-2">
                  <div className="font-pixel text-2xl md:text-3xl text-neon-blue">500+</div>
-                 <div className="font-tech text-gray-400 uppercase tracking-widest">Participantes</div>
+                 <div className="font-tech text-gray-400 uppercase tracking-widest">{t('landing.stats.participants')}</div>
               </div>
               <div className="space-y-2">
                  <div className="font-pixel text-2xl md:text-3xl text-neon-purple">$10K</div>
-                 <div className="font-tech text-gray-400 uppercase tracking-widest">En Premios</div>
+                 <div className="font-tech text-gray-400 uppercase tracking-widest">{t('landing.stats.prizes')}</div>
               </div>
               <div className="space-y-2">
                  <div className="font-pixel text-2xl md:text-3xl text-neon-pink">5</div>
-                 <div className="font-tech text-gray-400 uppercase tracking-widest">Mentores</div>
+                 <div className="font-tech text-gray-400 uppercase tracking-widest">{t('landing.stats.mentors')}</div>
               </div>
               <div className="space-y-2">
                  <div className="font-pixel text-2xl md:text-3xl text-neon-yellow">5+</div>
-                 <div className="font-tech text-gray-400 uppercase tracking-widest">Retos</div>
+                 <div className="font-tech text-gray-400 uppercase tracking-widest">{t('landing.stats.challenges')}</div>
               </div>
            </div>
         </div>
@@ -61,7 +63,7 @@ function LandingPage() {
           href="#register"
           className="bg-neon-blue text-black font-pixel text-[10px] px-6 py-3 rounded shadow-[4px_4px_0px_0px_#000000] border-2 border-white hover:translate-y-1 hover:shadow-none transition-all block"
         >
-          REGISTRARSE
+          {t('landing.cta_register')}
         </a>
       </div>
     </div>

@@ -572,7 +572,7 @@ export const LobbyLayout = () => {
 
       {/* Overlays (Z-Index 40) */}
       {activeOverlay && (
-      <div className="absolute inset-0 bg-black/70 z-40 flex items-center justify-center p-8 backdrop-blur-sm">
+      <div className="absolute inset-0 bg-black/70 z-[60] flex items-center justify-center p-8 backdrop-blur-sm">
         {activeOverlay === 'minigame' && minigameData && minigameData.minigameType === 'chess' ? (
           <ChessMinigameHUD
             minigameId={minigameData.minigameId}

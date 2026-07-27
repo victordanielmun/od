@@ -1,29 +1,26 @@
 import { Cpu, Lock, Workflow, Linkedin } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { IMAGES } from './constants';
 
 const Challenges = () => {
+  const { t } = useTranslation();
+
   const cards = [
     {
-      title: "APRENDE",
-      subtitle: "NO-CODE TOOLS",
+      id: "learn",
       icon: <Cpu size={40} className="animate-[pulse_3s_ease-in-out_infinite]" />,
-      desc: "Domina herramientas visuales para crear flujos potentes sin escribir una sola línea de código complejo.",
       color: "border-neon-blue text-neon-blue",
       gradient: "from-neon-blue/20 to-transparent"
     },
     {
-      title: "IMPLEMENTA",
-      subtitle: "SEGURIDAD AGENTICA",
+      id: "implement",
       icon: <Lock size={40} className="animate-[pulse_4s_ease-in-out_infinite]" />,
-      desc: "Asegura tus agentes de IA. Aprende a proteger prompts, datos sensibles y evitar alucinaciones peligrosas.",
       color: "border-neon-purple text-neon-purple",
       gradient: "from-neon-purple/20 to-transparent"
     },
     {
-      title: "MEJORA",
-      subtitle: "TUS FLUJOS",
+      id: "improve",
       icon: <Workflow size={40} className="animate-[pulse_3.5s_ease-in-out_infinite]" />,
-      desc: "Optimiza la latencia y el coste de tus automatizaciones. Haz que tus bots trabajen más rápido y barato.",
       color: "border-neon-pink text-neon-pink",
       gradient: "from-neon-pink/20 to-transparent"
     }
@@ -31,9 +28,8 @@ const Challenges = () => {
 
   const mentors = [
     {
+        id: "victor",
         name: "VICTOR DANIEL MUÑOZ",
-        role: "INGENIERO DE SISTEMAS",
-        bio: "Ingeniero de sistemas con experiencia en desarrollo web y arquitectura de software.",
         image: IMAGES.mentorVictor,
         borderColor: "border-neon-blue",
         shadowColor: "group-hover:shadow-[0_0_30px_rgba(0,243,255,0.4)]",
@@ -42,9 +38,8 @@ const Challenges = () => {
         }
     },
     {
+        id: "kevin",
         name: "KEVIN GONZALEZ",
-        role: "INGENIERO DE SISTEMAS",
-        bio: "Ingeniero de sistemas enfocado en soluciones tecnológicas y desarrollo backend.",
         image: IMAGES.mentorKevin,
         borderColor: "border-neon-purple",
         shadowColor: "group-hover:shadow-[0_0_30px_rgba(188,19,254,0.4)]",
@@ -53,9 +48,8 @@ const Challenges = () => {
         }
     },
     {
+        id: "mauricio",
         name: "MAURICIO JAVIER BARRETO",
-        role: "ADMINISTRADOR DE EMPRESAS",
-        bio: "Administrador de empresas con visión estratégica en proyectos de tecnología.",
         image: IMAGES.mentorMauricio,
         borderColor: "border-neon-pink",
         shadowColor: "group-hover:shadow-[0_0_30px_rgba(255,0,255,0.4)]",
@@ -64,9 +58,8 @@ const Challenges = () => {
         }
     },
     {
+        id: "darly",
         name: "DARLY DAISURY CHAVEZ",
-        role: "INGENIERO DE SISTEMAS",
-        bio: "Ingeniera de sistemas apasionada por la innovación y el desarrollo ágil.",
         image: IMAGES.mentorDarly,
         borderColor: "border-neon-yellow",
         shadowColor: "group-hover:shadow-[0_0_30px_rgba(252,238,10,0.4)]",
@@ -75,9 +68,8 @@ const Challenges = () => {
         }
     },
     {
+        id: "james",
         name: "JAMES ALEXIS HENAO",
-        role: "INGENIERO DE SISTEMAS",
-        bio: "Ingeniero de sistemas especializado en integración de sistemas y transformación digital.",
         image: IMAGES.mentorJames,
         borderColor: "border-neon-blue",
         shadowColor: "group-hover:shadow-[0_0_30px_rgba(0,243,255,0.4)]",
@@ -93,7 +85,7 @@ const Challenges = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="font-pixel text-2xl md:text-4xl text-white mb-4">
-              CHALLENGE PILLARS
+              {t('landing.pillars.title')}
             </h2>
             <div className="h-1 w-24 bg-neon-purple mx-auto"></div>
           </div>
@@ -113,14 +105,14 @@ const Challenges = () => {
                   </div>
                   
                   <h3 className="font-tech font-bold text-3xl text-white mb-1">
-                    {card.title}
+                    {t(`landing.pillars.${card.id}.title`)}
                   </h3>
                   <h4 className={`font-pixel text-xs ${card.color} mb-4`}>
-                    {card.subtitle}
+                    {t(`landing.pillars.${card.id}.subtitle`)}
                   </h4>
-                  
+
                   <p className="font-sans text-gray-400 leading-relaxed">
-                    {card.desc}
+                    {t(`landing.pillars.${card.id}.desc`)}
                   </p>
                 </div>
               </div>
@@ -134,10 +126,10 @@ const Challenges = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
            <div className="text-center mb-16">
             <h2 className="font-pixel text-2xl md:text-4xl text-white mb-4">
-              MENTORES
+              {t('landing.mentors.title')}
             </h2>
             <p className="font-tech text-xl text-neon-blue uppercase tracking-widest">
-                Expertos guiando tu camino
+                {t('landing.mentors.subtitle')}
             </p>
           </div>
 
@@ -151,10 +143,10 @@ const Challenges = () => {
                         </div>
                         
                         <h3 className="font-pixel text-xs text-white mb-1 leading-tight min-h-[2.5em] flex items-center justify-center">{mentor.name}</h3>
-                        <p className={`font-tech text-xs font-bold mb-2 ${mentor.borderColor.replace('border-', 'text-')}`}>{mentor.role}</p>
-                        
+                        <p className={`font-tech text-xs font-bold mb-2 ${mentor.borderColor.replace('border-', 'text-')}`}>{t(`landing.mentors.${mentor.id}.role`)}</p>
+
                         <p className="font-sans text-gray-500 text-[10px] mb-4 flex-grow line-clamp-3">
-                            {mentor.bio}
+                            {t(`landing.mentors.${mentor.id}.bio`)}
                         </p>
 
                         <div className="flex gap-2">

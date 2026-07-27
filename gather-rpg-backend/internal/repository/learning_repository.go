@@ -205,7 +205,9 @@ func (r *LearningRepository) GetProfileByUserID(userID uuid.UUID) (*models.UserL
 }
 
 // GetLeaderboard returns the top users ranked by accumulated TotalXP (all-time).
-// It joins users for the display name and skips guests and soft-deleted profiles.
+// It joins users for the display name and skips only soft-deleted profiles. Guests
+// are included (flagged via IsGuest) so an early/small player base still fills the
+// board; they drop off naturally once they upgrade or their profiles are cleaned up.
 // Rank is assigned 1-based in the returned order.
 func (r *LearningRepository) GetLeaderboard(limit int) ([]models.LeaderboardEntry, error) {
 	if limit <= 0 || limit > 100 {
@@ -219,9 +221,9 @@ func (r *LearningRepository) GetLeaderboard(limit int) ([]models.LeaderboardEntr
 	var entries []models.LeaderboardEntry
 	err := database.DB.
 		Table("user_learning_profiles AS p").
-		Select("u.id AS user_id, u.username AS username, p.english_level AS english_level, p.total_xp AS total_xp, "+weeklyExpr+" AS weekly_score", weekStart).
+		Select("u.id AS user_id, u.username AS username, p.english_level AS english_level, p.total_xp AS total_xp, "+weeklyExpr+" AS weekly_score, u.is_guest AS is_guest", weekStart).
 		Joins("JOIN users u ON u.id = p.user_id").
-		Where("p.deleted_at IS NULL AND u.deleted_at IS NULL AND u.is_guest = ?", false).
+		Where("p.deleted_at IS NULL AND u.deleted_at IS NULL").
 		Order("p.total_xp DESC, weekly_score DESC, u.username ASC").
 		Limit(limit).
 		Scan(&entries).Error

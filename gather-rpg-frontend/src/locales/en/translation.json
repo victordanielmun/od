@@ -25,6 +25,12 @@
     "cancel_confirm": "Are you sure you want to cancel? You'll keep access until the end of the period.",
     "back": "Back"
   },
+  "dashboard": {
+    "native_language": "Native Language"
+  },
+  "ws": {
+    "session_replaced": "You opened the game in another tab or device. This window is now disconnected from the world — close one of the two."
+  },
   "admin": {
     "dashboard": {
       "title": "Admin Dashboard",
@@ -210,6 +216,7 @@
         "name": "Name",
         "name_placeholder": "Character name...",
         "sprite_base": "Base Sprite",
+        "greeting": "Initial Greeting",
         "type": "Type / Role",
         "interaction_mode": "Dialogue Mode",
         "voice_type": "Generic Voice",
@@ -239,6 +246,12 @@
       "voices": {
         "male": "Male",
         "female": "Female"
+      },
+      "errors": {
+        "loading": "Error loading NPC definitions.",
+        "save": "Error saving NPC definition.",
+        "delete": "Error deleting NPC definition.",
+        "merchant_needs_shop": "A Merchant NPC needs an associated shop. Select one under \"Associated Shop\"."
       }
     },
     "items": {
@@ -842,7 +855,90 @@
       "speakers": "Speakers",
       "join": "JOIN",
       "join_now": "JOIN NOW"
-    }
+    },
+    "hero": {
+      "tagline": "Level up your English",
+      "days": "DAYS",
+      "hours": "HRS",
+      "minutes": "MIN",
+      "seconds": "SEC",
+      "register_now": "REGISTER NOW",
+      "view_challenges": "VIEW CHALLENGES_"
+    },
+    "stats": {
+      "participants": "Participants",
+      "prizes": "In Prizes",
+      "mentors": "Mentors",
+      "challenges": "Challenges"
+    },
+    "pillars": {
+      "title": "CHALLENGE PILLARS",
+      "learn": {
+        "title": "LEARN",
+        "subtitle": "NO-CODE TOOLS",
+        "desc": "Master visual tools to build powerful flows without writing a single line of complex code."
+      },
+      "implement": {
+        "title": "IMPLEMENT",
+        "subtitle": "AGENTIC SECURITY",
+        "desc": "Secure your AI agents. Learn to protect prompts and sensitive data, and avoid dangerous hallucinations."
+      },
+      "improve": {
+        "title": "IMPROVE",
+        "subtitle": "YOUR FLOWS",
+        "desc": "Optimize the latency and cost of your automations. Make your bots work faster and cheaper."
+      }
+    },
+    "mentors": {
+      "title": "MENTORS",
+      "subtitle": "Experts guiding your path",
+      "victor": {
+        "role": "SYSTEMS ENGINEER",
+        "bio": "Systems engineer with experience in web development and software architecture."
+      },
+      "kevin": {
+        "role": "SYSTEMS ENGINEER",
+        "bio": "Systems engineer focused on technology solutions and backend development."
+      },
+      "mauricio": {
+        "role": "BUSINESS ADMINISTRATOR",
+        "bio": "Business administrator with a strategic vision for technology projects."
+      },
+      "darly": {
+        "role": "SYSTEMS ENGINEER",
+        "bio": "Systems engineer passionate about innovation and agile development."
+      },
+      "james": {
+        "role": "SYSTEMS ENGINEER",
+        "bio": "Systems engineer specialized in systems integration and digital transformation."
+      }
+    },
+    "register": {
+      "title": "JOIN THE BATTLE",
+      "subtitle": "Limited spots. Secure your place in the automation arena.",
+      "success_title": "REGISTRATION COMPLETE!",
+      "success_redirect": "Redirecting to the platform...",
+      "name_label": "Codename / Name",
+      "name_placeholder": "e.g. CyberPunk_01",
+      "email_label": "Email Address",
+      "email_placeholder": "dev@example.com",
+      "role_label": "Class (Role)",
+      "submit": "CONFIRM ATTENDANCE",
+      "disclaimer": "* By registering you agree to receive event updates. No spam, just bits."
+    },
+    "footer": {
+      "description": "The leading event in Latin America connecting enthusiasts of Artificial Intelligence, Automation and No-Code development.",
+      "resources": "Resources",
+      "rules": "Challenge Rules",
+      "starter_kit": "Starter Kit",
+      "legal": "Legal",
+      "privacy": "Privacy",
+      "terms": "Terms",
+      "code_of_conduct": "Code of Conduct",
+      "copyright": "© 2026 Odisea AI. All systems operational.",
+      "powered": "Powered by Human Intelligence + AI"
+    },
+    "cta_register": "REGISTER"
   },
   "register": {
     "timeline": {

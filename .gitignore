@@ -49,6 +49,9 @@ voice/backend/uvicorn_*.txt
 # Docker
 .docker/
 
+# Backups de base de datos
+backups/
+
 # OS
 .DS_Store
 Thumbs.db

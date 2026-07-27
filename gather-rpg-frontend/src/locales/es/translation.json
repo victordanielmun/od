@@ -25,6 +25,12 @@
     "cancel_confirm": "¿Seguro que quieres cancelar? Mantendrás el acceso hasta el final del periodo.",
     "back": "Volver"
   },
+  "dashboard": {
+    "native_language": "Idioma nativo"
+  },
+  "ws": {
+    "session_replaced": "Abriste el juego en otra pestaña o dispositivo. Esta ventana quedó desconectada del mundo — cierra una de las dos."
+  },
   "admin": {
     "dashboard": {
       "title": "Panel de Control",
@@ -210,6 +216,7 @@
         "name": "Nombre",
         "name_placeholder": "Nombre del personaje...",
         "sprite_base": "Sprite Base",
+        "greeting": "Saludo Inicial",
         "type": "Tipo / Rol",
         "interaction_mode": "Modo Diálogo",
         "voice_type": "Voz Genérica",
@@ -245,7 +252,8 @@
       "errors": {
         "loading": "Error al cargar las definiciones de NPC.",
         "save": "Error al guardar la definición de NPC.",
-        "delete": "Error al eliminar la definición de NPC."
+        "delete": "Error al eliminar la definición de NPC.",
+        "merchant_needs_shop": "Un NPC Comerciante necesita una tienda asociada. Selecciona una en \"Tienda Asociada\"."
       }
     },
     "items": {
@@ -881,7 +889,90 @@
       "speakers": "Mentores",
       "join": "UNIRSE",
       "join_now": "UNIRSE AHORA"
-    }
+    },
+    "hero": {
+      "tagline": "Level up your English",
+      "days": "DÍAS",
+      "hours": "HRS",
+      "minutes": "MIN",
+      "seconds": "SEG",
+      "register_now": "REGISTRARSE AHORA",
+      "view_challenges": "VER DESAFÍOS_"
+    },
+    "stats": {
+      "participants": "Participantes",
+      "prizes": "En Premios",
+      "mentors": "Mentores",
+      "challenges": "Retos"
+    },
+    "pillars": {
+      "title": "PILARES DEL RETO",
+      "learn": {
+        "title": "APRENDE",
+        "subtitle": "NO-CODE TOOLS",
+        "desc": "Domina herramientas visuales para crear flujos potentes sin escribir una sola línea de código complejo."
+      },
+      "implement": {
+        "title": "IMPLEMENTA",
+        "subtitle": "SEGURIDAD AGENTICA",
+        "desc": "Asegura tus agentes de IA. Aprende a proteger prompts, datos sensibles y evitar alucinaciones peligrosas."
+      },
+      "improve": {
+        "title": "MEJORA",
+        "subtitle": "TUS FLUJOS",
+        "desc": "Optimiza la latencia y el coste de tus automatizaciones. Haz que tus bots trabajen más rápido y barato."
+      }
+    },
+    "mentors": {
+      "title": "MENTORES",
+      "subtitle": "Expertos guiando tu camino",
+      "victor": {
+        "role": "INGENIERO DE SISTEMAS",
+        "bio": "Ingeniero de sistemas con experiencia en desarrollo web y arquitectura de software."
+      },
+      "kevin": {
+        "role": "INGENIERO DE SISTEMAS",
+        "bio": "Ingeniero de sistemas enfocado en soluciones tecnológicas y desarrollo backend."
+      },
+      "mauricio": {
+        "role": "ADMINISTRADOR DE EMPRESAS",
+        "bio": "Administrador de empresas con visión estratégica en proyectos de tecnología."
+      },
+      "darly": {
+        "role": "INGENIERA DE SISTEMAS",
+        "bio": "Ingeniera de sistemas apasionada por la innovación y el desarrollo ágil."
+      },
+      "james": {
+        "role": "INGENIERO DE SISTEMAS",
+        "bio": "Ingeniero de sistemas especializado en integración de sistemas y transformación digital."
+      }
+    },
+    "register": {
+      "title": "ÚNETE A LA BATALLA",
+      "subtitle": "Cupos limitados. Asegura tu lugar en la arena de automatización.",
+      "success_title": "¡REGISTRO COMPLETADO!",
+      "success_redirect": "Redirigiendo a la plataforma...",
+      "name_label": "Codename / Nombre",
+      "name_placeholder": "Ej. CyberPunk_01",
+      "email_label": "Correo Electrónico",
+      "email_placeholder": "dev@ejemplo.com",
+      "role_label": "Clase (Rol)",
+      "submit": "CONFIRMAR ASISTENCIA",
+      "disclaimer": "* Al registrarte aceptas recibir comunicaciones sobre el evento. No spam, solo bits."
+    },
+    "footer": {
+      "description": "El evento líder en Latinoamérica conectando entusiastas de la Inteligencia Artificial, Automatización y desarrollo No-Code.",
+      "resources": "Recursos",
+      "rules": "Reglas del Reto",
+      "starter_kit": "Kit de Inicio",
+      "legal": "Legal",
+      "privacy": "Privacidad",
+      "terms": "Términos",
+      "code_of_conduct": "Código de Conducta",
+      "copyright": "© 2026 Odisea AI. Todos los sistemas operativos.",
+      "powered": "Impulsado por Inteligencia Humana + IA"
+    },
+    "cta_register": "REGISTRARSE"
   },
   "register": {
     "timeline": {

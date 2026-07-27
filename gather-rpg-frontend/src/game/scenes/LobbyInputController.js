@@ -33,6 +33,11 @@ export class LobbyInputController {
     this.scene = scene;
     this.keys = [];          // combat/action Phaser keys, for teardown
     this._canvasHasFocus = false;
+    // True while a React overlay/modal explicitly disabled canvas input (see
+    // phaser-disable-input). Tracked separately from _canvasHasFocus because
+    // document.activeElement falls back to <body> when the overlay hasn't
+    // focused any HTML element yet, which used to defeat the block below.
+    this._externallyDisabled = false;
   }
 
   setup() {
@@ -114,8 +119,12 @@ export class LobbyInputController {
     this._onCanvasBlur = () => { this._canvasHasFocus = false; };
 
     // External disable/enable signals (admin pages, modals, etc.)
-    this._onDisableCanvasInput = () => { this._canvasHasFocus = false; };
+    this._onDisableCanvasInput = () => {
+      this._canvasHasFocus = false;
+      this._externallyDisabled = true;
+    };
     this._onEnableCanvasInput = () => {
+      this._externallyDisabled = false;
       // Only re-enable if no HTML input has focus and we are on the lobby page
       if (!scene.isTyping() && !window.location.pathname.startsWith('/admin')) {
         this._canvasHasFocus = true;
@@ -135,6 +144,10 @@ export class LobbyInputController {
   // True if the Phaser canvas is the focused element, or the player seems to be
   // interacting with it (no HTML element has focus and not on an admin route).
   _isCanvasFocused() {
+    // A React overlay/modal (NPC dialogue, admin panel, etc.) explicitly disabled
+    // canvas input — block regardless of what document.activeElement is, since it
+    // defaults to <body> when the overlay hasn't focused any HTML element.
+    if (this._externallyDisabled) return false;
     const el = document.activeElement;
     if (!el) return true;
     if (
@@ -145,10 +158,6 @@ export class LobbyInputController {
       el.isContentEditable
     ) return false;
     if (window.location.pathname.startsWith('/admin')) return false;
-    // If phaser-disable-input was dispatched externally → blocked
-    if (this._canvasHasFocus === false && el !== document.body && el !== this.scene.game?.canvas) {
-      return false;
-    }
     return true;
   }
 
