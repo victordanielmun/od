@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Odisea</string>
+    <string name="title_activity_main">Odisea</string>
+    <string name="package_name">com.odisea.app</string>
+    <string name="custom_url_scheme">com.odisea.app</string>
+</resources>
