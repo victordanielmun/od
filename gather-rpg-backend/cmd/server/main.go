@@ -312,6 +312,8 @@ func main() {
 	admin.Put("/challenges/:id", adminHandler.UpdateChallenge)
 	admin.Delete("/challenges/:id", adminHandler.DeleteChallenge)
 	admin.Post("/challenges/import", adminHandler.ImportChallenges)
+	// Etiquetado masivo: arma el pool (temático o de examen) de un mundo de una vez.
+	admin.Post("/challenges/bulk-tags", adminHandler.BulkTagChallenges)
 
 	// Item & Shop Admin Routes
 	admin.Get("/items", adminHandler.ListItems)

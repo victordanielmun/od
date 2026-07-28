@@ -17,17 +17,30 @@ const DIFFICULTY_LEVELS = [
     { value: 'advanced', label: 'Avanzado', color: 'text-red-400 bg-red-500/10 border-red-500/20' }
 ];
 
-const ChallengeCard = ({ challenge, onEdit, onDelete }) => {
+const ChallengeCard = ({ challenge, onEdit, onDelete, selected, onToggleSelect, examWorlds = [] }) => {
     const TypeIcon = CHALLENGE_TYPES.find(t => t.value === challenge.type)?.icon || HelpCircle;
     const difficultyInfo = DIFFICULTY_LEVELS.find(d => d.value === challenge.difficulty) || DIFFICULTY_LEVELS[0];
 
     return (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 hover:border-yellow-500/50 transition-all group flex flex-col justify-between h-full">
+        <div className={`bg-gray-800 border rounded-xl p-5 transition-all group flex flex-col justify-between h-full ${
+            selected ? 'border-yellow-500 ring-2 ring-yellow-500/30' : 'border-gray-700 hover:border-yellow-500/50'
+        }`}>
             <div>
                 <div className="flex justify-between items-start gap-2 mb-3">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${difficultyInfo.color} uppercase tracking-wider`}>
-                        {difficultyInfo.label}
-                    </span>
+                    <div className="flex items-center gap-2">
+                        {onToggleSelect && (
+                            <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => onToggleSelect(challenge.id)}
+                                className="w-4 h-4 accent-yellow-500 cursor-pointer"
+                                title="Seleccionar para acciones masivas"
+                            />
+                        )}
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${difficultyInfo.color} uppercase tracking-wider`}>
+                            {difficultyInfo.label}
+                        </span>
+                    </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => onEdit(challenge)} className="p-1.5 text-blue-400 hover:bg-blue-400/10 rounded">
                             <Edit2 size={14} />
@@ -80,6 +93,17 @@ const ChallengeCard = ({ challenge, onEdit, onDelete }) => {
             </div>
 
             <div className="border-t border-gray-700/50 pt-3 mt-auto">
+                {/* Pertenencia al examen de un mundo: es lo que decide si esta
+                    pregunta puede salir en su mapa final. */}
+                {examWorlds.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                        {examWorlds.map(w => (
+                            <span key={w.id} className="text-[9px] bg-purple-500/15 text-purple-300 px-1.5 py-0.5 rounded border border-purple-500/40 flex items-center gap-0.5 font-bold uppercase tracking-wider">
+                                <Award size={8} /> Examen: {w.name}
+                            </span>
+                        ))}
+                    </div>
+                )}
                 {challenge.tags && challenge.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-2">
                         {challenge.tags.map(tag => (
@@ -108,6 +132,17 @@ export const AdminChallenges = () => {
     const [search, setSearch] = useState('');
     const [selectedType, setSelectedType] = useState('all');
     const [selectedDifficulty, setSelectedDifficulty] = useState('all');
+    // ── Mundos ───────────────────────────────────────────────────────────────
+    // Un reto "pertenece" al examen de un mundo si lleva su exam_tag. Los tags
+    // temáticos del mundo (food, animals…) son transversales: los comparten
+    // varios mundos, así que se tratan como tags sueltos, nunca como bloque.
+    const [worlds, setWorlds] = useState([]);
+    const [selectedWorld, setSelectedWorld] = useState('all'); // 'all' | 'none' | id
+    const [selectedIds, setSelectedIds] = useState([]);        // selección para acciones masivas
+    const [bulkWorldId, setBulkWorldId] = useState('');
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const [bulkMsg, setBulkMsg] = useState(null);
+    const [modalWorldId, setModalWorldId] = useState('');      // mundo elegido dentro del modal
     
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingChallenge, setEditingChallenge] = useState(null);
@@ -257,8 +292,21 @@ export const AdminChallenges = () => {
         }
     };
 
+    // Mundos: alimentan el selector de tags del modal, el filtro de la lista y las
+    // acciones masivas. Un fallo aquí no rompe la pantalla — solo se queda sin la
+    // ayuda de mundos y se sigue etiquetando a mano.
+    const fetchWorlds = async () => {
+        try {
+            const res = await api.get('/admin/worlds');
+            setWorlds(res.data || []);
+        } catch {
+            setWorlds([]);
+        }
+    };
+
     useEffect(() => {
         fetchData();
+        fetchWorlds();
     }, []);
 
     const handleSubmit = async (e) => {
@@ -343,17 +391,108 @@ export const AdminChallenges = () => {
         setIsModalOpen(true);
     };
 
+    // ── Helpers de mundos ────────────────────────────────────────────────────
+
+    /** Mundos a cuyo EXAMEN pertenece un reto (lleva su exam_tag). */
+    const worldsOfChallenge = (c) => {
+        const tags = c.tags || [];
+        return worlds.filter(w => w.exam_tag && tags.includes(w.exam_tag));
+    };
+
+    /** Tags que un mundo puede aportar: el de examen + los temáticos, por separado. */
+    const worldTagOptions = (world) => {
+        if (!world) return [];
+        const out = [];
+        if (world.exam_tag) out.push({ tag: world.exam_tag, exam: true });
+        (world.challenge_tags || []).forEach(t => out.push({ tag: t, exam: false }));
+        return out;
+    };
+
+    const parseTags = (str) => str.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+
+    /** Activa/desactiva UN tag en el campo de texto del modal. */
+    const toggleFormTag = (tag) => {
+        const current = parseTags(formData.tags);
+        const next = current.includes(tag)
+            ? current.filter(t => t !== tag)
+            : [...current, tag];
+        setFormData({ ...formData, tags: next.join(', ') });
+    };
+
     const filteredChallenges = challenges.filter(c => {
-        const matchesSearch = 
-            c.question.toLowerCase().includes(search.toLowerCase()) || 
+        const matchesSearch =
+            c.question.toLowerCase().includes(search.toLowerCase()) ||
             (c.question_es && c.question_es.toLowerCase().includes(search.toLowerCase())) ||
             (c.explanation_es && c.explanation_es.toLowerCase().includes(search.toLowerCase()));
-        
+
         const matchesType = selectedType === 'all' || c.type === selectedType;
         const matchesDifficulty = selectedDifficulty === 'all' || c.difficulty === selectedDifficulty;
 
-        return matchesSearch && matchesType && matchesDifficulty;
+        // Filtro por mundo: 'none' = retos que no están en el examen de ningún mundo.
+        let matchesWorld = true;
+        if (selectedWorld === 'none') {
+            matchesWorld = worldsOfChallenge(c).length === 0;
+        } else if (selectedWorld !== 'all') {
+            const w = worlds.find(x => String(x.id) === String(selectedWorld));
+            matchesWorld = !!w && !!w.exam_tag && (c.tags || []).includes(w.exam_tag);
+        }
+
+        return matchesSearch && matchesType && matchesDifficulty && matchesWorld;
     });
+
+    // ── Acciones masivas ─────────────────────────────────────────────────────
+
+    const allVisibleSelected = filteredChallenges.length > 0
+        && filteredChallenges.every(c => selectedIds.includes(c.id));
+
+    const toggleSelectAllVisible = () => {
+        if (allVisibleSelected) {
+            const visible = new Set(filteredChallenges.map(c => c.id));
+            setSelectedIds(prev => prev.filter(id => !visible.has(id)));
+        } else {
+            setSelectedIds(prev => [...new Set([...prev, ...filteredChallenges.map(c => c.id)])]);
+        }
+    };
+
+    const toggleSelectOne = (id) => {
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    /**
+     * Añade o quita el tag de examen de un mundo a todos los retos seleccionados,
+     * en una sola llamada atómica. Al terminar refresca los mundos para que el
+     * conteo del pool (pool_health) refleje el cambio inmediatamente.
+     */
+    const handleBulkExamTag = async (mode) => {
+        const world = worlds.find(w => String(w.id) === String(bulkWorldId));
+        if (!world || !world.exam_tag) {
+            setBulkMsg({ type: 'error', text: 'Ese mundo no tiene tag de examen configurado.' });
+            return;
+        }
+        setBulkBusy(true);
+        setBulkMsg(null);
+        try {
+            const res = await api.post('/admin/challenges/bulk-tags', {
+                ids: selectedIds,
+                add_tags: mode === 'add' ? [world.exam_tag] : [],
+                remove_tags: mode === 'remove' ? [world.exam_tag] : [],
+            });
+            await fetchData();
+            await fetchWorlds();
+            const updated = res.data?.updated ?? selectedIds.length;
+            setBulkMsg({
+                type: 'success',
+                text: mode === 'add'
+                    ? `${updated} retos añadidos al examen de "${world.name}".`
+                    : `${updated} retos quitados del examen de "${world.name}".`,
+            });
+            setSelectedIds([]);
+        } catch (err) {
+            setBulkMsg({ type: 'error', text: err.response?.data?.error || 'Error al etiquetar' });
+        } finally {
+            setBulkBusy(false);
+        }
+    };
 
     return (
         <div className="space-y-6">
@@ -564,8 +703,84 @@ export const AdminChallenges = () => {
                         <option value="intermediate">Intermedio</option>
                         <option value="advanced">Avanzado</option>
                     </select>
+
+                    {/* Filtro por mundo: sirve para ver qué hay ya en un examen. */}
+                    {worlds.length > 0 && (
+                        <select
+                            value={selectedWorld}
+                            onChange={e => setSelectedWorld(e.target.value)}
+                            className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none w-full md:w-52"
+                        >
+                            <option value="all">Todos los Mundos</option>
+                            <option value="none">Sin examen asignado</option>
+                            {worlds.filter(w => w.exam_tag).map(w => (
+                                <option key={w.id} value={w.id}>
+                                    Examen: {w.name} ({w.pool_health?.exam_count ?? 0})
+                                </option>
+                            ))}
+                        </select>
+                    )}
                 </div>
             </div>
+
+            {/* ── Acciones masivas ─────────────────────────────────────────────
+                Etiquetar el pool de examen reto por reto es inviable (641 en la
+                base): aquí se hace en una sola llamada atómica. */}
+            {worlds.some(w => w.exam_tag) && (
+                <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col lg:flex-row gap-3 lg:items-center">
+                    <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer shrink-0">
+                        <input
+                            type="checkbox"
+                            checked={allVisibleSelected}
+                            onChange={toggleSelectAllVisible}
+                            className="w-4 h-4 accent-yellow-500"
+                        />
+                        Seleccionar los {filteredChallenges.length} visibles
+                    </label>
+
+                    <span className={`text-sm shrink-0 ${selectedIds.length ? 'text-yellow-400 font-bold' : 'text-gray-600'}`}>
+                        {selectedIds.length} seleccionados
+                    </span>
+
+                    <div className="flex flex-wrap gap-2 items-center lg:ml-auto">
+                        <select
+                            value={bulkWorldId}
+                            onChange={e => setBulkWorldId(e.target.value)}
+                            className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                        >
+                            <option value="">Elige un mundo…</option>
+                            {worlds.filter(w => w.exam_tag).map(w => (
+                                <option key={w.id} value={w.id}>{w.name} → {w.exam_tag}</option>
+                            ))}
+                        </select>
+                        <button
+                            disabled={!selectedIds.length || !bulkWorldId || bulkBusy}
+                            onClick={() => handleBulkExamTag('add')}
+                            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold px-4 py-2 rounded-lg transition-all"
+                        >
+                            <Check size={15} /> Añadir al examen
+                        </button>
+                        <button
+                            disabled={!selectedIds.length || !bulkWorldId || bulkBusy}
+                            onClick={() => handleBulkExamTag('remove')}
+                            className="flex items-center gap-1.5 bg-gray-800 hover:bg-red-600/40 border border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-gray-200 text-sm px-4 py-2 rounded-lg transition-all"
+                        >
+                            <X size={15} /> Quitar
+                        </button>
+                        {selectedIds.length > 0 && (
+                            <button onClick={() => setSelectedIds([])} className="text-xs text-gray-500 hover:text-gray-300 underline">
+                                limpiar
+                            </button>
+                        )}
+                    </div>
+
+                    {bulkMsg && (
+                        <div className={`text-sm w-full lg:w-auto ${bulkMsg.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {bulkMsg.text}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {error && (
                 <div className="bg-red-900/20 border border-red-900/50 text-red-400 p-4 rounded-xl flex items-center gap-3 animate-shake">
@@ -581,11 +796,14 @@ export const AdminChallenges = () => {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {filteredChallenges.map(challenge => (
-                        <ChallengeCard 
-                            key={challenge.id} 
-                            challenge={challenge} 
-                            onEdit={openEditModal} 
-                            onDelete={handleDelete} 
+                        <ChallengeCard
+                            key={challenge.id}
+                            challenge={challenge}
+                            onEdit={openEditModal}
+                            onDelete={handleDelete}
+                            selected={selectedIds.includes(challenge.id)}
+                            onToggleSelect={worlds.some(w => w.exam_tag) ? toggleSelectOne : null}
+                            examWorlds={worldsOfChallenge(challenge)}
                         />
                     ))}
                     {filteredChallenges.length === 0 && (
@@ -753,7 +971,7 @@ export const AdminChallenges = () => {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5">Tags (Separados por coma)</label>
-                                    <input 
+                                    <input
                                         type="text"
                                         value={formData.tags}
                                         onChange={e => setFormData({...formData, tags: e.target.value})}
@@ -762,6 +980,73 @@ export const AdminChallenges = () => {
                                     />
                                 </div>
                             </div>
+
+                            {/* ── Tags desde un mundo ──────────────────────────────────
+                                Evita tener que recordar el exam_tag exacto. Cada tag es
+                                un botón independiente: el de examen (morado, exclusivo
+                                del mundo) y los temáticos (compartidos entre mundos, por
+                                eso se activan uno a uno y no en bloque). Todo lo que se
+                                marca aquí se refleja en el campo de tags de arriba. */}
+                            {worlds.length > 0 && (
+                                <div className="bg-gray-850 p-4 rounded-xl border border-gray-800 space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <Globe size={14} className="text-emerald-400" />
+                                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tags desde un mundo</label>
+                                    </div>
+                                    <select
+                                        value={modalWorldId}
+                                        onChange={e => setModalWorldId(e.target.value)}
+                                        className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                                    >
+                                        <option value="">Elige un mundo para ver sus tags…</option>
+                                        {worlds.map(w => (
+                                            <option key={w.id} value={w.id}>{w.name} ({w.difficulty})</option>
+                                        ))}
+                                    </select>
+
+                                    {(() => {
+                                        const w = worlds.find(x => String(x.id) === String(modalWorldId));
+                                        const opts = worldTagOptions(w);
+                                        const current = parseTags(formData.tags);
+                                        if (!w) return null;
+                                        if (opts.length === 0) {
+                                            return <p className="text-[11px] text-amber-400/80">Este mundo no tiene tags configurados todavía.</p>;
+                                        }
+                                        return (
+                                            <>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {opts.map(({ tag, exam }) => {
+                                                        const on = current.includes(tag);
+                                                        return (
+                                                            <button
+                                                                key={tag}
+                                                                type="button"
+                                                                onClick={() => toggleFormTag(tag)}
+                                                                title={exam ? 'Tag de examen: solo este mundo lo usa' : 'Tag temático: compartido entre mundos'}
+                                                                className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1 ${
+                                                                    on
+                                                                        ? exam
+                                                                            ? 'bg-purple-500/25 border-purple-500 text-purple-200 font-bold'
+                                                                            : 'bg-emerald-600/25 border-emerald-500 text-emerald-200'
+                                                                        : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+                                                                }`}
+                                                            >
+                                                                {exam ? <Award size={10} /> : <Tag size={10} />}
+                                                                {tag}
+                                                                {on && <Check size={10} />}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <p className="text-[10px] text-gray-500 leading-snug">
+                                                    <span className="text-purple-300 font-bold">Morado</span> = examen final del mundo (decide si esta pregunta sale en su mapa final).
+                                                    <span className="text-emerald-300 font-bold"> Verde</span> = tema, se usa en las misiones normales y lo pueden compartir varios mundos.
+                                                </p>
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                            )}
 
                             {/* Audio config */}
                             <div className="bg-gray-850 p-4 rounded-xl border border-gray-800 space-y-3">

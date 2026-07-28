@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"gorm.io/gorm"
 )
 
 // ListChallenges retrieves all learning challenges.
@@ -24,6 +25,86 @@ func (h *AdminHandler) ListChallenges(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(challenges)
+}
+
+// BulkTagChallenges añade y/o quita tags a un lote de retos en una sola
+// sentencia atómica.
+// POST /admin/challenges/bulk-tags
+//
+// Es lo que hace usable armar el pool de un mundo: etiquetar 100 retos con el
+// PUT individual serían 100 peticiones (cada una con su SELECT + UPDATE) y un
+// fallo a mitad dejaría el lote medio etiquetado. Aquí es todo o nada.
+//
+// Los tags se normalizan a minúsculas (mismo criterio que el importador) y se
+// deduplican, para que "Food" y "food" no convivan como tags distintos.
+func (h *AdminHandler) BulkTagChallenges(c *fiber.Ctx) error {
+	var body struct {
+		IDs        []string `json:"ids"`
+		AddTags    []string `json:"add_tags"`
+		RemoveTags []string `json:"remove_tags"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	ids := make([]uuid.UUID, 0, len(body.IDs))
+	for _, raw := range body.IDs {
+		if id, err := uuid.Parse(strings.TrimSpace(raw)); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Se requiere al menos un reto válido"})
+	}
+
+	clean := func(in []string) []string {
+		seen := map[string]bool{}
+		out := make([]string, 0, len(in))
+		for _, t := range in {
+			t = strings.ToLower(strings.TrimSpace(t))
+			if t != "" && !seen[t] {
+				seen[t] = true
+				out = append(out, t)
+			}
+		}
+		return out
+	}
+	add := clean(body.AddTags)
+	remove := clean(body.RemoveTags)
+	if len(add) == 0 && len(remove) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Nada que añadir ni quitar"})
+	}
+
+	// Se quita primero y se añade después: si un tag viene en ambas listas, gana
+	// añadirlo, que es lo que espera quien acaba de marcarlo en la UI.
+	// array_remove borra todas las apariciones; el ARRAY(SELECT DISTINCT ...)
+	// final deja el array sin duplicados aunque el tag ya estuviera puesto.
+	// Los ::text son necesarios: array_remove/array_append son polimórficos
+	// (anyarray, anyelement) y sin el cast Postgres no puede resolver el tipo de
+	// un parámetro suelto ("could not determine polymorphic type").
+	expr := "tags"
+	args := []interface{}{}
+	for _, t := range remove {
+		expr = "array_remove(" + expr + ", ?::text)"
+		args = append(args, t)
+	}
+	for _, t := range add {
+		expr = "array_append(array_remove(" + expr + ", ?::text), ?::text)"
+		args = append(args, t, t)
+	}
+
+	res := database.DB.Model(&models.LearningChallenge{}).
+		Where("id IN ?", ids).
+		Update("tags", gorm.Expr(expr, args...))
+	if res.Error != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": res.Error.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"updated":     res.RowsAffected,
+		"add_tags":    add,
+		"remove_tags": remove,
+	})
 }
 
 // CreateChallenge creates a new learning challenge.
