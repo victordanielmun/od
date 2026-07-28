@@ -37,6 +37,10 @@ type Hub struct {
 	CombatService   *services.CombatService
 	MissionService  *services.MissionService
 	LearningService *services.LearningService
+	// WorldService scopes the Ninja Cards to the world the player is learning in.
+	// Optional: when nil (or when no world resolves) the card engine falls back to
+	// the legacy global pool, so combat never breaks on an unconfigured world.
+	WorldService *services.WorldService
 
 	// Batching
 	PendingUpdates map[string]map[string]models.RedisPosition
@@ -161,6 +165,10 @@ func (h *Hub) handleUnregister(client *Client) {
 				// Liberar enemigos bloqueados por una carta ninja sin responder de
 				// este jugador, para que no queden inmatables.
 				room.ReleaseNinjaCardsForPlayer(client.ID.String())
+				// Se fue del mapa final sin tumbar al boss → intento de examen
+				// fallido, pero con su diagnóstico por tema guardado.
+				h.flushExamSession(room, client, false)
+				room.ClearPlayerSession(client.ID.String())
 				// Also remove from Redis
 				err := h.MovementService.ClearPosition(context.Background(), client.RoomID, client.ID.String())
 				if err != nil {

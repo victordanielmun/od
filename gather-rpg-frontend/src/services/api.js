@@ -29,4 +29,21 @@ api.interceptors.response.use(
   }
 );
 
+/**
+ * URL absoluta de un archivo estático servido por el backend.
+ *
+ * Se construye desde el baseURL del cliente API, NUNCA con una ruta relativa
+ * tipo "/api/...": en producción el frontend vive en odisea-rpg.com y la API en
+ * api.odisea-rpg.com, así que una ruta relativa apuntaría al host del frontend y
+ * daría 404. Detrás del proxy de desarrollo (baseURL = "/api") sigue funcionando
+ * igual. Mismo criterio que getTTSAudioUrl en voiceApi.
+ */
+export const apiFileUrl = (path) => {
+  const base = (api.defaults.baseURL || '/api').replace(/\/+$/, '');
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+};
+
+/** URL de una portada de mundo o preview de mapa (vacío → null). */
+export const worldArtUrl = (filename) => (filename ? apiFileUrl(`/world-art/${filename}`) : null);
+
 export default api;

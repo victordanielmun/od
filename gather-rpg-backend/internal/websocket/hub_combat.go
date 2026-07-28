@@ -3,6 +3,7 @@ package websocket
 import (
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
+	"gather-rpg-backend/internal/repository"
 	"log"
 	"math/rand"
 	"time"
@@ -459,8 +460,8 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 		enemy.PendingNinjaCard = client.ID.String()
 		room.mu.Unlock()
 
-		// Reto acorde al nivel de inglés del jugador (con fallbacks).
-		challenge := h.getChallengeForClient(client)
+		// Reto acotado al mundo/examen del jugador (con fallbacks).
+		challenge := h.getChallengeForClient(client, room)
 
 		if challenge != nil {
 			// Recordar el reto emitido en el enemigo (bajo lock) para evaluar la respuesta
@@ -531,7 +532,7 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 		log.Printf("[BossCard] Boss %s lethal blow → card to %d players", instanceUUID, len(required))
 		issued := make(map[string]string, len(required))
 		for _, c := range required {
-			challenge := h.getChallengeForClient(c)
+			challenge := h.getChallengeForClient(c, room)
 			if challenge != nil {
 				issued[c.ID.String()] = challenge.ID.String()
 				c.SendJSON(&models.WSMessage{
@@ -657,12 +658,19 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 	if _, err := h.LearningService.RecordAttempt(client.ID, challengeUUID, isCorrect, p.SelectedOption, ""); err != nil {
 		log.Printf("[NinjaCard] WARN: failed to record attempt for %s: %v", client.ID, err)
 	}
+	// OJO: recordExamAnswerIfAny vuelve a tomar room.mu, así que SOLO puede
+	// llamarse después de soltarlo (el mutex no es reentrante). Se hace por
+	// separado en cada rama, ya abajo.
 
 	if isCorrect {
 		enemy.HP = 0
 		enemy.FSMState = "dead"
 		enemyTemplateID := enemy.EnemyID
 		room.mu.Unlock()
+
+		// Si este mapa es el examen final de un mundo, la respuesta suma al
+		// diagnóstico por tema (no-op fuera del examen).
+		h.recordExamAnswerIfAny(room, client, &chal, isCorrect)
 
 		client.SendJSON(&models.WSMessage{
 			Type: MsgNinjaCardResult,
@@ -723,6 +731,10 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 		enemy.NinjaCardChallengeID = ""
 		room.mu.Unlock()
 
+		// Fallar también cuenta para el diagnóstico del examen (es justo lo que
+		// interesa saber: qué temas debe repasar).
+		h.recordExamAnswerIfAny(room, client, &chal, isCorrect)
+
 		// El daño de la penalización se aplica server-side (sin i-frames).
 		if damage > 0 {
 			h.applyDamageToPlayer(client, damage, false)
@@ -741,9 +753,20 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 	}
 }
 
-// getChallengeForClient obtiene un reto acorde al nivel de inglés del jugador,
-// con fallbacks. Usado por la card de un jugador y por la del boss.
-func (h *Hub) getChallengeForClient(client *Client) *models.LearningChallenge {
+// getChallengeForClient obtiene el reto de una Ninja Card para un jugador.
+//
+// El pool se resuelve POR JUGADOR, no por sala: en una sala pública dos jugadores
+// pueden estar en misiones (y mundos) distintos, y cada card es individual.
+//
+//	misión aceptada en esta escena → mundo → ¿es la misión final?
+//	   sí → SOLO el pool de examen (world.exam_tag)   ← lo que hace que el mapa evalúe
+//	   no → pool temático del mundo (o el override de la misión)
+//	sin mundo resuelto → cadena de fallbacks histórica (nivel del jugador → global)
+//
+// Nunca devuelve nil por un mundo mal configurado: si el pool acotado sale vacío
+// se va abriendo hasta el pool global, porque quedarse sin card dejaría al
+// enemigo inmatable.
+func (h *Hub) getChallengeForClient(client *Client, room *Room) *models.LearningChallenge {
 	var profile models.UserLearningProfile
 	level := models.DifficultyBeginner
 	if database.DB != nil {
@@ -751,14 +774,122 @@ func (h *Hub) getChallengeForClient(client *Client) *models.LearningChallenge {
 			level = profile.EnglishLevel
 		}
 	}
-	challenge, err := h.LearningService.GetRandomChallenge("vocabulary", string(level), "")
-	if err != nil || challenge == nil {
-		challenge, err = h.LearningService.GetRandomChallenge("", string(level), "")
+
+	playerID := client.ID.String()
+	sceneKey := ""
+	if room != nil {
+		sceneKey = room.SceneKey
 	}
-	if err != nil || challenge == nil {
-		challenge, _ = h.LearningService.GetRandomChallenge("", "", "")
+
+	// Pools acotados al mundo (si hay contexto), de más específico a más amplio.
+	var pools []repository.ChallengePool
+	var examTag string
+	if h.WorldService != nil && sceneKey != "" {
+		ctx := h.WorldService.ResolveContext(client.ID, sceneKey)
+		pools = h.WorldService.BuildPools(ctx, string(level))
+		if ctx.World != nil && ctx.IsExam && room != nil {
+			examTag = ctx.World.ExamTag
+			// A partir de la primera card, las respuestas de este jugador cuentan
+			// para el intento de examen de este mundo.
+			room.StartExamSession(playerID, ctx.World.ID)
+		}
+	}
+
+	// Fallbacks históricos: nivel del jugador y, al final, cualquier reto.
+	pools = append(pools,
+		repository.ChallengePool{Types: []string{"vocabulary"}, Difficulty: string(level)},
+		repository.ChallengePool{Difficulty: string(level)},
+		repository.ChallengePool{},
+	)
+
+	var asked []uuid.UUID
+	if room != nil {
+		asked = room.AskedChallenges(playerID)
+	}
+
+	pick := func(exclude []uuid.UUID) *models.LearningChallenge {
+		for _, p := range pools {
+			p.ExcludeIDs = exclude
+			challenge, err := h.LearningService.GetRandomChallengeFromPool(client.ID, p)
+			if err == nil && challenge != nil {
+				return challenge
+			}
+		}
+		return nil
+	}
+
+	challenge := pick(asked)
+	if challenge == nil && len(asked) > 0 {
+		// Pool agotado (mapa largo, catálogo corto): mejor repetir una pregunta
+		// que dejar al enemigo sin card.
+		log.Printf("[NinjaCard] Pool agotado para %s tras %d retos; se permiten repeticiones", playerID, len(asked))
+		if room != nil {
+			room.ResetAskedChallenges(playerID)
+		}
+		challenge = pick(nil)
+	}
+
+	if challenge != nil && room != nil {
+		room.MarkChallengeAsked(playerID, challenge.ID)
+		if examTag != "" {
+			log.Printf("[NinjaCard] EXAMEN %s → reto %s (pool %q)", playerID, challenge.ID, examTag)
+		}
 	}
 	return challenge
+}
+
+// recordExamAnswerIfAny acumula el resultado de una card en el intento de examen
+// del jugador, si está en uno. No-op fuera del mapa final.
+func (h *Hub) recordExamAnswerIfAny(room *Room, client *Client, chal *models.LearningChallenge, isCorrect bool) {
+	if room == nil || chal == nil {
+		return
+	}
+	playerID := client.ID.String()
+	worldID := room.ExamWorldID(playerID)
+	if worldID == 0 {
+		return
+	}
+	examTag := ""
+	if h.WorldService != nil {
+		if w, err := h.WorldService.GetWorld(worldID); err == nil && w != nil {
+			examTag = w.ExamTag
+		}
+	}
+	room.RecordExamAnswer(playerID, []string(chal.Tags), examTag, isCorrect)
+}
+
+// flushExamSession persiste el intento de examen de un jugador y lo cierra.
+// passed=true SOLO cuando el boss del mundo cayó: matar al boss es toda la
+// condición de aprobación.
+func (h *Hub) flushExamSession(room *Room, client *Client, passed bool) {
+	if room == nil || h.WorldService == nil {
+		return
+	}
+	worldID, stats := room.TakeExamSession(client.ID.String())
+	if worldID == 0 || len(stats) == 0 {
+		return
+	}
+	go h.WorldService.RecordExamOutcome(client.ID, worldID, stats, passed)
+}
+
+// flushExamSessionsForRoom cierra el intento de examen de TODOS los jugadores de
+// la sala de una vez. Se usa al caer el boss: el examen cooperativo es en equipo
+// (la card del boss exige que todos acierten), así que todos aprueban juntos.
+func (h *Hub) flushExamSessionsForRoom(room *Room, passed bool) {
+	if room == nil || h.WorldService == nil {
+		return
+	}
+	// Snapshot bajo lock: flushExamSession vuelve a tomar r.mu por su cuenta.
+	room.mu.RLock()
+	clients := make([]*Client, 0, len(room.Clients))
+	for c := range room.Clients {
+		clients = append(clients, c)
+	}
+	room.mu.RUnlock()
+
+	for _, c := range clients {
+		h.flushExamSession(room, c, passed)
+	}
 }
 
 // bossCardFailHP calcula el HP al que se recupera el boss cuando falla la card
@@ -841,6 +972,7 @@ func (h *Hub) handleBossCardAnswerLocked(client *Client, room *Room, enemy *mode
 		if _, err := h.LearningService.RecordAttempt(client.ID, challengeUUID, isCorrect, selectedOption, ""); err != nil {
 			log.Printf("[BossCard] WARN: failed to record attempt for %s: %v", client.ID, err)
 		}
+		h.recordExamAnswerIfAny(room, client, &chal, isCorrect)
 		return // el modal del jugador espera a los demás
 	}
 
@@ -861,9 +993,13 @@ func (h *Hub) handleBossCardAnswerLocked(client *Client, room *Room, enemy *mode
 	if _, err := h.LearningService.RecordAttempt(client.ID, challengeUUID, isCorrect, selectedOption, ""); err != nil {
 		log.Printf("[BossCard] WARN: failed to record attempt for %s: %v", client.ID, err)
 	}
+	h.recordExamAnswerIfAny(room, client, &chal, isCorrect)
 
 	if allCorrect {
 		log.Printf("[BossCard] Boss %s defeated — all players correct", instanceUUID)
+		// El boss cayó: eso ES aprobar el mundo. En cooperativo el examen es en
+		// equipo, así que el aprobado lo reciben todos los que lo estaban rindiendo.
+		h.flushExamSessionsForRoom(room, true)
 		h.broadcastBossCardResult(room, true)
 		room.broadcastToAll(&models.WSMessage{
 			Type: MsgEnemyDied,

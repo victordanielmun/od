@@ -19,6 +19,7 @@ import { AdminNPCDefinitions } from './pages/admin/AdminNPCDefinitions';
 import { AdminNPCs } from './pages/admin/AdminNPCs';
 import { AdminAITester } from './pages/admin/AdminAITester';
 import { AdminMissions } from './pages/admin/AdminMissions';
+import { AdminWorlds } from './pages/admin/AdminWorlds';
 import { AdminItems } from './pages/admin/AdminItems';
 import { AdminShops } from './pages/admin/AdminShops';
 import { AdminEnemies } from './pages/admin/AdminEnemies';
@@ -122,6 +123,7 @@ function App() {
           <Route path="npcsprites" element={<AdminNPCs />} />
           <Route path="items" element={<AdminItems />} />
           <Route path="shops" element={<AdminShops />} />
+          <Route path="worlds" element={<AdminWorlds />} />
           <Route path="missions" element={<AdminMissions />} />
           <Route path="enemies" element={<AdminEnemies />} />
           <Route path="enemy-models" element={<AdminEnemyDefinitions />} />

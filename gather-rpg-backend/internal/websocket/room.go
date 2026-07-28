@@ -52,6 +52,12 @@ type Room struct {
 	PendingSpawns []models.EnemySpawn   // enemigos de oleadas futuras, aún no spawneados
 	NextWaveAt    time.Time             // si no es cero, momento en que aparece la siguiente oleada
 
+	// Sesión de retos (Ninja Cards) por jugador. Vive en memoria mientras dura la
+	// sala: las salas de combate son efímeras, así que la "sesión" es la estancia.
+	askedChallenges map[string][]uuid.UUID          // playerID → retos ya emitidos (no repetir)
+	examWorldID     map[string]uint                 // playerID → mundo que está examinando (0/ausente = no es examen)
+	examStats       map[string]map[string]models.TagStat // playerID → tag temático → aciertos/total
+
 	mu sync.RWMutex
 }
 
@@ -64,6 +70,10 @@ func NewRoom(id string, mapData *models.MapData) *Room {
 		MaxUsers:      50, // Default
 		ActiveEnemies: make(map[uuid.UUID]*models.ActiveEnemy),
 		stopAI:        make(chan bool),
+
+		askedChallenges: make(map[string][]uuid.UUID),
+		examWorldID:     make(map[string]uint),
+		examStats:       make(map[string]map[string]models.TagStat),
 	}
 
 	r.initializeEnemies()

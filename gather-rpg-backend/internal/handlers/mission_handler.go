@@ -19,10 +19,13 @@ type MissionHandler struct {
 	Translation *services.TranslationService
 	Hub         *websocket.Hub
 	Sub         *services.SubscriptionService
+	// Worlds alimenta el primer nivel del tablero del maestro (catálogo de mundos).
+	// Opcional: si es nil el tablero cae a la lista plana de misiones de siempre.
+	Worlds *services.WorldService
 }
 
-func NewMissionHandler(service *services.MissionService, translation *services.TranslationService, hub *websocket.Hub, sub *services.SubscriptionService) *MissionHandler {
-	return &MissionHandler{Service: service, Translation: translation, Hub: hub, Sub: sub}
+func NewMissionHandler(service *services.MissionService, translation *services.TranslationService, hub *websocket.Hub, sub *services.SubscriptionService, worlds *services.WorldService) *MissionHandler {
+	return &MissionHandler{Service: service, Translation: translation, Hub: hub, Sub: sub, Worlds: worlds}
 }
 
 func (h *MissionHandler) GetMissionsByScene(c *fiber.Ctx) error {
@@ -284,6 +287,13 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		CurrentTaskType       string          `json:"current_task_type"`
 		PronunciationMinScore int             `json:"pronunciation_min_score"`
 		KaraokeLines          json.RawMessage `json:"karaoke_lines,omitempty"`
+		// Agrupación en mundos. WorldID nil = misión suelta: sigue siendo jugable y
+		// aparece en su propio grupo del tablero, no desaparece.
+		WorldID *uint `json:"world_id"`
+		// IsFinal marca el examen del mundo (el mapa que valida lo aprendido).
+		IsFinal bool `json:"is_final"`
+		// MapImage es el PNG del mapa de esta misión, para la tarjeta del tablero.
+		MapImage string `json:"map_image"`
 	}
 
 	type NPCMissionHub struct {
@@ -294,6 +304,30 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		Shop             *models.Shop     `json:"shop"`
 		Missions         []MissionSummary `json:"missions"`
 		NPCTaskCompleted bool             `json:"npc_task_completed"`
+		// Worlds es el primer nivel del tablero del maestro de misiones: el jugador
+		// elige mundo y luego misión. Va vacío para NPCs que no son maestros.
+		Worlds []WorldSummary `json:"worlds"`
+	}
+
+	// PNG de cada mapa involucrado, en una sola query (la tarjeta de misión lo usa).
+	mapImages := map[string]string{}
+	{
+		sceneKeys := make([]string, 0, len(missions))
+		seen := map[string]bool{}
+		for _, m := range missions {
+			if m.SceneKey != "" && !seen[m.SceneKey] {
+				seen[m.SceneKey] = true
+				sceneKeys = append(sceneKeys, m.SceneKey)
+			}
+		}
+		if len(sceneKeys) > 0 {
+			var cfgs []models.MapConfig
+			database.DB.Select("scene_key", "preview_image").
+				Where("scene_key IN ? AND preview_image <> ''", sceneKeys).Find(&cfgs)
+			for _, cfg := range cfgs {
+				mapImages[cfg.SceneKey] = cfg.PreviewImage
+			}
+		}
 	}
 
 	missionSummaries := make([]MissionSummary, 0)
@@ -448,6 +482,9 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 			CurrentTaskType:       currentTaskType,
 			PronunciationMinScore: currentMinScore,
 			KaraokeLines:          karaokeLines,
+			WorldID:               m.WorldID,
+			IsFinal:               m.IsFinal,
+			MapImage:              mapImages[m.SceneKey],
 		})
 	}
 
@@ -512,6 +549,14 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		shopPtr = &tmpl.NPCDefinition.Shop
 	}
 
+	// El maestro de misiones muestra primero el catálogo de mundos y luego las
+	// misiones de cada uno. Para el resto de NPCs va vacío y el cliente sigue
+	// pintando su lista de siempre.
+	var worldCards []WorldSummary
+	if tmpl.NPCDefinition.Type == models.NPCTypeMaster && h.Worlds != nil {
+		worldCards = BuildWorldCatalog(h.Worlds, h.Translation, userID, userLang)
+	}
+
 	return c.JSON(NPCMissionHub{
 		NPCName:          tmpl.NPCDefinition.Name,
 		NPCType:          string(tmpl.NPCDefinition.Type),
@@ -520,6 +565,7 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		Shop:             shopPtr,
 		Missions:         missionSummaries,
 		NPCTaskCompleted: isTaskCompletedForPlayer,
+		Worlds:           worldCards,
 	})
 }
 

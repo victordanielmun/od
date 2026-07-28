@@ -19,6 +19,13 @@ func (s *LearningService) GetRandomChallenge(challengeType string, difficulty st
 	return s.Repo.GetRandomChallenge(challengeType, difficulty, tag)
 }
 
+// GetRandomChallengeFromPool picks a challenge from a scoped pool (a world's
+// normal or exam pool), skipping the ones already asked this session and
+// favouring questions the user previously got wrong.
+func (s *LearningService) GetRandomChallengeFromPool(userID uuid.UUID, pool repository.ChallengePool) (*models.LearningChallenge, error) {
+	return s.Repo.GetRandomChallengeFromPool(userID, pool)
+}
+
 // RecordAttempt passes the attempt data to the repository to process and update XP.
 func (s *LearningService) RecordAttempt(userID uuid.UUID, challengeID uuid.UUID, isCorrect bool, selectedOption int, feedbackAI string) (*models.UserLearningProfile, error) {
 	return s.Repo.RecordAttempt(userID, challengeID, isCorrect, selectedOption, feedbackAI)

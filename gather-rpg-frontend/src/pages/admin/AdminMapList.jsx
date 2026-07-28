@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import api from '../../services/api';
-import { Map as MapIcon, Plus, Search, Edit2, Trash2, ArrowUpDown, Eye } from 'lucide-react';
+import api, { worldArtUrl } from '../../services/api';
+import { Map as MapIcon, Plus, Search, Edit2, Trash2, ArrowUpDown, Eye, Image as ImageIcon } from 'lucide-react';
 import { CreateMapModal } from '../../components/admin/CreateMapModal';
 
 export const AdminMapList = () => {
@@ -32,6 +32,26 @@ export const AdminMapList = () => {
 
     const handleEdit = (sceneKey) => {
         navigate(`/lobby?edit_map=${sceneKey}`);
+    };
+
+    /**
+     * Sube el PNG que representa este mapa y lo guarda en map_configs.preview_image.
+     * Es la imagen que el jugador ve en la tarjeta de la misión dentro del mundo.
+     */
+    const handleUploadPreview = async (map, file) => {
+        if (!file) return;
+        try {
+            const fd = new FormData();
+            fd.append('file', file);
+            const upload = await api.post('/admin/world-art', fd, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            await api.put(`/admin/maps/${map.id}`, { preview_image: upload.data.filename });
+            loadMaps();
+        } catch (error) {
+            console.error('Failed to upload map preview:', error);
+            alert(error?.response?.data?.error || 'No se pudo subir la imagen del mapa.');
+        }
     };
 
     const handleCreateMap = async (formData) => {
@@ -182,9 +202,18 @@ export const AdminMapList = () => {
                                     <tr key={map.id} className="hover:bg-gray-800/50 transition-colors group">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded bg-blue-900/30 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold">
-                                                    {map.scene_key.substring(0, 2).toUpperCase()}
-                                                </div>
+                                                {/* El preview es lo que ve el jugador en el catálogo de mundos. */}
+                                                {map.preview_image ? (
+                                                    <img
+                                                        src={worldArtUrl(map.preview_image)}
+                                                        alt={map.scene_key}
+                                                        className="w-16 h-10 rounded object-cover border border-gray-700"
+                                                    />
+                                                ) : (
+                                                    <div className="w-16 h-10 rounded bg-blue-900/30 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold">
+                                                        {map.scene_key.substring(0, 2).toUpperCase()}
+                                                    </div>
+                                                )}
                                                 <span className="font-medium text-white">{map.scene_key}</span>
                                             </div>
                                         </td>
@@ -192,6 +221,19 @@ export const AdminMapList = () => {
                                             {new Date(map.updated_at).toLocaleDateString()}
                                         </td>
                                         <td className="px-6 py-4 text-right">
+                                            <label
+                                                className="inline-flex items-center gap-1.5 text-emerald-400 hover:text-white bg-emerald-900/20 hover:bg-emerald-600 px-3 py-1.5 rounded text-sm font-medium transition-all mr-2 cursor-pointer"
+                                                title="Imagen que representa este mapa en el catálogo de mundos"
+                                            >
+                                                <ImageIcon size={15} />
+                                                {map.preview_image ? 'Cambiar PNG' : 'Subir PNG'}
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="hidden"
+                                                    onChange={(e) => handleUploadPreview(map, e.target.files?.[0])}
+                                                />
+                                            </label>
                                             <button
                                                 onClick={() => handleEdit(map.scene_key)}
                                                 className="text-blue-400 hover:text-white bg-blue-900/20 hover:bg-blue-600 px-3 py-1.5 rounded text-sm font-medium transition-all mr-2"

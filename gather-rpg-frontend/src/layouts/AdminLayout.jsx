@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore';
-import { LayoutDashboard, Map as MapIcon, Settings, LogOut, Gamepad2, Users, Terminal, ScrollText, Package, ShoppingBag, Swords, Brain, MessageSquare, Ban, Sparkles, FlaskConical, Crown } from 'lucide-react';
+import { LayoutDashboard, Map as MapIcon, Settings, LogOut, Gamepad2, Users, Terminal, ScrollText, Package, ShoppingBag, Swords, Brain, MessageSquare, Ban, Sparkles, FlaskConical, Crown, Globe } from 'lucide-react';
 import { LanguageSwitcher } from '../components/common/LanguageSwitcher';
 
 export const AdminLayout = () => {
@@ -40,6 +40,7 @@ export const AdminLayout = () => {
         { path: '/admin/npcsprites', label: t('admin.nav.npc_sprites'), icon: Gamepad2 },
         { path: '/admin/items', label: t('admin.nav.items'), icon: Package },
         { path: '/admin/shops', label: t('admin.nav.shops'), icon: ShoppingBag },
+        { path: '/admin/worlds', label: t('admin.nav.worlds', 'Mundos'), icon: Globe },
         { path: '/admin/missions', label: t('admin.nav.missions'), icon: ScrollText },
         { path: '/admin/enemy-models', label: t('admin.nav.enemy_models'), icon: Swords },
         { path: '/admin/enemies', label: t('admin.nav.enemy_visualizer'), icon: Gamepad2 },

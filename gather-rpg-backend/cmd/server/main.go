@@ -71,6 +71,10 @@ func main() {
 			&models.NPCDefinition{},
 			&models.NPCTemplate{},
 			&models.NPCDialogueCache{},
+			// ── Mundos (agrupación de misiones + examen final) ───────────────
+			&models.World{},
+			&models.WorldTranslation{},
+			&models.PlayerWorldMastery{},
 			&models.Mission{},
 			&models.MissionTranslation{},
 			&models.MissionTask{},
@@ -127,6 +131,10 @@ func main() {
 	missionService := services.NewMissionService(missionRepo, inventoryRepo)
 	subscriptionService := services.NewSubscriptionService(cfg)
 
+	// Mundos: agrupan misiones y definen de qué pool salen las Ninja Cards.
+	worldRepo := repository.NewWorldRepository()
+	worldService := services.NewWorldService(worldRepo)
+
 	// AI Factory
 	var aiApiKey, aiModel string
 	switch cfg.AIProvider {
@@ -155,6 +163,9 @@ func main() {
 
 	// WebSocket Hub
 	hub := gameWS.NewHub(presenceService, roomService, movementService, peerService, combatService, missionService, learningService)
+	// Acota las Ninja Cards al mundo/examen del jugador. Opcional por diseño: si
+	// falta, el combate cae al pool global de siempre.
+	hub.WorldService = worldService
 	go hub.Run()
 
 	// Handlers
@@ -165,16 +176,19 @@ func main() {
 	friendHandler := handlers.NewFriendHandler(friendService, hub)
 	learningHandler := handlers.NewLearningHandler(learningService, translationService)
 	dialogueHandler := handlers.NewDialogueHandler(dialogueService, hub)
-	missionHandler := handlers.NewMissionHandler(missionService, translationService, hub, subscriptionService)
+	missionHandler := handlers.NewMissionHandler(missionService, translationService, hub, subscriptionService, worldService)
 	npcHandler := handlers.NewNPCHandler(npcService, llmClient)
 	missionAdminHandler := handlers.NewMissionAdminHandler(missionService, translationService, cfg.PrecacheLangs)
 	blockHandler := handlers.NewBlockHandler(hub)
 	paymentHandler := handlers.NewPaymentHandler(subscriptionService, cfg)
+	worldHandler := handlers.NewWorldHandler(worldService, translationService)
+	worldArtHandler := handlers.NewWorldArtHandler()
 
 	// Warm mission/task translations for the configured player languages in the
 	// background, so the first dialogue open (especially a quest master with many
 	// missions) doesn't pay the per-mission LLM translation cost.
 	go translationService.WarmAllActiveMissions(cfg.PrecacheLangs)
+	go translationService.WarmAllWorlds(cfg.PrecacheLangs)
 
 	// Warm the map-config cache so teleports/map entries serve from memory and never
 	// wait on the remote DB (a transient stall there made one map load take ~20s).
@@ -323,6 +337,19 @@ func main() {
 	admin.Put("/shops/:id", adminHandler.UpdateShop)
 	admin.Delete("/shops/:id", adminHandler.DeleteShop)
 
+	// World Admin Routes (mundos: agrupan misiones y definen el pool de cards)
+	admin.Get("/worlds", worldHandler.ListWorlds)
+	admin.Post("/worlds", worldHandler.CreateWorld)
+	admin.Put("/worlds/:id", worldHandler.UpdateWorld)
+	admin.Delete("/worlds/:id", worldHandler.DeleteWorld)
+	admin.Get("/worlds/:id/missions", worldHandler.GetWorldMissions)
+	admin.Put("/worlds/:id/missions", worldHandler.SetWorldMissions)
+	admin.Get("/worlds/:id/pool-health", worldHandler.GetPoolHealth)
+	// Portadas de mundo y previews de mapa (subir / listar / borrar).
+	admin.Get("/world-art", worldArtHandler.ListInfoArt)
+	admin.Post("/world-art", worldArtHandler.UploadInfoArt)
+	admin.Delete("/world-art/:file", worldArtHandler.DeleteInfoArt)
+
 	// Mission Admin Routes
 	admin.Get("/missions", missionAdminHandler.ListMissions)
 	admin.Post("/missions", missionAdminHandler.CreateMission)
@@ -364,6 +391,15 @@ func main() {
 	// TTS Routes
 	app.Post("/tts/generate", middleware.Protected(cfg), ttsHandler.Generate)
 	app.Get("/tts/audio/:cache_key", ttsHandler.GetAudio)
+
+	// World Routes (catálogo del jugador; todos abiertos, sin desbloqueo secuencial)
+	worlds := app.Group("/worlds", middleware.Protected(cfg))
+	worlds.Get("/", worldHandler.GetWorlds)
+	worlds.Get("/:id/missions", worldHandler.GetWorldMissions)
+	worlds.Get("/:id/mastery", worldHandler.GetWorldMastery)
+
+	// Portadas/previews (PÚBLICO: el <img> las carga sin auth, igual que info-art).
+	app.Get("/world-art/:file", worldArtHandler.ServeInfoArt)
 
 	// Mission Routes
 	missions := app.Group("/missions", middleware.Protected(cfg))

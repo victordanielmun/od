@@ -82,6 +82,10 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 				// Switching rooms: full cleanup
 				oldRoom.RemoveClient(client)
 				oldRoom.ReleaseNinjaCardsForPlayer(client.ID.String())
+				// Salió del mapa final sin tumbar al boss → intento fallido, pero
+				// el diagnóstico por tema queda guardado para el repaso.
+				h.flushExamSession(oldRoom, client, false)
+				oldRoom.ClearPlayerSession(client.ID.String())
 				oldRoom.Grid.RemoveUser(client.ID.String())
 				h.MovementService.ClearPosition(context.Background(), client.RoomID, client.ID.String())
 

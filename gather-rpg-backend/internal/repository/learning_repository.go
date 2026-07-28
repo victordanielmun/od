@@ -6,6 +6,7 @@ import (
 	"gather-rpg-backend/internal/utils"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -57,6 +58,53 @@ func (r *LearningRepository) GetRandomChallenge(challengeType string, difficulty
 	return &challenge, nil
 }
 
+// ChallengePool describes a scoped set of challenges — a world's normal pool or
+// its exam pool. Any empty field widens the query instead of narrowing it.
+type ChallengePool struct {
+	Types      []string    // challenge types; empty = any
+	Difficulty string      // beginner/intermediate/advanced; empty = any
+	Tags       []string    // OR-ed together (array overlap); empty = any
+	ExcludeIDs []uuid.UUID // already asked in this session
+}
+
+// GetRandomChallengeFromPool picks one challenge from a scoped pool, biased
+// toward questions this user has previously gotten WRONG (roughly double weight)
+// while staying random, so a world's exam keeps drilling weak spots without
+// becoming a fixed script. Returns gorm.ErrRecordNotFound when the pool is empty
+// — callers are expected to fall back to a wider pool rather than fail the card.
+func (r *LearningRepository) GetRandomChallengeFromPool(userID uuid.UUID, pool ChallengePool) (*models.LearningChallenge, error) {
+	var challenge models.LearningChallenge
+
+	q := database.DB.Model(&models.LearningChallenge{}).Select("learning_challenges.*")
+
+	if len(pool.Types) > 0 {
+		q = q.Where("type IN ?", pool.Types)
+	}
+	if pool.Difficulty != "" {
+		q = q.Where("difficulty = ?", pool.Difficulty)
+	}
+	if len(pool.Tags) > 0 {
+		// Array overlap: matches a challenge carrying ANY of the pool's tags.
+		q = q.Where("tags && ?::text[]", pq.Array(pool.Tags))
+	}
+	if len(pool.ExcludeIDs) > 0 {
+		q = q.Where("learning_challenges.id NOT IN ?", pool.ExcludeIDs)
+	}
+
+	// Per-user history for this challenge, used only for the ordering weight.
+	q = q.Joins(`LEFT JOIN LATERAL (
+			SELECT count(*) FILTER (WHERE NOT a.is_correct) AS wrong
+			  FROM user_challenge_attempts a
+			 WHERE a.challenge_id = learning_challenges.id AND a.user_id = ?
+		) s ON true`, userID).
+		Order("RANDOM() * CASE WHEN COALESCE(s.wrong, 0) > 0 THEN 0.5 ELSE 1 END")
+
+	if err := q.First(&challenge).Error; err != nil {
+		return nil, err
+	}
+	return &challenge, nil
+}
+
 // GetChallengeMetadata retrieves distinct difficulties and tags from challenges.
 // When challengeType/difficulty are non-empty, tags are scoped to that combo —
 // otherwise a tag that only exists for e.g. "vocabulary" (like "animals") or for a
@@ -85,6 +133,28 @@ func (r *LearningRepository) GetChallengeMetadata(challengeType string, difficul
 	}
 	if err := database.DB.Raw(tagsQuery, args...).Scan(&tags).Error; err != nil {
 		return nil, nil, err
+	}
+
+	// Exam tags (e.g. "final_mision_1") are internal routing for a world's final
+	// combat map, not a topic anyone should practice on demand — and the practice UI
+	// feeds this list straight into its category picker. Filtering by whatever
+	// worlds.exam_tag currently holds hides them without constraining how admins
+	// name their tags. A failed read (worlds not created yet) simply skips the
+	// filter instead of breaking the endpoint.
+	var examTags []string
+	database.DB.Raw("SELECT exam_tag FROM worlds WHERE exam_tag <> ''").Scan(&examTags)
+	if len(examTags) > 0 {
+		hidden := make(map[string]bool, len(examTags))
+		for _, t := range examTags {
+			hidden[t] = true
+		}
+		visible := make([]string, 0, len(tags))
+		for _, t := range tags {
+			if !hidden[t] {
+				visible = append(visible, t)
+			}
+		}
+		tags = visible
 	}
 
 	return difficulties, tags, nil

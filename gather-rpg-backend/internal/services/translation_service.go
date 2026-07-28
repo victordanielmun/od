@@ -194,6 +194,98 @@ Translate naturally for a player who speaks %s. Respond with STRICT JSON only:
 	}, nil
 }
 
+// GetWorldTranslation returns a world's player-facing text (name / description) in
+// the given language, cached per (world, lang). Same read-through pattern as
+// GetMissionTranslation. World.Key and World.ExamTag are identifiers, never
+// translated — renaming them would break the challenge pools.
+func (s *TranslationService) GetWorldTranslation(w *models.World, lang string) *models.WorldTranslation {
+	lang = utils.NormalizeLang(lang)
+	if utils.IsEnglish(lang) {
+		return &models.WorldTranslation{WorldID: w.ID, Lang: "en", Name: w.Name, Description: w.DescriptionEn}
+	}
+
+	var existing models.WorldTranslation
+	if err := database.DB.Where("world_id = ? AND lang = ?", w.ID, lang).First(&existing).Error; err == nil {
+		return &existing
+	}
+
+	tr, err := s.generateWorld(w, lang)
+	if err != nil {
+		fmt.Printf("[TranslationService] world translate failed (%d/%s): %v\n", w.ID, lang, err)
+		return &models.WorldTranslation{WorldID: w.ID, Lang: lang, Name: w.Name, Description: w.DescriptionEn}
+	}
+	if err := database.DB.Create(tr).Error; err != nil {
+		// Otra petición ganó la carrera: quedarse con la fila que sí entró.
+		var winner models.WorldTranslation
+		if e := database.DB.Where("world_id = ? AND lang = ?", w.ID, lang).First(&winner).Error; e == nil {
+			return &winner
+		}
+	}
+	return tr
+}
+
+func (s *TranslationService) generateWorld(w *models.World, lang string) (*models.WorldTranslation, error) {
+	if s.AIClient == nil {
+		return nil, fmt.Errorf("no AI client configured")
+	}
+	langName := utils.LanguageName(lang)
+
+	systemPrompt := fmt.Sprintf(`You translate world/chapter names for an English-learning RPG into %s.
+Translate naturally for a player who speaks %s. Respond with STRICT JSON only:
+{"name": "...", "description": "..."}`, langName, langName)
+
+	userPrompt := fmt.Sprintf("Name: %s\nDescription: %s", w.Name, w.DescriptionEn)
+
+	raw, err := s.AIClient.SendPrompt(systemPrompt, userPrompt)
+	if err != nil {
+		return nil, err
+	}
+	var parsed struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal([]byte(extractJSON(raw)), &parsed); err != nil {
+		return nil, fmt.Errorf("parse world JSON: %w (raw: %s)", err, raw)
+	}
+	return &models.WorldTranslation{
+		WorldID:     w.ID,
+		Lang:        lang,
+		Name:        strings.TrimSpace(parsed.Name),
+		Description: strings.TrimSpace(parsed.Description),
+	}, nil
+}
+
+// InvalidateWorldTranslations drops every cached translation of a world so an edit
+// to its English name/description regenerates instead of serving stale rows.
+func (s *TranslationService) InvalidateWorldTranslations(worldID uint) {
+	if worldID == 0 {
+		return
+	}
+	if err := database.DB.Where("world_id = ?", worldID).Delete(&models.WorldTranslation{}).Error; err != nil {
+		fmt.Printf("[TranslationService] invalidate world translations (%d): %v\n", worldID, err)
+	}
+}
+
+// WarmAllWorlds pre-generates world translations for the given languages so the
+// first time a player opens the quest board the catalog is already localized.
+func (s *TranslationService) WarmAllWorlds(langs []string) {
+	if len(langs) == 0 || database.DB == nil {
+		return
+	}
+	var worlds []models.World
+	if err := database.DB.Where("status = ?", "active").Find(&worlds).Error; err != nil {
+		return
+	}
+	for i := range worlds {
+		for _, lang := range langs {
+			if utils.IsEnglish(lang) {
+				continue
+			}
+			s.GetWorldTranslation(&worlds[i], lang)
+		}
+	}
+}
+
 // GetTaskTranslation returns a task's description in the given language, cached per
 // (task, lang). The English-only learning targets on the task are never translated.
 func (s *TranslationService) GetTaskTranslation(t *models.MissionTask, lang string) *models.TaskTranslation {

@@ -14,8 +14,12 @@ import (
 // el que se sube bajo demanda. Se sirve por la API (/info-art/:file) para que pase por el
 // proxy /api y el <img> lo cargue sin auth. El contenido del letrero (markdown) sigue en
 // el readText del mueble (map_data), sin cambios de esquema en BD.
+// URLPrefix es la ruta pública bajo la que se sirve este arte (p. ej. "/api/info-art").
+// Se parametriza para poder montar varias instancias del mismo handler sobre
+// carpetas distintas (letreros de info, portadas de mundos y previews de mapas).
 type InfoArtHandler struct {
-	Dir string
+	Dir       string
+	URLPrefix string
 }
 
 func NewInfoArtHandler() *InfoArtHandler {
@@ -24,7 +28,28 @@ func NewInfoArtHandler() *InfoArtHandler {
 		dir = filepath.Join("uploads", "info")
 	}
 	_ = os.MkdirAll(dir, 0755)
-	return &InfoArtHandler{Dir: dir}
+	return &InfoArtHandler{Dir: dir, URLPrefix: "/api/info-art"}
+}
+
+// NewWorldArtHandler sirve las portadas de mundo y los PNG de preview de cada
+// mapa. Misma mecánica que el arte de letreros (sanitizado, tope de 5MB, servido
+// sin auth para que el <img> lo cargue), pero en su propia carpeta.
+func NewWorldArtHandler() *InfoArtHandler {
+	dir := os.Getenv("WORLD_ART_DIR")
+	if dir == "" {
+		dir = filepath.Join("uploads", "worlds")
+	}
+	_ = os.MkdirAll(dir, 0755)
+	return &InfoArtHandler{Dir: dir, URLPrefix: "/api/world-art"}
+}
+
+// urlFor construye la URL pública de un archivo de esta carpeta.
+func (h *InfoArtHandler) urlFor(name string) string {
+	prefix := h.URLPrefix
+	if prefix == "" {
+		prefix = "/api/info-art"
+	}
+	return prefix + "/" + name
 }
 
 var (
@@ -70,7 +95,7 @@ func (h *InfoArtHandler) UploadInfoArt(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"filename": name,
-		"url":      "/api/info-art/" + name, // listo para el markdown del letrero
+		"url":      h.urlFor(name), // listo para el markdown del letrero / la portada
 	})
 }
 
@@ -91,7 +116,7 @@ func (h *InfoArtHandler) ListInfoArt(c *fiber.Ctx) error {
 			continue
 		}
 		if allowedArtExt[strings.ToLower(filepath.Ext(f.Name()))] {
-			out = append(out, art{Filename: f.Name(), URL: "/api/info-art/" + f.Name()})
+			out = append(out, art{Filename: f.Name(), URL: h.urlFor(f.Name())})
 		}
 	}
 	return c.JSON(out)

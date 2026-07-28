@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronRight, ShoppingBag, MapPin, Compass, ShieldCheck, Map, CheckCircle, Loader2, Lock, Crown } from 'lucide-react';
-import api from '../../services/api';
+import { Mic, MicOff, Send, X, Volume2, MessageSquare, AlertCircle, ChevronRight, ShoppingBag, MapPin, Compass, ShieldCheck, Map, CheckCircle, Loader2, Lock, Crown, Swords } from 'lucide-react';
+import api, { worldArtUrl } from '../../services/api';
 import { analyzeDialogueAudio, generateTTS, getTTSAudioUrl } from '../../services/voiceApi';
 import ShopModal from '../common/ShopModal';
 import { KaraokeOverlay } from './KaraokeOverlay';
@@ -117,6 +117,12 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const [npcTaskDone, setNpcTaskDone] = useState(false); // this NPC's task already completed by the player
     const [showKaraoke, setShowKaraoke] = useState(true); // karaoke overlay visible while its task is current
     const [missionFilter, setMissionFilter] = useState('all');
+    // Tablero de dos niveles del maestro: primero el catálogo de mundos, luego las
+    // misiones del mundo elegido. `null` = viendo el catálogo. El id 0 es el cajón
+    // de "misiones sueltas" (las que no pertenecen a ningún mundo), que siguen
+    // siendo jugables — sin él desaparecerían del juego.
+    const [availableWorlds, setAvailableWorlds] = useState([]);
+    const [selectedWorldId, setSelectedWorldId] = useState(null);
     const hasPlayedGreeting = useRef(false);
     const taskBannerTimeoutRef = useRef(null);
 
@@ -172,6 +178,25 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
     const selectedMission = availableMissions.find(m => m.id === selectedMissionId);
     const needsTeleport = selectedMission && selectedMission.scene_key && selectedMission.scene_key !== currentSceneKey;
+
+    // ── Tablero de mundos (solo maestro de misiones) ─────────────────────────
+    // Misiones sin mundo: se agrupan aparte en vez de desaparecer del tablero.
+    const looseMissions = availableMissions.filter(m => !m.world_id);
+    // Nivel 1 (catálogo) mientras no se haya elegido mundo. Si el backend no
+    // devolvió mundos (aún no configurados), se salta directo a la lista plana
+    // de siempre para no dejar el tablero vacío.
+    const showWorldCatalog =
+        (resolvedType || npcType) === 'quest_master' &&
+        availableWorlds.length > 0 &&
+        selectedWorldId === null;
+    const activeWorld = availableWorlds.find(w => w.id === selectedWorldId);
+    // Misiones del nivel 2: las del mundo elegido, o las sueltas si se abrió ese
+    // cajón. Sin mundos configurados, se muestran todas (comportamiento previo).
+    const missionsInScope = availableWorlds.length === 0
+        ? availableMissions
+        : selectedWorldId === 0
+            ? looseMissions
+            : availableMissions.filter(m => m.world_id === selectedWorldId);
 
     // Karaoke task: when the current task for the selected mission is 'karaoke', we
     // render the dedicated sing-the-lyrics overlay instead of the normal chat.
@@ -294,6 +319,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
 
                 if (data && data.missions) {
                     setAvailableMissions(data.missions);
+                    setAvailableWorlds(data.worlds || []);
 
                     // Role-based UI (type already resolved above).
                     if (finalRoleType === 'merchant') {
@@ -972,19 +998,106 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                             <div className="absolute inset-0 z-[100] bg-[var(--color-parchment)]/95 backdrop-blur-sm p-4 lg:p-8 flex flex-col items-center justify-start gap-4 text-center overflow-y-auto custom-scrollbar-light">
 
                                 <h3 className="text-xl lg:text-3xl font-medieval text-[var(--color-base-dark)] mt-6 lg:mt-12 mb-4 drop-shadow-sm uppercase tracking-wider">
-                                    {(resolvedType || npcType) === 'quest_master' ? t('npc.dialogue.mission_board') : t('npc.dialogue.how_can_i_help')}
+                                    {(resolvedType || npcType) !== 'quest_master'
+                                        ? t('npc.dialogue.how_can_i_help')
+                                        : showWorldCatalog
+                                            ? t('npc.dialogue.world_board', { defaultValue: 'Elige un mundo' })
+                                            : (activeWorld?.name || t('npc.dialogue.mission_board'))}
                                 </h3>
-                                <div className="grid grid-cols-1 gap-4 w-full max-w-xl pb-10">
+
+                                {/* NIVEL 1 — catálogo de mundos. Todos abiertos: no hay orden
+                                    obligatorio ni desbloqueo, porque alguien puede saber unos
+                                    temas y otros no. */}
+                                {showWorldCatalog && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl pb-10">
+                                        {availableWorlds.map(w => (
+                                            <button
+                                                key={w.id}
+                                                onClick={() => setSelectedWorldId(w.id)}
+                                                className="border-4 border-double border-[var(--color-gold-dark)] bg-white hover:border-[var(--color-gold)] hover:-translate-y-1 transition-all shadow-xl overflow-hidden text-left group"
+                                            >
+                                                <div className="h-28 bg-[var(--color-base-dark)]/10 relative">
+                                                    {w.cover_image ? (
+                                                        <img src={worldArtUrl(w.cover_image)} alt="" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-[var(--color-gold-dark)] opacity-40">
+                                                            <Map size={38} />
+                                                        </div>
+                                                    )}
+                                                    {w.passed && (
+                                                        <span className="absolute top-2 right-2 text-[10px] bg-green-800 text-white px-2 py-1 font-bold uppercase tracking-widest border border-green-600">
+                                                            {t('npc.dialogue.world_passed', { defaultValue: 'Aprobado' })}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="p-4 flex flex-col gap-1.5">
+                                                    <span className="font-medieval text-lg lg:text-xl uppercase tracking-tighter text-[var(--color-base-dark)]">
+                                                        {w.name}
+                                                    </span>
+                                                    <span className="text-sm font-serif text-[var(--color-base-dark)]/80 leading-snug">
+                                                        {w.description}
+                                                    </span>
+                                                    <div className="flex items-center gap-2 flex-wrap mt-1">
+                                                        <span className={`text-[10px] px-2 py-1 font-bold uppercase tracking-widest border rounded-sm ${w.difficulty === 'advanced'
+                                                            ? 'bg-red-700 text-white border-red-500'
+                                                            : w.difficulty === 'intermediate'
+                                                                ? 'bg-amber-600 text-white border-amber-400'
+                                                                : 'bg-emerald-700 text-white border-emerald-500'
+                                                            }`}>
+                                                            {t(`npc.dialogue.difficulty_${w.difficulty}`)}
+                                                        </span>
+                                                        <span className="text-[11px] font-bold uppercase tracking-widest text-[var(--color-gold-dark)]">
+                                                            {w.completed_count}/{w.mission_count} {t('npc.dialogue.missions_label', { defaultValue: 'misiones' })}
+                                                        </span>
+                                                        {w.has_exam && (
+                                                            <span className="flex items-center gap-1 text-[10px] bg-[var(--color-base-dark)] text-white px-2 py-1 font-bold uppercase tracking-widest">
+                                                                <Swords size={10} /> {t('npc.dialogue.final_exam', { defaultValue: 'Examen final' })}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        ))}
+
+                                        {/* Cajón de misiones sueltas: sin él, toda misión sin mundo
+                                            (todas las anteriores a los mundos) desaparecería. */}
+                                        {looseMissions.length > 0 && (
+                                            <button
+                                                onClick={() => setSelectedWorldId(0)}
+                                                className="border-4 border-dashed border-[var(--color-gold-dark)]/60 bg-white/60 hover:bg-white transition-all shadow-lg p-4 flex flex-col items-start justify-center gap-1.5 text-left min-h-[9rem]"
+                                            >
+                                                <span className="font-medieval text-lg uppercase tracking-tighter text-[var(--color-base-dark)]">
+                                                    {t('npc.dialogue.loose_missions', { defaultValue: 'Misiones sueltas' })}
+                                                </span>
+                                                <span className="text-sm font-serif text-[var(--color-base-dark)]/70">
+                                                    {looseMissions.length} {t('npc.dialogue.missions_label', { defaultValue: 'misiones' })}
+                                                </span>
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Botón volver al catálogo (nivel 2). */}
+                                {!showWorldCatalog && availableWorlds.length > 0 && (resolvedType || npcType) === 'quest_master' && (
+                                    <button
+                                        onClick={() => setSelectedWorldId(null)}
+                                        className="self-start flex items-center gap-2 text-sm font-medieval uppercase tracking-widest text-[var(--color-gold-dark)] hover:text-[var(--color-base-dark)] transition-colors mb-1"
+                                    >
+                                        ← {t('npc.dialogue.back_to_worlds', { defaultValue: 'Volver a los mundos' })}
+                                    </button>
+                                )}
+
+                                <div className={`grid grid-cols-1 gap-4 w-full max-w-xl pb-10 ${showWorldCatalog ? 'hidden' : ''}`}>
                                     {/* Loading state: board is shown instantly from the NPC type, but the
                                         missions list is still being fetched — show a spinner, not "no missions". */}
-                                    {(resolvedType || npcType) === 'quest_master' && availableMissions.length === 0 && missionsLoading && (
+                                    {(resolvedType || npcType) === 'quest_master' && missionsInScope.length === 0 && missionsLoading && (
                                         <div className="p-10 border-4 border-dashed border-gray-400 bg-gray-100/50 rounded-lg flex flex-col items-center gap-3">
                                             <Loader2 className="animate-spin text-gray-500" size={32} />
                                             <p className="text-lg font-serif text-gray-600">{t('npc.dialogue.loading_missions')}</p>
                                         </div>
                                     )}
                                     {/* Empty State for Portals (only once the fetch has finished). */}
-                                    {(resolvedType || npcType) === 'quest_master' && availableMissions.length === 0 && !missionsLoading && (
+                                    {(resolvedType || npcType) === 'quest_master' && missionsInScope.length === 0 && !missionsLoading && (
                                         <div className="p-10 border-4 border-dashed border-gray-400 bg-gray-100/50 rounded-lg">
                                             <p className="text-xl font-serif text-gray-600">{t('npc.dialogue.no_missions')}</p>
                                             <p className="text-sm text-gray-400 mt-2 italic">{t('npc.dialogue.no_missions_desc')}</p>
@@ -1005,7 +1118,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                     )}
 
                                     {/* Missions Filter */}
-                                    {(resolvedType || npcType) === 'quest_master' && availableMissions.length > 0 && (
+                                    {(resolvedType || npcType) === 'quest_master' && missionsInScope.length > 0 && (
                                         <div className="flex justify-end w-full mb-2">
                                             <select
                                                 value={missionFilter}
@@ -1022,8 +1135,8 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                         </div>
                                     )}
 
-                                    {/* Missions List */}
-                                    {availableMissions.filter(m => {
+                                    {/* Missions List — acotada al mundo elegido */}
+                                    {missionsInScope.filter(m => {
                                         if (missionFilter === 'all') return true;
                                         if (missionFilter === 'uncompleted') return m.status !== 'completed';
                                         
@@ -1056,15 +1169,29 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                                                 : 'border-[var(--color-gold-dark)] bg-white hover:bg-[var(--color-accent-blue)] hover:border-[var(--color-gold)] hover:-translate-y-1'
                                                 }`}
                                             >
+                                                {/* PNG del mapa: la misión se reconoce por su escenario. */}
+                                                {m.map_image && (
+                                                    <img
+                                                        src={worldArtUrl(m.map_image)}
+                                                        alt=""
+                                                        className="w-full h-24 object-cover border-2 border-[var(--color-gold-dark)]/40 mb-1"
+                                                    />
+                                                )}
                                                 <div className="flex items-center justify-between w-full">
                                                     <div className="flex items-center gap-2 lg:gap-3 flex-wrap">
                                                         <span className={`font-medieval text-lg lg:text-2xl uppercase tracking-tighter transition-colors ${
-                                                            selectedMissionId === m.id 
-                                                                ? 'text-[var(--color-orange-vibrant)]' 
+                                                            selectedMissionId === m.id
+                                                                ? 'text-[var(--color-orange-vibrant)]'
                                                                 : 'text-[var(--color-base-dark)] group-hover:text-white'
                                                         }`}>
                                                             {m.title}
                                                         </span>
+                                                        {/* El examen del mundo: el mapa que valida lo aprendido. */}
+                                                        {m.is_final && (
+                                                            <span className="flex items-center gap-1 text-[10px] bg-[var(--color-base-dark)] text-white px-3 py-1 font-bold uppercase tracking-widest border border-[var(--color-gold)] rounded-sm">
+                                                                <Swords size={11} /> {t('npc.dialogue.final_exam', { defaultValue: 'Examen final' })}
+                                                            </span>
+                                                        )}
                                                         {m.status === 'completed' && (
                                                             <span className="text-[10px] bg-green-800 text-white px-3 py-1 font-bold uppercase tracking-widest border border-green-600 rounded-sm">
                                                                 {t('npc.dialogue.status_completed')}

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 // -- ENUMs as string types --
@@ -160,7 +161,20 @@ type Mission struct {
 	// (default) are available to everyone; premium missions can only be accepted
 	// by users with an active subscription (see SubscriptionService.IsUserPremium).
 	IsPremium     bool            `gorm:"not null;default:false" json:"is_premium"`
-	CreatedAt     time.Time       `json:"created_at"`
+	// WorldID groups the mission into a World. NULL is fully supported and means
+	// "loose mission" — those keep showing up in their own bucket in the quest
+	// board, so nothing disappears for missions authored before worlds existed.
+	WorldID *uint `json:"world_id"`
+	// IsFinal marks this mission as the world's EXAM: its map draws Ninja Cards
+	// from World.ExamTag instead of World.ChallengeTags. At most one per world
+	// (enforced by a partial unique index in worlds_schema.sql).
+	IsFinal bool `gorm:"not null;default:false" json:"is_final"`
+	// OrderInWorld is presentation only — missions are playable in any order.
+	OrderInWorld int `gorm:"not null;default:0" json:"order_in_world"`
+	// ChallengeTags optionally overrides the world's pool for this mission alone.
+	// Empty = inherit World.ChallengeTags.
+	ChallengeTags pq.StringArray `gorm:"type:text[];not null;default:'{}'" json:"challenge_tags"`
+	CreatedAt     time.Time      `json:"created_at"`
 }
 
 type MissionTask struct {
