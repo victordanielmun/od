@@ -28,6 +28,7 @@ const artUrl = worldArtUrl;
 export const AdminWorlds = () => {
     const [worlds, setWorlds] = useState([]);
     const [missions, setMissions] = useState([]);
+    const [images, setImages] = useState([]); // archivos de public/worlds
     const [allTags, setAllTags] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -47,12 +48,16 @@ export const AdminWorlds = () => {
         setLoading(true);
         setError(null);
         try {
-            const [wRes, mRes] = await Promise.all([
+            const [wRes, mRes, imgRes] = await Promise.all([
                 api.get('/admin/worlds'),
                 api.get('/admin/missions'),
+                // Galería de public/worlds del frontend. Si el backend no puede
+                // leer la carpeta devuelve [], y queda el campo de texto manual.
+                api.get('/admin/world-images').catch(() => ({ data: [] })),
             ]);
             setWorlds(wRes.data || []);
             setMissions(mRes.data || []);
+            setImages(imgRes.data || []);
         } catch (e) {
             setError(e?.response?.data?.error || e.message);
         } finally {
@@ -347,28 +352,56 @@ export const AdminWorlds = () => {
                         </Field>
 
                         <Field label="Imagen del mundo" hint="La referencia visual que agrupa sus misiones">
-                            <div className="flex items-center gap-3">
-                                {editing.cover_image ? (
-                                    <img src={artUrl(editing.cover_image)} alt=""
-                                        className="w-16 h-16 object-cover rounded-lg border border-gray-700 shrink-0" />
-                                ) : (
-                                    <div className="w-16 h-16 rounded-lg border border-dashed border-gray-700 flex items-center justify-center text-gray-600 shrink-0">
-                                        <ImageIcon size={20} />
+                            {images.length > 0 ? (
+                                <>
+                                    {/* Galería, igual que el selector de sprites de NPCs e ítems. */}
+                                    <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 max-h-56 overflow-y-auto p-2 bg-gray-800/50 border border-gray-700 rounded-lg">
+                                        {images.map(img => {
+                                            const on = editing.cover_image === img;
+                                            return (
+                                                <button
+                                                    key={img}
+                                                    type="button"
+                                                    title={img}
+                                                    onClick={() => setEditing({ ...editing, cover_image: on ? '' : img })}
+                                                    className={`aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                                                        on ? 'border-emerald-500 ring-2 ring-emerald-500/40' : 'border-gray-700 hover:border-gray-500'
+                                                    }`}
+                                                >
+                                                    <img src={artUrl(img)} alt={img} className="w-full h-full object-cover" />
+                                                </button>
+                                            );
+                                        })}
                                     </div>
-                                )}
-                                <div className="flex-1">
-                                    <input
-                                        value={editing.cover_image}
-                                        onChange={e => setEditing({ ...editing, cover_image: e.target.value.trim() })}
-                                        placeholder={`${editing.key || 'mundo_1'}.png`}
-                                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white font-mono text-sm"
-                                    />
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        Archivo dentro de <code className="text-gray-400">public/worlds/</code> del frontend. Cuadrada, 256–512 px.
-                                        Es la única imagen del sistema: misiones y mapas no llevan.
+                                    <p className="text-xs text-gray-500 mt-1.5">
+                                        {editing.cover_image
+                                            ? <>Seleccionada: <code className="text-emerald-400">{editing.cover_image}</code> · pulsa de nuevo para quitarla</>
+                                            : <>Ninguna seleccionada. Añade archivos en <code className="text-gray-400">gather-rpg-frontend/public/worlds/</code> (cuadradas, 256–512 px).</>}
                                     </p>
+                                </>
+                            ) : (
+                                <div className="flex items-center gap-3">
+                                    {editing.cover_image ? (
+                                        <img src={artUrl(editing.cover_image)} alt=""
+                                            className="w-16 h-16 object-cover rounded-lg border border-gray-700 shrink-0" />
+                                    ) : (
+                                        <div className="w-16 h-16 rounded-lg border border-dashed border-gray-700 flex items-center justify-center text-gray-600 shrink-0">
+                                            <ImageIcon size={20} />
+                                        </div>
+                                    )}
+                                    <div className="flex-1">
+                                        <input
+                                            value={editing.cover_image}
+                                            onChange={e => setEditing({ ...editing, cover_image: e.target.value.trim() })}
+                                            placeholder={`${editing.key || 'mundo_1'}.png`}
+                                            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white font-mono text-sm"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            La carpeta <code className="text-gray-400">public/worlds/</code> está vacía o no se pudo leer: escribe el nombre a mano.
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </Field>
 
                         <div className="flex justify-end gap-3 pt-2">

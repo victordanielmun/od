@@ -346,6 +346,9 @@ func main() {
 	admin.Get("/worlds/:id/missions", worldHandler.GetWorldMissions)
 	admin.Put("/worlds/:id/missions", worldHandler.SetWorldMissions)
 	admin.Get("/worlds/:id/pool-health", worldHandler.GetPoolHealth)
+	// Galería de imágenes disponibles (public/worlds del frontend), para elegir
+	// la del mundo igual que se elige el sprite de un NPC o un ítem.
+	admin.Get("/world-images", worldHandler.ListWorldImages)
 
 	// Mission Admin Routes
 	admin.Get("/missions", missionAdminHandler.ListMissions)

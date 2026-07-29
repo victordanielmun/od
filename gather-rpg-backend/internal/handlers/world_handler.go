@@ -2,7 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 
 	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
@@ -352,6 +356,52 @@ func (h *WorldHandler) SetWorldMissions(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// ListWorldImages — GET /admin/world-images. Lista los archivos disponibles en
+// `gather-rpg-frontend/public/worlds/` para que el admin elija la imagen del
+// mundo de una galería, en vez de teclear el nombre de memoria.
+//
+// Mismo mecanismo que ListItemSprites: el arte vive en el frontend (viaja en git
+// y se sirve desde su dominio), pero el repo completo está también en el
+// servidor, así que el backend puede leer la carpeta. Si no la encuentra
+// devuelve una lista vacía —el admin sigue pudiendo escribir el nombre a mano—
+// en vez de romper la pantalla.
+func (h *WorldHandler) ListWorldImages(c *fiber.Ctx) error {
+	candidates := []string{
+		filepath.Join("..", "gather-rpg-frontend", "public", "worlds"),
+		filepath.Join("gather-rpg-frontend", "public", "worlds"),
+		filepath.Join("..", "..", "gather-rpg-frontend", "public", "worlds"),
+	}
+
+	var dir string
+	for _, p := range candidates {
+		if info, err := os.Stat(p); err == nil && info.IsDir() {
+			dir = p
+			break
+		}
+	}
+	if dir == "" {
+		return c.JSON([]string{})
+	}
+
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return c.JSON([]string{})
+	}
+
+	allowed := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".webp": true}
+	images := make([]string, 0, len(files))
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		if allowed[strings.ToLower(filepath.Ext(f.Name()))] {
+			images = append(images, f.Name())
+		}
+	}
+	sort.Strings(images)
+	return c.JSON(images)
 }
 
 // GetPoolHealth — GET /admin/worlds/:id/pool-health. Un pool de examen en 0 es el
