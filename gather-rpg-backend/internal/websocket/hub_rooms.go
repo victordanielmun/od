@@ -576,10 +576,26 @@ func generatePIN() string {
 	return fmt.Sprintf("%04d", rand.Intn(9000)+1000)
 }
 
-// maxCoopPlayers is the hard cap for cooperative room instances (balance):
-// applies both to matchmaking into existing coop rooms and to MaxUsers of
-// newly created ones.
-const maxCoopPlayers = 4
+// Aforo de las instancias según el modo de la misión de la escena. Aplica tanto
+// al emparejamiento con salas existentes como al MaxUsers de las nuevas.
+const (
+	// maxTeamPlayers: cooperativo y competitivo comparten tope.
+	maxTeamPlayers = 5
+	// maxSoloPlayers: una misión individual transcurre en su propia instancia.
+	maxSoloPlayers = 1
+)
+
+// Tipos de sala. "public" y "mission" son los históricos; los dos nuevos hacen
+// que el modo de la misión se note en el juego y no solo en el conteo:
+//   - solo:        instancia de un jugador, nunca reutilizada
+//   - competitive: varios jugadores en el mismo mapa, pero SIN compartir crédito
+//     de kills (eso es exclusivo de "cooperative", ver processEnemyKill)
+const (
+	roomTypeSolo        = "solo"
+	roomTypeCompetitive = "competitive"
+	roomTypeCooperative = "cooperative"
+	roomTypePublic      = "public"
+)
 
 // handleRequestMapJoin resolves the room a client should join for a given map.
 //
@@ -613,62 +629,86 @@ func (h *Hub) handleRequestMapJoin(client *Client, sceneKey, roomType, inviteCod
 		log.Printf("[Hub] No DB metadata for %s, treating as public: %v", sceneKey, err)
 	}
 
-	// El backend decide si la sala es cooperativa según el Mode de la misión de
-	// la escena (definido en el admin), NO según el hint del cliente: el hint se
-	// perdió con el "Bug 2 fix" (el frontend siempre manda 'public') y confiar
-	// en él dejaba todo el pipeline coop inalcanzable.
-	isCoopScene := h.MissionService != nil && h.MissionService.SceneHasCooperativeMission(sceneKey)
+	// El backend decide el tipo de sala según el Mode de la misión de la escena
+	// (definido en el admin), NO según el hint del cliente: el hint se perdió con
+	// el "Bug 2 fix" (el frontend siempre manda 'public') y confiar en él dejaba
+	// todo el pipeline por modo inalcanzable.
+	sceneMode := ""
+	if h.MissionService != nil {
+		sceneMode = h.MissionService.SceneMissionMode(sceneKey)
+	}
 
 	effectiveRoomType := "public"
 	if !isPublic {
 		effectiveRoomType = "mission"
 	}
-	if isCoopScene {
-		effectiveRoomType = "cooperative"
-		if maxUsers > maxCoopPlayers {
-			maxUsers = maxCoopPlayers
+
+	switch sceneMode {
+	case "cooperative", "competitive":
+		effectiveRoomType = sceneMode
+		if maxUsers > maxTeamPlayers {
+			maxUsers = maxTeamPlayers
 		}
-		log.Printf("[Hub] Scene %s has a cooperative mission → room type 'cooperative' (max %d players)", sceneKey, maxUsers)
+		log.Printf("[Hub] Scene %s is %s → room type '%s' (max %d players)", sceneKey, sceneMode, effectiveRoomType, maxUsers)
+	case "individual":
+		// Instancia aislada de verdad. Sin esto, una misión individual comparte
+		// sala pública: los enemigos los mata cualquiera (y desaparecen para ti
+		// aunque tu contador no suba), el crédito del boss y de kill_all se
+		// reparte a toda la sala, y la card del boss exigiría acertar a los 50.
+		effectiveRoomType = roomTypeSolo
+		maxUsers = maxSoloPlayers
+		log.Printf("[Hub] Scene %s is individual → instancia aislada (1 jugador)", sceneKey)
 	}
 
 	var selectedRoom *Room
 
 	h.mu.RLock()
 
-	// ─ COOPERATIVE LOGIC: Find active room for same mission with < 60% progress ─────
+	// ─ EQUIPO (cooperativo / competitivo): unirse a una instancia con sitio ─────
 	// Solo en mapas públicos y sin PIN: el flujo privado por PIN conserva su
 	// semántica (unirse exactamente a la sala del código, nunca auto-match).
-	if (isCoopScene || roomType == "cooperative") && isPublic && inviteCode == "" {
+	if (effectiveRoomType == roomTypeCooperative || effectiveRoomType == roomTypeCompetitive) && isPublic && inviteCode == "" {
 		for _, room := range h.Rooms {
-			if room.SceneKey == sceneKey && room.Type == "cooperative" && len(room.Clients) < maxCoopPlayers {
-				// Calculate progress based on enemies
-				room.mu.RLock()
-				total := len(room.ActiveEnemies)
-				dead := 0
-				for _, e := range room.ActiveEnemies {
-					if e.FSMState == "dead" {
-						dead++
-					}
-				}
-				room.mu.RUnlock()
+			if room.SceneKey != sceneKey || room.Type != effectiveRoomType || len(room.Clients) >= maxTeamPlayers {
+				continue
+			}
 
-				progress := 0.0
-				if total > 0 {
-					progress = float64(dead) / float64(total)
-				}
-
-				if progress < 0.6 {
-					selectedRoom = room
-					log.Printf("[Hub] Joining existing cooperative instance %s (Progress: %.1f%%)", room.ID, progress*100)
-					break
+			// En cooperativo no se entra a una partida ya avanzada (>60% de los
+			// enemigos muertos): el recién llegado se encontraría el mapa hecho.
+			// En competitivo la carrera empieza para todos a la vez, así que el
+			// mismo criterio evita que alguien entre a competir con ventaja.
+			room.mu.RLock()
+			total := len(room.ActiveEnemies)
+			dead := 0
+			for _, e := range room.ActiveEnemies {
+				if e.FSMState == "dead" {
+					dead++
 				}
 			}
+			room.mu.RUnlock()
+
+			progress := 0.0
+			if total > 0 {
+				progress = float64(dead) / float64(total)
+			}
+			if progress >= 0.6 {
+				continue
+			}
+
+			selectedRoom = room
+			log.Printf("[Hub] Joining existing %s instance %s (Progress: %.1f%%)", effectiveRoomType, room.ID, progress*100)
+			break
 		}
 	}
 
 	if selectedRoom != nil {
-		// Already found a cooperative room to join
-	} else if isPublic {
+		// Ya hay sala de equipo elegida
+	} else if effectiveRoomType == roomTypeSolo {
+		// Individual: NUNCA se reutiliza una sala. Dejar selectedRoom en nil hace
+		// que abajo se cree una instancia nueva, que es lo que hace que el
+		// progreso, los enemigos y el examen sean de verdad de un solo jugador.
+		log.Printf("[Hub] Individual: creando instancia propia para %s en %s", client.ID, sceneKey)
+	} else if isPublic && effectiveRoomType == roomTypePublic {
 		// ─ PUBLIC: find any non-full instance for this scene ───────────────────────────
 		for _, room := range h.Rooms {
 			if room.SceneKey == sceneKey && room.Type == "public" && len(room.Clients) < room.MaxUsers {

@@ -20,6 +20,11 @@ import (
 // refreshes from the DB.
 var mapConfigCache sync.Map // scene_key(string) -> models.MapConfig
 
+// defaultMapMaxUsers es el aforo de un mapa recién creado. Solo aplica a mapas
+// sin misión (tránsito libre): en cuanto se les asocia una, el modo de esa misión
+// recorta el aforo real de la instancia (ver SceneMissionMode y maxTeamPlayers).
+const defaultMapMaxUsers = 50
+
 func invalidateMapConfigCache(sceneKey string) {
 	if sceneKey != "" {
 		mapConfigCache.Delete(sceneKey)
@@ -80,16 +85,22 @@ func (h *AdminHandler) SaveMapConfig(c *fiber.Ctx) error {
 
 	if result.Error != nil {
 		// Create new
+		// Un mapa nuevo nace público y con aforo 50. El aforo real lo recorta
+		// después el modo de la misión que se le asocie (individual → 1,
+		// cooperativo/competitivo → 5); este valor solo gobierna los mapas sin
+		// misión, que son los de tránsito libre.
 		cfg := models.MapConfig{
 			SceneKey:  req.SceneKey,
 			WallsJSON: req.WallsJSON,
 			MapData:   mapDataStr,
 			UpdatedBy: parsedUID,
+			IsPublic:  true,
+			MaxUsers:  defaultMapMaxUsers,
 		}
 		if req.IsPublic != nil {
 			cfg.IsPublic = *req.IsPublic
 		}
-		if req.MaxUsers != nil {
+		if req.MaxUsers != nil && *req.MaxUsers > 0 {
 			cfg.MaxUsers = *req.MaxUsers
 		}
 		if err := database.DB.Create(&cfg).Error; err != nil {

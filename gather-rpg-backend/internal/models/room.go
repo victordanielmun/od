@@ -14,7 +14,14 @@ type Room struct {
 	MaxUsers   int             `gorm:"default:50" json:"max_users"`
 	MapData    json.RawMessage `gorm:"type:jsonb" json:"map_data"`
 	IsPublic   bool            `gorm:"default:true" json:"is_public"`
-	Type       string          `gorm:"default:'public';size:20" json:"type"` // public, private, mission
+	// Type decide cómo se comparte la instancia. Lo fija el backend según el Mode
+	// de la misión de la escena (ver SceneMissionMode):
+	//   public      → compartida por cualquiera, hasta MaxUsers
+	//   solo        → un jugador; nunca se reutiliza (misiones individuales)
+	//   cooperative → equipo; audio de reunión y crédito de kills compartido
+	//   competitive → equipo en el mismo mapa, pero sin compartir crédito
+	//   mission/private → instancia por PIN
+	Type       string          `gorm:"default:'public';size:20" json:"type"`
 	SceneKey   string          `gorm:"not null;size:50" json:"scene_key"`    // e.g., 'lobby', 'shop_1'
 	InviteCode string          `gorm:"size:10;index" json:"invite_code"`     // Random code for private rooms
 	ParentID   *uuid.UUID      `gorm:"type:uuid" json:"parent_id"`           // For submaps

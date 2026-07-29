@@ -550,20 +550,48 @@ func (s *MissionService) activeMissionProgresses(playerID uuid.UUID, sceneKey st
 	return progresses
 }
 
-// SceneHasCooperativeMission reports whether the scene has at least one ACTIVE
-// mission with cooperative mode. The hub uses it to decide the room Type at
-// creation time: scenes with a coop mission produce "cooperative" room
-// instances (4-player matchmaking + meeting-room audio + shared kill credit),
-// so the mode defined in the admin is what drives the whole coop pipeline.
-func (s *MissionService) SceneHasCooperativeMission(sceneKey string) bool {
-	if database.DB == nil {
+// SceneMissionMode devuelve el modo que debe gobernar el ruteo de instancias de
+// una escena, según las misiones ACTIVAS que viven en ella:
+//
+//	"cooperative"  → sala de equipo (audio de reunión + crédito de kills compartido)
+//	"competitive"  → sala de equipo, pero SIN compartir crédito de kills
+//	"individual"   → instancia aislada de un solo jugador
+//	""             → la escena no tiene misiones: sala pública normal
+//
+// El modo lo define el admin en la misión, y es el backend quien lo aplica: el
+// cliente siempre manda 'public', así que su hint no sirve.
+//
+// Si una escena mezcla modos gana el multijugador: en una instancia de 1 plaza el
+// contenido cooperativo o competitivo sería directamente injugable, mientras que
+// una misión individual en una sala de equipo solo pierde el aislamiento.
+func (s *MissionService) SceneMissionMode(sceneKey string) string {
+	if database.DB == nil || sceneKey == "" {
+		return ""
+	}
+	var modes []string
+	database.DB.Model(&models.Mission{}).
+		Where("scene_key = ? AND status = ?", sceneKey, "active").
+		Distinct().Pluck("mode", &modes)
+
+	has := func(m string) bool {
+		for _, v := range modes {
+			if v == m {
+				return true
+			}
+		}
 		return false
 	}
-	var count int64
-	database.DB.Model(&models.Mission{}).
-		Where("scene_key = ? AND mode = ? AND status = ?", sceneKey, "cooperative", "active").
-		Count(&count)
-	return count > 0
+
+	switch {
+	case has("cooperative"):
+		return "cooperative"
+	case has("competitive"):
+		return "competitive"
+	case has("individual"):
+		return "individual"
+	default:
+		return ""
+	}
 }
 
 // isAssist=true significa que este jugador NO dio el golpe final (crédito
