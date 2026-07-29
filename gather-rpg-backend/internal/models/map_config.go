@@ -14,9 +14,6 @@ type MapConfig struct {
 	WallsJSON string    `gorm:"type:text;not null" json:"walls_json"`
 	MapData   string    `gorm:"type:text" json:"map_data"` // JSON string for {width, height, etc.}
 	IsPublic  bool      `gorm:"default:false" json:"is_public"`
-	// PreviewImage is the filename of this map's PNG preview (served publicly at
-	// /api/world-art/<file>). Used by the world catalog and the admin map list.
-	PreviewImage string `gorm:"size:255;not null;default:''" json:"preview_image"`
 	MaxUsers  int       `gorm:"default:50" json:"max_users"`
 	UpdatedBy uuid.UUID `gorm:"type:uuid" json:"updated_by"`
 	CreatedAt time.Time `json:"created_at"`

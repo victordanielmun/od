@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import api, { worldArtUrl } from '../../services/api';
-import { Map as MapIcon, Plus, Search, Edit2, Trash2, ArrowUpDown, Eye, Image as ImageIcon } from 'lucide-react';
+import api from '../../services/api';
+import { Map as MapIcon, Plus, Search, Edit2, Trash2, ArrowUpDown, Eye } from 'lucide-react';
 import { CreateMapModal } from '../../components/admin/CreateMapModal';
 
 export const AdminMapList = () => {
@@ -34,22 +34,6 @@ export const AdminMapList = () => {
         navigate(`/lobby?edit_map=${sceneKey}`);
     };
 
-    /**
-     * Guarda el nombre del archivo de arte de este mapa (map_configs.preview_image).
-     * El archivo NO se sube: vive en `public/worlds/` del frontend y viaja con el
-     * build, así que aquí solo se referencia por nombre.
-     */
-    const handleSavePreview = async (map, filename) => {
-        const value = (filename || '').trim();
-        if (value === (map.preview_image || '')) return; // sin cambios
-        try {
-            await api.put(`/admin/maps/${map.id}`, { preview_image: value });
-            loadMaps();
-        } catch (error) {
-            console.error('Failed to save map preview:', error);
-            alert(error?.response?.data?.error || 'No se pudo guardar la imagen del mapa.');
-        }
-    };
 
     const handleCreateMap = async (formData) => {
         try {
@@ -199,18 +183,9 @@ export const AdminMapList = () => {
                                     <tr key={map.id} className="hover:bg-gray-800/50 transition-colors group">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
-                                                {/* Arte cuadrado: es lo que ve el jugador en el catálogo. */}
-                                                {map.preview_image ? (
-                                                    <img
-                                                        src={worldArtUrl(map.preview_image)}
-                                                        alt={map.scene_key}
-                                                        className="w-12 h-12 rounded-lg object-cover border border-gray-700"
-                                                    />
-                                                ) : (
-                                                    <div className="w-12 h-12 rounded-lg bg-blue-900/30 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold">
-                                                        {map.scene_key.substring(0, 2).toUpperCase()}
-                                                    </div>
-                                                )}
+                                                <div className="w-10 h-10 rounded bg-blue-900/30 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold">
+                                                    {map.scene_key.substring(0, 2).toUpperCase()}
+                                                </div>
                                                 <span className="font-medium text-white">{map.scene_key}</span>
                                             </div>
                                         </td>
@@ -218,20 +193,6 @@ export const AdminMapList = () => {
                                             {new Date(map.updated_at).toLocaleDateString()}
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <span
-                                                className="inline-flex items-center gap-1.5 mr-2"
-                                                title="Archivo dentro de public/worlds/ del frontend. Cuadrado, 256–512 px."
-                                            >
-                                                <ImageIcon size={15} className="text-emerald-400" />
-                                                <input
-                                                    type="text"
-                                                    defaultValue={map.preview_image || ''}
-                                                    placeholder={`${map.scene_key}.png`}
-                                                    onBlur={(e) => handleSavePreview(map, e.target.value)}
-                                                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                                                    className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white font-mono w-36 focus:outline-none focus:border-emerald-500"
-                                                />
-                                            </span>
                                             <button
                                                 onClick={() => handleEdit(map.scene_key)}
                                                 className="text-blue-400 hover:text-white bg-blue-900/20 hover:bg-blue-600 px-3 py-1.5 rounded text-sm font-medium transition-all mr-2"

@@ -292,8 +292,6 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		WorldID *uint `json:"world_id"`
 		// IsFinal marca el examen del mundo (el mapa que valida lo aprendido).
 		IsFinal bool `json:"is_final"`
-		// MapImage es el PNG del mapa de esta misión, para la tarjeta del tablero.
-		MapImage string `json:"map_image"`
 	}
 
 	type NPCMissionHub struct {
@@ -309,26 +307,6 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 		Worlds []WorldSummary `json:"worlds"`
 	}
 
-	// PNG de cada mapa involucrado, en una sola query (la tarjeta de misión lo usa).
-	mapImages := map[string]string{}
-	{
-		sceneKeys := make([]string, 0, len(missions))
-		seen := map[string]bool{}
-		for _, m := range missions {
-			if m.SceneKey != "" && !seen[m.SceneKey] {
-				seen[m.SceneKey] = true
-				sceneKeys = append(sceneKeys, m.SceneKey)
-			}
-		}
-		if len(sceneKeys) > 0 {
-			var cfgs []models.MapConfig
-			database.DB.Select("scene_key", "preview_image").
-				Where("scene_key IN ? AND preview_image <> ''", sceneKeys).Find(&cfgs)
-			for _, cfg := range cfgs {
-				mapImages[cfg.SceneKey] = cfg.PreviewImage
-			}
-		}
-	}
 
 	missionSummaries := make([]MissionSummary, 0)
 	for _, m := range missions {
@@ -484,7 +462,6 @@ func (h *MissionHandler) GetMissionsByNPC(c *fiber.Ctx) error {
 			KaraokeLines:          karaokeLines,
 			WorldID:               m.WorldID,
 			IsFinal:               m.IsFinal,
-			MapImage:              mapImages[m.SceneKey],
 		})
 	}
 

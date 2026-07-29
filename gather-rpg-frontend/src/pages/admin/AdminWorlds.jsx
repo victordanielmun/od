@@ -346,10 +346,7 @@ export const AdminWorlds = () => {
                             </div>
                         </Field>
 
-                        <Field
-                            label="Portada (opcional)"
-                            hint="Si la dejas vacía se usa la imagen del mapa de la misión final"
-                        >
+                        <Field label="Imagen del mundo" hint="La referencia visual que agrupa sus misiones">
                             <div className="flex items-center gap-3">
                                 {editing.cover_image ? (
                                     <img src={artUrl(editing.cover_image)} alt=""
@@ -363,11 +360,12 @@ export const AdminWorlds = () => {
                                     <input
                                         value={editing.cover_image}
                                         onChange={e => setEditing({ ...editing, cover_image: e.target.value.trim() })}
-                                        placeholder="mundo_1.png"
+                                        placeholder={`${editing.key || 'mundo_1'}.png`}
                                         className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white font-mono text-sm"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">
                                         Archivo dentro de <code className="text-gray-400">public/worlds/</code> del frontend. Cuadrada, 256–512 px.
+                                        Es la única imagen del sistema: misiones y mapas no llevan.
                                     </p>
                                 </div>
                             </div>

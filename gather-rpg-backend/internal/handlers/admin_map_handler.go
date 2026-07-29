@@ -179,9 +179,6 @@ func (h *AdminHandler) UpdateMapConfig(c *fiber.Ctx) error {
 		WallsJSON *string     `json:"walls_json"`
 		IsPublic  *bool       `json:"is_public"`
 		MaxUsers  *int        `json:"max_users"`
-		// PreviewImage: nombre del PNG del mapa (subido a /admin/world-art). Se
-		// muestra en el catálogo de mundos y en la lista de mapas del admin.
-		PreviewImage *string `json:"preview_image"`
 	}
 
 	var req request
@@ -250,10 +247,6 @@ func (h *AdminHandler) UpdateMapConfig(c *fiber.Ctx) error {
 	if req.MaxUsers != nil {
 		updates["max_users"] = *req.MaxUsers
 	}
-	if req.PreviewImage != nil {
-		updates["preview_image"] = *req.PreviewImage
-	}
-
 	if err := database.DB.Model(&mapConfig).Updates(updates).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}

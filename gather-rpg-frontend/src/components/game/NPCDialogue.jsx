@@ -1171,16 +1171,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                                                 : 'border-[var(--color-gold-dark)] bg-white hover:bg-[var(--color-accent-blue)] hover:border-[var(--color-gold)] hover:-translate-y-1'
                                                 }`}
                                             >
-                                                <div className="flex items-start gap-3 w-full">
-                                                {/* Arte cuadrado del mapa: la misión se reconoce por su escenario. */}
-                                                {m.map_image && (
-                                                    <img
-                                                        src={worldArtUrl(m.map_image)}
-                                                        alt=""
-                                                        className="w-16 h-16 object-cover border-2 border-[var(--color-gold-dark)]/40 shrink-0"
-                                                    />
-                                                )}
-                                                <div className="flex flex-col gap-2 flex-1 min-w-0">
+                                                <div className="flex items-center justify-between w-full">
                                                     <div className="flex items-center gap-2 lg:gap-3 flex-wrap">
                                                         <span className={`font-medieval text-lg lg:text-2xl uppercase tracking-tighter transition-colors ${
                                                             selectedMissionId === m.id
@@ -1238,6 +1229,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                                             </span>
                                                         )}
                                                     </div>
+                                                </div>
                                                 <span className={`text-base font-serif leading-snug transition-colors ${
                                                     selectedMissionId === m.id
                                                         ? 'text-[var(--color-base-dark)]'
@@ -1255,8 +1247,6 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                                         <MapPin size={12} /> {t('npc.dialogue.location', { scene: m.scene_key })}
                                                     </div>
                                                 )}
-                                                    </div>
-                                                </div>
                                             </button>
                                         </div>
                                     ))}
