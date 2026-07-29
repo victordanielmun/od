@@ -31,18 +31,6 @@ func NewInfoArtHandler() *InfoArtHandler {
 	return &InfoArtHandler{Dir: dir, URLPrefix: "/api/info-art"}
 }
 
-// NewWorldArtHandler sirve las portadas de mundo y los PNG de preview de cada
-// mapa. Misma mecánica que el arte de letreros (sanitizado, tope de 5MB, servido
-// sin auth para que el <img> lo cargue), pero en su propia carpeta.
-func NewWorldArtHandler() *InfoArtHandler {
-	dir := os.Getenv("WORLD_ART_DIR")
-	if dir == "" {
-		dir = filepath.Join("uploads", "worlds")
-	}
-	_ = os.MkdirAll(dir, 0755)
-	return &InfoArtHandler{Dir: dir, URLPrefix: "/api/world-art"}
-}
-
 // urlFor construye la URL pública de un archivo de esta carpeta.
 func (h *InfoArtHandler) urlFor(name string) string {
 	prefix := h.URLPrefix

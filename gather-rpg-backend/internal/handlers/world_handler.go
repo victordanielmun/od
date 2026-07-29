@@ -96,6 +96,31 @@ func BuildWorldCatalog(svc *services.WorldService, tr *services.TranslationServi
 		}
 	}
 
+	// Portada derivada: un mundo sin cover_image propio hereda el arte del mapa de
+	// su misión FINAL (el examen es lo que mejor representa al mundo) y, si no
+	// tiene final, el de su primera misión. Así basta con una imagen por mapa y no
+	// hay que producir arte extra por mundo; cover_image queda como override.
+	derivedCover := map[uint]string{}
+	{
+		type row struct {
+			WorldID uint
+			Image   string
+		}
+		var rows []row
+		database.DB.Model(&models.Mission{}).
+			Select("missions.world_id AS world_id, map_configs.preview_image AS image").
+			Joins("JOIN map_configs ON map_configs.scene_key = missions.scene_key").
+			Where("missions.world_id IS NOT NULL AND map_configs.preview_image <> '' AND missions.status = ?", "active").
+			// is_final primero: gana el mapa del examen sobre el resto.
+			Order("missions.world_id, missions.is_final DESC, missions.order_in_world ASC, missions.id ASC").
+			Scan(&rows)
+		for _, r := range rows {
+			if _, seen := derivedCover[r.WorldID]; !seen {
+				derivedCover[r.WorldID] = r.Image
+			}
+		}
+	}
+
 	out := make([]WorldSummary, 0, len(worlds))
 	for i := range worlds {
 		w := &worlds[i]
@@ -106,6 +131,11 @@ func BuildWorldCatalog(svc *services.WorldService, tr *services.TranslationServi
 			name, descr = wt.Name, wt.Description
 		}
 
+		cover := w.CoverImage
+		if cover == "" {
+			cover = derivedCover[w.ID]
+		}
+
 		s := WorldSummary{
 			ID:             w.ID,
 			Key:            w.Key,
@@ -113,7 +143,7 @@ func BuildWorldCatalog(svc *services.WorldService, tr *services.TranslationServi
 			NameEn:         w.Name,
 			Description:    descr,
 			Difficulty:     string(w.Difficulty),
-			CoverImage:     w.CoverImage,
+			CoverImage:     cover,
 			Order:          w.Order,
 			MissionCount:   missionCounts[w.ID],
 			CompletedCount: completedCounts[w.ID],

@@ -35,22 +35,19 @@ export const AdminMapList = () => {
     };
 
     /**
-     * Sube el PNG que representa este mapa y lo guarda en map_configs.preview_image.
-     * Es la imagen que el jugador ve en la tarjeta de la misión dentro del mundo.
+     * Guarda el nombre del archivo de arte de este mapa (map_configs.preview_image).
+     * El archivo NO se sube: vive en `public/worlds/` del frontend y viaja con el
+     * build, así que aquí solo se referencia por nombre.
      */
-    const handleUploadPreview = async (map, file) => {
-        if (!file) return;
+    const handleSavePreview = async (map, filename) => {
+        const value = (filename || '').trim();
+        if (value === (map.preview_image || '')) return; // sin cambios
         try {
-            const fd = new FormData();
-            fd.append('file', file);
-            const upload = await api.post('/admin/world-art', fd, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
-            await api.put(`/admin/maps/${map.id}`, { preview_image: upload.data.filename });
+            await api.put(`/admin/maps/${map.id}`, { preview_image: value });
             loadMaps();
         } catch (error) {
-            console.error('Failed to upload map preview:', error);
-            alert(error?.response?.data?.error || 'No se pudo subir la imagen del mapa.');
+            console.error('Failed to save map preview:', error);
+            alert(error?.response?.data?.error || 'No se pudo guardar la imagen del mapa.');
         }
     };
 
@@ -202,15 +199,15 @@ export const AdminMapList = () => {
                                     <tr key={map.id} className="hover:bg-gray-800/50 transition-colors group">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
-                                                {/* El preview es lo que ve el jugador en el catálogo de mundos. */}
+                                                {/* Arte cuadrado: es lo que ve el jugador en el catálogo. */}
                                                 {map.preview_image ? (
                                                     <img
                                                         src={worldArtUrl(map.preview_image)}
                                                         alt={map.scene_key}
-                                                        className="w-16 h-10 rounded object-cover border border-gray-700"
+                                                        className="w-12 h-12 rounded-lg object-cover border border-gray-700"
                                                     />
                                                 ) : (
-                                                    <div className="w-16 h-10 rounded bg-blue-900/30 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold">
+                                                    <div className="w-12 h-12 rounded-lg bg-blue-900/30 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold">
                                                         {map.scene_key.substring(0, 2).toUpperCase()}
                                                     </div>
                                                 )}
@@ -221,19 +218,20 @@ export const AdminMapList = () => {
                                             {new Date(map.updated_at).toLocaleDateString()}
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <label
-                                                className="inline-flex items-center gap-1.5 text-emerald-400 hover:text-white bg-emerald-900/20 hover:bg-emerald-600 px-3 py-1.5 rounded text-sm font-medium transition-all mr-2 cursor-pointer"
-                                                title="Imagen que representa este mapa en el catálogo de mundos"
+                                            <span
+                                                className="inline-flex items-center gap-1.5 mr-2"
+                                                title="Archivo dentro de public/worlds/ del frontend. Cuadrado, 256–512 px."
                                             >
-                                                <ImageIcon size={15} />
-                                                {map.preview_image ? 'Cambiar PNG' : 'Subir PNG'}
+                                                <ImageIcon size={15} className="text-emerald-400" />
                                                 <input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    className="hidden"
-                                                    onChange={(e) => handleUploadPreview(map, e.target.files?.[0])}
+                                                    type="text"
+                                                    defaultValue={map.preview_image || ''}
+                                                    placeholder={`${map.scene_key}.png`}
+                                                    onBlur={(e) => handleSavePreview(map, e.target.value)}
+                                                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                                    className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white font-mono w-36 focus:outline-none focus:border-emerald-500"
                                                 />
-                                            </label>
+                                            </span>
                                             <button
                                                 onClick={() => handleEdit(map.scene_key)}
                                                 className="text-blue-400 hover:text-white bg-blue-900/20 hover:bg-blue-600 px-3 py-1.5 rounded text-sm font-medium transition-all mr-2"

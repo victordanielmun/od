@@ -182,7 +182,6 @@ func main() {
 	blockHandler := handlers.NewBlockHandler(hub)
 	paymentHandler := handlers.NewPaymentHandler(subscriptionService, cfg)
 	worldHandler := handlers.NewWorldHandler(worldService, translationService)
-	worldArtHandler := handlers.NewWorldArtHandler()
 
 	// Warm mission/task translations for the configured player languages in the
 	// background, so the first dialogue open (especially a quest master with many
@@ -347,10 +346,6 @@ func main() {
 	admin.Get("/worlds/:id/missions", worldHandler.GetWorldMissions)
 	admin.Put("/worlds/:id/missions", worldHandler.SetWorldMissions)
 	admin.Get("/worlds/:id/pool-health", worldHandler.GetPoolHealth)
-	// Portadas de mundo y previews de mapa (subir / listar / borrar).
-	admin.Get("/world-art", worldArtHandler.ListInfoArt)
-	admin.Post("/world-art", worldArtHandler.UploadInfoArt)
-	admin.Delete("/world-art/:file", worldArtHandler.DeleteInfoArt)
 
 	// Mission Admin Routes
 	admin.Get("/missions", missionAdminHandler.ListMissions)
@@ -400,8 +395,8 @@ func main() {
 	worlds.Get("/:id/missions", worldHandler.GetWorldMissions)
 	worlds.Get("/:id/mastery", worldHandler.GetWorldMastery)
 
-	// Portadas/previews (PÚBLICO: el <img> las carga sin auth, igual que info-art).
-	app.Get("/world-art/:file", worldArtHandler.ServeInfoArt)
+	// El arte de mundos y mapas NO se sirve desde aquí: vive en public/worlds/ del
+	// frontend y viaja con su build. La BD solo guarda el nombre del archivo.
 
 	// Mission Routes
 	missions := app.Group("/missions", middleware.Protected(cfg))

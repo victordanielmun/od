@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Globe, Plus, Trash2, Save, X, Upload, Swords, AlertTriangle, CheckCircle2, Image as ImageIcon } from 'lucide-react';
+import { Globe, Plus, Trash2, Save, X, Swords, AlertTriangle, CheckCircle2, Image as ImageIcon } from 'lucide-react';
 import api, { worldArtUrl } from '../../services/api';
 
 /**
@@ -37,7 +37,6 @@ export const AdminWorlds = () => {
     const [linking, setLinking] = useState(null);   // world cuyas misiones se están vinculando
     const [selectedIds, setSelectedIds] = useState([]);
     const [finalId, setFinalId] = useState(0);
-    const [uploading, setUploading] = useState(false);
 
     const flash = (type, text) => {
         setFeedback({ type, text });
@@ -96,25 +95,6 @@ export const AdminWorlds = () => {
             load();
         } catch (e) {
             flash('error', e?.response?.data?.error || e.message);
-        }
-    };
-
-    // ── Subir portada ────────────────────────────────────────────────────────
-    const handleUpload = async (file) => {
-        if (!file) return;
-        setUploading(true);
-        try {
-            const fd = new FormData();
-            fd.append('file', file);
-            const res = await api.post('/admin/world-art', fd, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
-            setEditing(prev => ({ ...prev, cover_image: res.data.filename }));
-            flash('success', 'Imagen subida');
-        } catch (e) {
-            flash('error', e?.response?.data?.error || e.message);
-        } finally {
-            setUploading(false);
         }
     };
 
@@ -206,28 +186,32 @@ export const AdminWorlds = () => {
                     const hasFinal = !!w.final_mission_id;
                     return (
                         <div key={w.id} className="bg-gray-900/60 border border-gray-700 rounded-2xl overflow-hidden flex flex-col">
-                            <div className="h-32 bg-gray-800 relative">
-                                {w.cover_image ? (
-                                    <img src={artUrl(w.cover_image)} alt={w.name} className="w-full h-full object-cover" />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-gray-600">
-                                        <ImageIcon size={32} />
-                                    </div>
-                                )}
-                                <span className="absolute top-2 right-2 text-[10px] uppercase font-bold px-2 py-1 rounded-lg bg-black/70 text-gray-300">
-                                    {w.difficulty}
-                                </span>
-                                {w.status !== 'active' && (
-                                    <span className="absolute top-2 left-2 text-[10px] uppercase font-bold px-2 py-1 rounded-lg bg-red-900/80 text-red-200">
-                                        inactivo
-                                    </span>
-                                )}
-                            </div>
-
                             <div className="p-4 flex-1 flex flex-col gap-3">
-                                <div>
-                                    <h3 className="font-bold text-white text-lg">{w.name}</h3>
-                                    <code className="text-xs text-gray-500">{w.key}</code>
+                                {/* El arte es cuadrado y de baja resolución: se trata como
+                                    icono junto al título, no como banner estirado. */}
+                                <div className="flex items-center gap-3">
+                                    {w.cover_image ? (
+                                        <img src={artUrl(w.cover_image)} alt=""
+                                            className="w-14 h-14 rounded-xl object-cover border border-gray-700 shrink-0" />
+                                    ) : (
+                                        <div className="w-14 h-14 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-600 shrink-0">
+                                            <ImageIcon size={20} />
+                                        </div>
+                                    )}
+                                    <div className="min-w-0 flex-1">
+                                        <h3 className="font-bold text-white text-lg truncate">{w.name}</h3>
+                                        <code className="text-xs text-gray-500">{w.key}</code>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1 shrink-0">
+                                        <span className="text-[10px] uppercase font-bold px-2 py-1 rounded-lg bg-gray-800 text-gray-300">
+                                            {w.difficulty}
+                                        </span>
+                                        {w.status !== 'active' && (
+                                            <span className="text-[10px] uppercase font-bold px-2 py-1 rounded-lg bg-red-900/80 text-red-200">
+                                                inactivo
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="flex flex-wrap gap-1">
@@ -362,20 +346,30 @@ export const AdminWorlds = () => {
                             </div>
                         </Field>
 
-                        <Field label="Portada del mundo">
+                        <Field
+                            label="Portada (opcional)"
+                            hint="Si la dejas vacía se usa la imagen del mapa de la misión final"
+                        >
                             <div className="flex items-center gap-3">
-                                {editing.cover_image && (
-                                    <img src={artUrl(editing.cover_image)} alt="" className="w-24 h-16 object-cover rounded-lg border border-gray-700" />
+                                {editing.cover_image ? (
+                                    <img src={artUrl(editing.cover_image)} alt=""
+                                        className="w-16 h-16 object-cover rounded-lg border border-gray-700 shrink-0" />
+                                ) : (
+                                    <div className="w-16 h-16 rounded-lg border border-dashed border-gray-700 flex items-center justify-center text-gray-600 shrink-0">
+                                        <ImageIcon size={20} />
+                                    </div>
                                 )}
-                                <label className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 px-4 py-2 rounded-lg cursor-pointer text-sm text-gray-200">
-                                    <Upload size={15} /> {uploading ? 'Subiendo…' : 'Subir PNG'}
-                                    <input type="file" accept="image/*" className="hidden"
-                                        onChange={e => handleUpload(e.target.files?.[0])} />
-                                </label>
-                                {editing.cover_image && (
-                                    <button onClick={() => setEditing({ ...editing, cover_image: '' })}
-                                        className="text-xs text-red-400 hover:text-red-300">Quitar</button>
-                                )}
+                                <div className="flex-1">
+                                    <input
+                                        value={editing.cover_image}
+                                        onChange={e => setEditing({ ...editing, cover_image: e.target.value.trim() })}
+                                        placeholder="mundo_1.png"
+                                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white font-mono text-sm"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Archivo dentro de <code className="text-gray-400">public/worlds/</code> del frontend. Cuadrada, 256–512 px.
+                                    </p>
+                                </div>
                             </div>
                         </Field>
 

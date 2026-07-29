@@ -30,20 +30,21 @@ api.interceptors.response.use(
 );
 
 /**
- * URL absoluta de un archivo estático servido por el backend.
+ * URL del arte de mundos y mapas.
  *
- * Se construye desde el baseURL del cliente API, NUNCA con una ruta relativa
- * tipo "/api/...": en producción el frontend vive en odisea-rpg.com y la API en
- * api.odisea-rpg.com, así que una ruta relativa apuntaría al host del frontend y
- * daría 404. Detrás del proxy de desarrollo (baseURL = "/api") sigue funcionando
- * igual. Mismo criterio que getTTSAudioUrl en voiceApi.
+ * Vive en `public/worlds/` del propio frontend, no en el backend: son pocas
+ * imágenes, estables y cuadradas, así que viajan versionadas en git junto al
+ * código y se sirven desde el mismo dominio. Eso las hace inmunes a que se
+ * reconstruya EC2, a costa de necesitar un redeploy del front para añadir una.
+ *
+ * BASE_URL (en vez de "/" fijo) mantiene la ruta correcta si algún día la app
+ * se sirve desde un subdirectorio.
+ *
+ * OJO: los archivos de `public/` se copian a `dist/` SIN hash de contenido, así
+ * que reemplazar una imagen conservando el nombre puede seguir sirviéndose desde
+ * la caché del navegador.
  */
-export const apiFileUrl = (path) => {
-  const base = (api.defaults.baseURL || '/api').replace(/\/+$/, '');
-  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
-};
-
-/** URL de una portada de mundo o preview de mapa (vacío → null). */
-export const worldArtUrl = (filename) => (filename ? apiFileUrl(`/world-art/${filename}`) : null);
+export const worldArtUrl = (filename) =>
+  (filename ? `${import.meta.env.BASE_URL}worlds/${filename}` : null);
 
 export default api;
