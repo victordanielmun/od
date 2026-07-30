@@ -1001,7 +1001,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                     {(resolvedType || npcType) !== 'quest_master'
                                         ? t('npc.dialogue.how_can_i_help')
                                         : showWorldCatalog
-                                            ? t('npc.dialogue.world_board', { defaultValue: 'Elige un mundo' })
+                                            ? t('npc.dialogue.world_board', { defaultValue: 'Elige tu destino' })
                                             : (activeWorld?.name || t('npc.dialogue.mission_board'))}
                                 </h3>
 
@@ -1085,7 +1085,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                                         onClick={() => setSelectedWorldId(null)}
                                         className="self-start flex items-center gap-2 text-sm font-medieval uppercase tracking-widest text-[var(--color-gold-dark)] hover:text-[var(--color-base-dark)] transition-colors mb-1"
                                     >
-                                        ← {t('npc.dialogue.back_to_worlds', { defaultValue: 'Volver a los mundos' })}
+                                        ← {t('npc.dialogue.back_to_worlds', { defaultValue: 'Volver a los destinos' })}
                                     </button>
                                 )}
 
