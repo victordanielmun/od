@@ -2,9 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { Swords, Sword, Hand, RefreshCw, Flame, Zap, Sparkles } from 'lucide-react';
 
+// Tareas que hacen de un mapa un mapa de combate (mismo criterio que CombatSystem).
+const COMBAT_TASK_TYPES = ['defeat_enemy', 'kill_boss', 'kill_all'];
+
 export const VirtualArcadeControls = () => {
   const currentSceneKey = useGameStore(state => state.currentSceneKey);
   const virtualControlsLayout = useGameStore(state => state.virtualControlsLayout);
+  const activeMission = useGameStore(state => state.activeMission);
+  const hasActiveEnemies = useGameStore(state => state.hasActiveEnemies);
   const containerRef = useRef(null);
 
   // Preferencias del jugador (SettingsMenu → Config): lado del D-pad, tamaño,
@@ -42,11 +47,17 @@ export const VirtualArcadeControls = () => {
     activeInputsRef.current = activeInputs;
   }, [activeInputs]);
 
-  // Helper to determine if the map is a combat map
-  const isCombat = currentSceneKey?.toLowerCase().includes('fight') || 
-                   currentSceneKey?.toLowerCase().includes('boss') || 
-                   currentSceneKey?.toLowerCase().includes('combat') || 
-                   currentSceneKey?.toLowerCase().includes('level');
+  // ¿Mostrar el clúster de ataque? Adivinarlo por el NOMBRE del mapa dejaba a los
+  // mapas sin 'fight/boss/combat/level' en la clave (p. ej. una misión kill_all en
+  // 'bosque_oscuro') sin botones de ataque en móvil, con los enemigos encima. Lo
+  // que manda es la realidad: hay enemigos vivos, o la misión de esta escena pide
+  // matar. El nombre queda solo como último recurso (mapa aún sin oleada).
+  const missionIsCombat = Array.isArray(activeMission?.tasks)
+    && activeMission.tasks.some(t => COMBAT_TASK_TYPES.includes(t.type))
+    && (!activeMission.scene_key || activeMission.scene_key === currentSceneKey);
+  const nameLooksCombat = ['fight', 'boss', 'combat', 'level']
+    .some(hint => currentSceneKey?.toLowerCase().includes(hint));
+  const isCombat = hasActiveEnemies || missionIsCombat || nameLooksCombat;
 
   // Dispatch custom window events that the LobbyScene will listen to
   const handleButtonPress = (key, isDown) => {

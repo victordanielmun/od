@@ -331,12 +331,41 @@ export class CombatSystem {
 
   // Devuelve true si la misión activa tiene al menos una tarea de combate
   // (kill_all, defeat_enemy o kill_boss). El campo "type" de la misión no
-  // existe a nivel raíz — vive dentro de tasks[].type.
+  // existe a nivel raíz — vive dentro de tasks[].type. Una misión SIN tareas
+  // cargadas no es prueba de que sea pacífica: en la duda se permite atacar,
+  // porque bloquear el ataque por error deja al jugador indefenso.
   _isCombatMission(mission) {
     if (!mission) return false;
     const tasks = mission.tasks;
-    if (!Array.isArray(tasks) || tasks.length === 0) return false;
+    if (!Array.isArray(tasks) || tasks.length === 0) return true;
     return tasks.some(t => COMBAT_TASK_TYPES.includes(t.type));
+  }
+
+  // Gate único de todas las acciones ofensivas (J, K, L, U, clic y botones
+  // virtuales). Existe para que no se pueda atacar durante misiones de recado o
+  // diálogo, PERO nunca debe dispararse en un mapa de combate:
+  //
+  //   - hay enemigos vivos en la sala → te están atacando, siempre puedes responder;
+  //   - la misión activa es de OTRA escena → una misión puede arrastrarse entre
+  //     mapas (la de comprar ítems de Amy sigue activa al entrar a combate_town_1),
+  //     así que no puede decidir si aquí se pelea;
+  //   - la misión de esta escena tiene una tarea kill_all / kill_boss / defeat_enemy.
+  //
+  // Devuelve true (y avisa, throttled) solo cuando el bloqueo es real.
+  _isCombatBlocked() {
+    if (this.enemySystem?.activeEnemies?.size > 0) return false;
+
+    const { activeMission, currentSceneKey } = useGameStore.getState();
+    if (!activeMission) return false;
+    if (activeMission.scene_key && currentSceneKey && activeMission.scene_key !== currentSceneKey) return false;
+    if (this._isCombatMission(activeMission)) return false;
+
+    const now = this.scene.time.now;
+    if (now - (this._lastAttackBlockNotifyTime || 0) > 3000) {
+      this._lastAttackBlockNotifyTime = now;
+      useNotificationStore.getState().addNotification('warning', 'El ataque está desactivado durante misiones que no son de combate.');
+    }
+    return true;
   }
 
   // Hitstop: congela las animaciones de los sprites dados un instante (freeze-frames de
@@ -401,10 +430,7 @@ export class CombatSystem {
     if (!this.scene.player || this.scene.isTyping()) return;
     if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
-    const activeMission = useGameStore.getState().activeMission;
-    if (activeMission && !this._isCombatMission(activeMission)) {
-      return;
-    }
+    if (this._isCombatBlocked()) return;
 
     // Un swing a la vez: ignorar la pulsación si aún corre la animación del ataque
     // anterior. Así el daño se aplica UNA sola vez por golpe (no se spamea el collider).
@@ -452,15 +478,7 @@ export class CombatSystem {
     if (!this.scene.player || this.scene.isTyping()) return;
     if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
-    const activeMission = useGameStore.getState().activeMission;
-    if (activeMission && !this._isCombatMission(activeMission)) {
-      const now = this.scene.time.now;
-      if (now - (this._lastAttackBlockNotifyTime || 0) > 3000) {
-        this._lastAttackBlockNotifyTime = now;
-        useNotificationStore.getState().addNotification('warning', 'El ataque está desactivado durante misiones que no son de combate.');
-      }
-      return;
-    }
+    if (this._isCombatBlocked()) return;
 
     const now = this.scene.time.now;
     // Un swing a la vez: si la animación del golpe anterior sigue, ignorar la pulsación.
@@ -560,15 +578,7 @@ export class CombatSystem {
     if (!this.scene.player || this.scene.isTyping()) return;
     if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
-    const activeMission = useGameStore.getState().activeMission;
-    if (activeMission && !this._isCombatMission(activeMission)) {
-      const now = this.scene.time.now;
-      if (now - (this._lastAttackBlockNotifyTime || 0) > 3000) {
-        this._lastAttackBlockNotifyTime = now;
-        useNotificationStore.getState().addNotification('warning', 'El ataque está desactivado durante misiones que no son de combate.');
-      }
-      return;
-    }
+    if (this._isCombatBlocked()) return;
 
     // Pergamino activo (configurable en inventario); si no, el primero disponible.
     const scrollEntry = this._pickActiveItem('scroll');
@@ -740,15 +750,7 @@ export class CombatSystem {
     if (!this.scene.player || this.scene.isTyping()) return;
     if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
 
-    const activeMission = useGameStore.getState().activeMission;
-    if (activeMission && !this._isCombatMission(activeMission)) {
-      const now = this.scene.time.now;
-      if (now - (this._lastAttackBlockNotifyTime || 0) > 3000) {
-        this._lastAttackBlockNotifyTime = now;
-        useNotificationStore.getState().addNotification('warning', 'El ataque está desactivado durante misiones que no son de combate.');
-      }
-      return;
-    }
+    if (this._isCombatBlocked()) return;
 
     // Arrojadizo activo (configurable en inventario); si no, el primero disponible.
     const itemEntry = this._pickActiveItem('throwable');

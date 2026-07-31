@@ -671,7 +671,8 @@
       "has_fallen": "Has Caído",
       "desc": "Tu aventura ha terminado por ahora. ¿Qué deseas hacer?",
       "spectate": "Observar",
-      "return": "Regresar"
+      "retry": "Reintentar misión",
+      "return": "Regresar al lobby"
     },
     "read_popup": {
       "title": "Aviso del Letrero",

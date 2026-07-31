@@ -409,6 +409,7 @@ func (r *Room) tickAI() {
 	}
 
 	// 2. Filtrar clientes y enemigos elegibles
+	now := time.Now()
 	eligibleClients := make([]*Client, 0)
 	for client := range r.Clients {
 		if client.Anim == "die" || client.Anim == "dead" {
@@ -417,11 +418,13 @@ func (r *Room) tickAI() {
 		if busyPlayers[client.ID.String()] {
 			continue // Ignorar jugadores ocupados en cartas ninja
 		}
+		if now.Before(client.CombatGraceUntil) {
+			continue // Tregua de entrada: aún no es objetivo válido
+		}
 		eligibleClients = append(eligibleClients, client)
 	}
 
 	eligibleEnemies := make([]*models.ActiveEnemy, 0)
-	now := time.Now()
 	for _, enemy := range r.ActiveEnemies {
 		if enemy.FSMState == "dead" || enemy.FSMState == "ninja_card" {
 			// Enemigos muertos o en estado de carta ninja no participan en la reasignación

@@ -30,6 +30,25 @@ const loadVirtualControlsLayout = () => {
     }
 };
 
+// Ventana en la que _joiningRoomId manda sobre currentRoomId. Acotada porque un
+// join que el server rechaza (sala llena, mapa inexistente) no manda room_joined:
+// sin caducidad ese id fantasma filtraría para siempre el combate de la sala real.
+const JOIN_PENDING_TTL = 10000;
+
+// ¿Este broadcast de combate viene de una sala que ya no es la nuestra? Mientras
+// cambiamos de mapa la sala destino vive en _joiningRoomId (currentRoomId aún es
+// la vieja), así que se compara contra la que esté vigente. Los payloads sin
+// room_id se dejan pasar (nada que contrastar).
+const isForeignRoom = (get, payload) => {
+    const { _joiningRoomId, _joiningSince, currentRoomId } = get();
+    const pending = _joiningRoomId && Date.now() - _joiningSince < JOIN_PENDING_TTL
+        ? _joiningRoomId
+        : null;
+    const expected = pending || currentRoomId;
+    const from = payload?.room_id;
+    return Boolean(expected && from && String(from) !== String(expected));
+};
+
 export const useGameStore = create(subscribeWithSelector((set, get) => ({
     isConnected: false,
     players: new Map(),
@@ -38,6 +57,19 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     currentRoomId: null,
     currentRoomScene: null, // scene_key that the current room actually belongs to
     currentRoomType: null,  // room type from map_join_approved ('cooperative' activa el audio de reunión)
+    // Sala a la que estamos entrando pero que el server aún no confirmó (join_room
+    // enviado, room_joined pendiente). Durante esa ventana currentRoomId todavía
+    // apunta a la sala VIEJA, así que los eventos de combate se filtran contra este
+    // valor para no aceptar ticks en vuelo del mapa que acabamos de abandonar.
+    _joiningRoomId: null,
+    _joiningSince: 0,
+    // Instante (ms epoch) hasta el que dura la tregua de entrada a una sala: los
+    // enemigos no atacan al recién llegado. Lo fija el servidor en cada join.
+    combatGraceUntil: 0,
+    // ¿Hay enemigos vivos en la sala? Lo publica EnemySystem para que la UI
+    // (controles táctiles) sepa que estamos en combate sin adivinarlo por el
+    // nombre del mapa.
+    hasActiveEnemies: false,
     // IDs de usuarios que YO bloqueé (moderación): se cargan de GET /blocks al
     // conectar y filtran a esos jugadores de todos los handlers de posiciones,
     // así el bloqueador deja de verlos y de recibir sus actualizaciones.
@@ -200,6 +232,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                     const roomScene = isPending ? pending.sceneKey : get().currentRoomScene;
                     set({
                         currentRoomId: payload.room_id,
+                        _joiningRoomId: null,
                         currentRoomScene: roomScene,
                         // El tipo autoritativo viene de map_join_approved; un join directo
                         // (p. ej. lobby) no pasa por ahí y queda como sala normal (null).
@@ -594,6 +627,13 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
 
                 wsClient.on('enemy_update', (payload) => {
                     // console.log(`[gameStore] Received enemy_update for ${payload.enemies?.length} enemies`);
+                    // Solo los enemigos de NUESTRA sala. El tick de IA corre cada 100ms,
+                    // así que al cambiar de mapa (p. ej. morir y volver al lobby) siempre
+                    // hay updates de la sala vieja en vuelo: sin este filtro la escena
+                    // nueva los spawneaba y quedaba un enemigo fantasma persiguiendo al
+                    // jugador en un mapa sin combate (nadie volvía a mandar updates que
+                    // lo limpiaran).
+                    if (isForeignRoom(get, payload)) return;
                     // Dispatch to Phaser scenes (LobbyScene)
                     window.dispatchEvent(new CustomEvent('enemies-update', { detail: payload }));
                 });
@@ -617,8 +657,20 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                 wsClient.on('player_mp', (payload) => {
                     window.dispatchEvent(new CustomEvent('player-mp-update', { detail: payload }));
                 });
+                // Tregua de entrada: el server no asigna enemigos al recién llegado
+                // durante estos ms; el cliente frena además su IA local (si no, los
+                // sprites lo perseguirían igual por predicción). Se guarda en el store
+                // y no en la escena porque el mensaje puede llegar ANTES de que Phaser
+                // procese el restart (en localhost el RTT es menor que un frame).
+                wsClient.on('combat_grace', (payload) => {
+                    const ms = Number(payload?.duration_ms) || 0;
+                    if (ms <= 0) return;
+                    console.log(`[gameStore] Tregua de entrada: ${ms}ms sin enemigos encima`);
+                    set({ combatGraceUntil: Date.now() + ms });
+                });
 
                 wsClient.on('enemy_died', (payload) => {
+                    if (isForeignRoom(get, payload)) return;
                     // Dispatch to Phaser scenes. Sin toast propio: la muerte ya se
                     // ve en el juego y enemy_kill_progress notifica el conteo; con
                     // ambos se apilaban 2 toasts por cada kill.
@@ -672,6 +724,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
             listenersInitialized: false,
             players: new Map(),
             currentRoomId: null,
+            _joiningRoomId: null,
             currentRoomScene: null,
             currentRoomType: null,
             currentInviteCode: null,
@@ -793,8 +846,10 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
         
         // CRITICAL: Clear local entities before joining a new room
         // so we don't bring ghost players/enemies to the new map.
-        set({ players: new Map(), enemies: new Map() });
-        
+        // _joiningRoomId marca la sala destino desde YA: a partir de aquí los
+        // eventos de combate de la sala anterior (ticks en vuelo) se descartan.
+        set({ players: new Map(), enemies: new Map(), _joiningRoomId: roomId, _joiningSince: Date.now() });
+
         wsClient.send('join_room', payload);
     },
 

@@ -18,6 +18,12 @@ const ninjaCardTimeout = 60 * time.Second
 // playerIFrames: ventana de invulnerabilidad tras recibir daño (server-side).
 const playerIFrames = 700 * time.Millisecond
 
+// combatGracePeriod: tregua al entrar a una sala. Durante este tiempo los enemigos
+// no eligen al recién llegado como objetivo ni le hacen daño. Sin ella el jugador
+// aparece y los ogros ya lo están golpeando mientras aún se muestra el cartel de la
+// misión, así que muere antes de poder defenderse.
+const combatGracePeriod = 5 * time.Second
+
 // Curación por poción (server-side): cantidad fija y cooldown para acotar abuso.
 const (
 	playerHealAmount   = 30
@@ -334,6 +340,11 @@ func (h *Hub) applyDamageToPlayer(client *Client, dmg int, respectIFrames bool) 
 // valida el enemigo y aplica SU daño (no el del cliente), con i-frames.
 func (h *Hub) handlePlayerHit(client *Client, payload interface{}) {
 	if client.IsDead {
+		return
+	}
+	// Tregua de entrada: durante los primeros segundos ningún enemigo hace daño,
+	// aunque un cliente reporte contacto (su IA local puede ir por delante).
+	if time.Now().Before(client.CombatGraceUntil) {
 		return
 	}
 	var p struct {

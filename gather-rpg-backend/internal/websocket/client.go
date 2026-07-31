@@ -54,6 +54,11 @@ type Client struct {
 	LastDamageAt time.Time
 	LastHealAt   time.Time
 
+	// Tregua de entrada: hasta este instante los enemigos no lo eligen como
+	// objetivo ni le hacen daño. Se fija al entrar a una sala para que nadie
+	// aparezca ya rodeado (ver combatGracePeriod).
+	CombatGraceUntil time.Time
+
 	// Maná persistente (server-authoritative). Se carga de PlayerStats al entrar a una
 	// sala y se persiste al gastarlo (hechizos/arrojadizos) — fuente única de verdad,
 	// compartida con el inventario (pociones de maná) y la barra del HUD/Sidebar.

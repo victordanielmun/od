@@ -72,6 +72,7 @@ const (
 	MsgPlayerMP         = "player_mp"     // s→c: maná autoritativo del jugador
 	MsgSpendMana        = "spend_mana"    // c→s: gastar maná (hechizo/arrojadizo); el server valida y persiste
 	MsgRefreshMana      = "refresh_mana"  // c→s: recargar maná desde BD (tras usar poción de maná en inventario)
+	MsgCombatGrace      = "combat_grace"  // s→c: tregua de entrada; los enemigos no atacan durante N ms
 
 	// Ninja Cards
 	MsgNinjaCardTriggered = "ninja_card_triggered"

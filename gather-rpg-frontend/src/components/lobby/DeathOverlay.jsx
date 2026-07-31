@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Skull, Eye, Home } from 'lucide-react';
+import { Skull, Eye, Home, RotateCcw } from 'lucide-react';
 import { useGameStore } from '../../store/gameStore';
 import { useAuthStore } from '../../store/authStore';
 
@@ -10,11 +10,16 @@ export const DeathOverlay = () => {
     // Snapshot del conteo de otros jugadores tomado en el momento exacto de la muerte
     // para evitar race conditions con actualizaciones posteriores del store.
     const [otherPlayersCount, setOtherPlayersCount] = useState(0);
+    // Mapa (y PIN, si la sala es privada) donde murió el jugador: es lo que se
+    // vuelve a pedir al reintentar. También se captura al morir, porque el store
+    // cambia en cuanto empieza la transición de escena.
+    const [retryMap, setRetryMap] = useState(null);
+    const retryPinRef = useRef('');
 
     useEffect(() => {
         const handlePlayerDead = () => {
             // Capturar snapshot en el momento del evento, excluyendo al propio jugador
-            const players = useGameStore.getState().players;
+            const { players, currentSceneKey, currentInviteCode } = useGameStore.getState();
             const myId = String(useAuthStore.getState().user?.id || '');
             let count = 0;
             if (players) {
@@ -28,6 +33,11 @@ export const DeathOverlay = () => {
             } else {
                 console.log(`[DeathOverlay] Player dead. Hay ${count} jugador(es) más en la sala — se muestra "Observar".`);
             }
+
+            // Reintentar solo tiene sentido fuera del lobby: es volver a entrar al
+            // mapa de la misión, que se regenera al reentrar (enemigos e ítems).
+            setRetryMap(currentSceneKey && currentSceneKey !== 'lobby' ? currentSceneKey : null);
+            retryPinRef.current = currentInviteCode || '';
 
             setOtherPlayersCount(count);
             setIsVisible(true);
@@ -54,6 +64,18 @@ export const DeathOverlay = () => {
         }));
     };
 
+    // Reintentar = volver a entrar al mismo mapa. El servidor resetea el HP en
+    // cada join y, en misiones individuales, crea una instancia nueva (enemigos
+    // desde cero); la escena al recrearse repone los ítems del mapa.
+    const handleRetry = () => {
+        console.log(`[DeathOverlay] Retry clicked → re-entering ${retryMap}`);
+        setIsVisible(false);
+        window.dispatchEvent(new CustomEvent('reset-player-state'));
+        window.dispatchEvent(new CustomEvent('lobby-change-map', {
+            detail: { targetMap: retryMap, pin: retryPinRef.current }
+        }));
+    };
+
     if (!isVisible) return null;
 
     return (
@@ -73,26 +95,39 @@ export const DeathOverlay = () => {
                     </p>
                 </div>
 
-                <div className={`grid grid-cols-1 gap-4 ${otherPlayersCount > 0 ? 'sm:grid-cols-2' : 'max-w-xs mx-auto'}`}>
-                    {otherPlayersCount > 0 && (
+                <div className="space-y-4">
+                    {retryMap && (
                         <button
-                            onClick={handleSpectate}
-                            className="group relative flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-500/50 p-4 rounded-2xl transition-all duration-300 overflow-hidden"
+                            onClick={handleRetry}
+                            className="group relative w-full flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/50 p-4 rounded-2xl transition-all duration-300 overflow-hidden"
                         >
-                            <div className="absolute inset-0 bg-indigo-600/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                            <Eye size={20} className="text-indigo-400 relative z-10" />
-                            <span className="text-white font-medium relative z-10">{t('lobby.death.spectate')}</span>
+                            <div className="absolute inset-0 bg-emerald-600/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                            <RotateCcw size={20} className="text-emerald-400 relative z-10" />
+                            <span className="text-white font-medium relative z-10">{t('lobby.death.retry')}</span>
                         </button>
                     )}
 
-                    <button
-                        onClick={handleReturnToLobby}
-                        className="group relative flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-red-500/50 p-4 rounded-2xl transition-all duration-300 overflow-hidden"
-                    >
-                        <div className="absolute inset-0 bg-red-600/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                        <Home size={20} className="text-red-400 relative z-10" />
-                        <span className="text-white font-medium relative z-10">{t('lobby.death.return')}</span>
-                    </button>
+                    <div className={`grid grid-cols-1 gap-4 ${otherPlayersCount > 0 ? 'sm:grid-cols-2' : 'max-w-xs mx-auto'}`}>
+                        {otherPlayersCount > 0 && (
+                            <button
+                                onClick={handleSpectate}
+                                className="group relative flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-500/50 p-4 rounded-2xl transition-all duration-300 overflow-hidden"
+                            >
+                                <div className="absolute inset-0 bg-indigo-600/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                                <Eye size={20} className="text-indigo-400 relative z-10" />
+                                <span className="text-white font-medium relative z-10">{t('lobby.death.spectate')}</span>
+                            </button>
+                        )}
+
+                        <button
+                            onClick={handleReturnToLobby}
+                            className="group relative flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-red-500/50 p-4 rounded-2xl transition-all duration-300 overflow-hidden"
+                        >
+                            <div className="absolute inset-0 bg-red-600/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                            <Home size={20} className="text-red-400 relative z-10" />
+                            <span className="text-white font-medium relative z-10">{t('lobby.death.return')}</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div className="pt-8 border-t border-white/5">

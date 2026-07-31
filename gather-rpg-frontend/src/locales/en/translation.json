@@ -669,7 +669,8 @@
       "has_fallen": "You Have Fallen",
       "desc": "Your adventure has ended for now. What do you wish to do?",
       "spectate": "Spectate",
-      "return": "Return"
+      "retry": "Retry mission",
+      "return": "Back to lobby"
     },
     "read_popup": {
       "title": "Notice",

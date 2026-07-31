@@ -111,10 +111,24 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 	room.AddClient(client)
 
 	// Reset de combate al entrar a una sala (respawn por re-entrada).
+	// La animación también se limpia: si el jugador murió y reentra al MISMO mapa
+	// (reintentar la misión), tickAI seguiría viéndolo como "die" y los enemigos
+	// lo ignorarían hasta que se moviera.
 	client.HP = client.HPMax
 	client.IsDead = false
+	client.Anim = "idle"
 	client.LastDamageAt = time.Time{}
+	client.CombatGraceUntil = time.Now().Add(combatGracePeriod)
 	h.sendPlayerHP(client)
+
+	// Tregua de entrada: el cliente la necesita para que su IA local tampoco
+	// persiga/golpee durante esos segundos (el servidor ya no le asigna enemigos).
+	client.SendJSON(&models.WSMessage{
+		Type: MsgCombatGrace,
+		Payload: map[string]interface{}{
+			"duration_ms": combatGracePeriod.Milliseconds(),
+		},
+	})
 
 	// Maná: a diferencia del HP, NO se resetea — se carga el valor persistente de
 	// PlayerStats (fuente de verdad compartida con el inventario y el Sidebar).

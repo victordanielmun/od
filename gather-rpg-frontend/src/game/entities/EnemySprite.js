@@ -29,11 +29,11 @@ const STATE_DURATION = {
 // de ~304px a escala 0.25 → 76px en pantalla (ver CharacterConfig). Las hojas de enemigos
 // vienen con frames muy distintos (enemy 1/3 ~67px, enemy 2/4 ~308px); sin normalizar los
 // grandes salen enormes. Escalamos cada enemigo a este alto para igualarlo al jugador.
-const TARGET_ENEMY_HEIGHT = 76;
+const TARGET_ENEMY_HEIGHT = 95;
 
 // El boss debe verse algo más grande que un personaje normal: 1.25× el alto objetivo
 // (≈ 1.25× el jugador). Se normaliza igual que el enemigo, por el alto real del frame.
-const BOSS_SIZE_FACTOR = 1.25;
+const BOSS_SIZE_FACTOR = 1.5;
 
 export default class EnemySprite extends NPCSprite {
   constructor(scene, x, y, charId, username = 'Enemy') {
@@ -154,18 +154,25 @@ export default class EnemySprite extends NPCSprite {
         }
     }
 
+    // Tregua de entrada (la fija EnemySystem desde el store): mientras dura, este
+    // enemigo no puede tenerme a MÍ como objetivo. Sin esto la FSM local me
+    // perseguía igual — el fallback de abajo apunta al jugador local aunque el
+    // servidor no le haya asignado objetivo — y los ogros seguían encima nada
+    // más aparecer en el mapa.
+    const inGrace = this.combatGrace === true;
+    const myPlayerId = this.scene.playerManager?.myPlayerId;
+
     if (data.target_id) {
         this.targetId = String(data.target_id);
-        const myPlayerId = this.scene.playerManager?.myPlayerId;
         if (this.targetId === String(myPlayerId)) {
-            this.target = this.scene.player;
+            this.target = inGrace ? null : this.scene.player;
         } else if (this.scene.playerSprites && this.scene.playerSprites.has(this.targetId)) {
             this.target = this.scene.playerSprites.get(this.targetId);
         } else {
-            this.target = this.scene.player;
+            this.target = inGrace ? null : this.scene.player;
         }
     } else {
-        this.target = this.scene.player;
+        this.target = inGrace ? null : this.scene.player;
     }
 
     // Orientar el sprite hacia el jugador siempre que esté enganchado con él

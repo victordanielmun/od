@@ -57,7 +57,10 @@ export class LobbyInputController {
       const key = scene.input.keyboard.addKey(KC[keyName]);
       key.on('down', () => {
         if (scene.isTyping() || !this._isCanvasFocused()) return;
-        scene.combatSystem[handler]();
+        // Optional chaining: durante el restart de la escena combatSystem es null
+        // un instante, y una tecla en ese hueco rompía todo el input con un
+        // TypeError (el ataque dejaba de responder hasta recargar).
+        scene.combatSystem?.[handler]?.();
       });
       this.keys.push(key);
     });
@@ -66,7 +69,7 @@ export class LobbyInputController {
     const dashKey = scene.input.keyboard.addKey(KC.SPACE);
     dashKey.on('down', () => {
       if (scene.isTyping() || !this._isCanvasFocused()) return;
-      scene.combatSystem.handlePlayerDash();
+      scene.combatSystem?.handlePlayerDash?.();
     });
     this.keys.push(dashKey);
 
@@ -87,7 +90,7 @@ export class LobbyInputController {
         vi[key] = isDown;
       } else if (isDown) {
         if (VIRTUAL_ACTIONS[key]) {
-          scene.combatSystem[VIRTUAL_ACTIONS[key]]();
+          scene.combatSystem?.[VIRTUAL_ACTIONS[key]]?.();
         } else if (key === 'interact') {
           scene.interactionSystem?.processSyncInteractions();
         }
@@ -106,7 +109,7 @@ export class LobbyInputController {
     scene.game.canvas.addEventListener('contextmenu', this._onContextMenu);
     scene.input.on('pointerdown', (pointer) => {
       if (pointer.leftButtonDown() && !scene.isTyping()) {
-        scene.combatSystem.handlePlayerAttack();
+        scene.combatSystem?.handlePlayerAttack?.();
       }
     });
   }
@@ -132,6 +135,23 @@ export class LobbyInputController {
     };
     window.addEventListener('phaser-disable-input', this._onDisableCanvasInput);
     window.addEventListener('phaser-enable-input', this._onEnableCanvasInput);
+
+    // Un <button> del HUD (mute, zoom, inventario…) se queda con el foco al
+    // pulsarlo, y _isCanvasFocused() lo trata como "el jugador está en la UI":
+    // a partir de ahí J/K/L/U dejan de responder y parece que el ataque está
+    // roto. Al soltar el puntero devolvemos el foco al canvas. Solo por puntero
+    // (la navegación con teclado conserva el suyo) y solo si ningún overlay ha
+    // pedido el input con phaser-disable-input.
+    this._onPointerUp = (e) => {
+      if (this._externallyDisabled) return;
+      const el = document.activeElement;
+      if (!(el instanceof HTMLButtonElement)) return;
+      if (e.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      el.blur();
+      const canvas = scene.game?.canvas;
+      if (canvas) canvas.focus({ preventScroll: true });
+    };
+    document.addEventListener('pointerup', this._onPointerUp);
 
     const canvasEl = scene.game?.canvas;
     if (canvasEl) {
@@ -170,6 +190,10 @@ export class LobbyInputController {
     }
     window.removeEventListener('phaser-disable-input', this._onDisableCanvasInput);
     window.removeEventListener('phaser-enable-input', this._onEnableCanvasInput);
+    if (this._onPointerUp) {
+      document.removeEventListener('pointerup', this._onPointerUp);
+      this._onPointerUp = null;
+    }
 
     const canvasEl = scene.game?.canvas;
     if (canvasEl) {
