@@ -3,6 +3,7 @@ import { NPCSprite } from './NPCSprite';
 import { ENEMY_CONFIG } from '../config/EnemyConfig';
 import { BOSS_STATE_TO_ANIM, getBossScale } from '../config/BossConfig';
 import { spawnDamageNumber } from '../systems/floatingText';
+import { ensureItemSprite } from '../systems/itemSprites';
 
 // Estados posibles de la FSM
 const STATES = {
@@ -691,16 +692,15 @@ export default class EnemySprite extends NPCSprite {
     proj.setDepth(this.depth + 5);
     proj.body.setAllowGravity(false);
 
-    if (spriteKey && !hasSprite && !scene.load.isLoading()) {
-      const url = iconKey.endsWith('.png') ? `/Items/sprites/${iconKey}` : `/Items/sprites/${iconKey}.png`;
-      scene.load.image(spriteKey, url);
-      scene.load.once(`filecomplete-image-${spriteKey}`, () => {
-        if (proj.active && scene.textures.exists(spriteKey)) {
-          proj.setTexture(spriteKey);
+    // Antes se omitía la carga cuando el loader estaba ocupado (`!isLoading()`),
+    // así que el icono no llegaba nunca si coincidía con otra carga.
+    if (!hasSprite) {
+      ensureItemSprite(scene, iconKey, (key) => {
+        if (proj.active) {
+          proj.setTexture(key);
           fitProjectile(proj);
         }
       });
-      scene.load.start();
     }
 
     // Dirigir hacia la posición actual del jugador.

@@ -1,6 +1,7 @@
 import { useGameStore } from '../../store/gameStore';
 import { useNotificationStore } from '../../store/notificationStore';
 import { spawnDamageNumber } from '../systems/floatingText';
+import { ensureItemSprite } from '../systems/itemSprites';
 
 // Regen automático de maná del jugador (MP por segundo). En 0 para que el maná solo se
 // recupere con pociones — si no, la regeneración pasiva le quita valor a las pociones.
@@ -828,17 +829,16 @@ export class CombatSystem {
     // Spin the throwable as it travels (tumbling), in the throw direction.
     proj.body.setAngularVelocity(direction * 540);
 
-    // Carga diferida del sprite del item si aún no estaba en caché.
-    if (spriteKey && !hasSprite && !this.scene.load.isLoading()) {
-      const url = iconKey.endsWith('.png') ? `/Items/sprites/${iconKey}` : `/Items/sprites/${iconKey}.png`;
-      this.scene.load.image(spriteKey, url);
-      this.scene.load.once(`filecomplete-image-${spriteKey}`, () => {
-        if (proj.active && this.scene.textures.exists(spriteKey)) {
-          proj.setTexture(spriteKey);
+    // Carga diferida del sprite del item si aún no estaba en caché. Antes se
+    // omitía cuando el loader estaba ocupado (`!isLoading()`), así que el icono
+    // no llegaba nunca si coincidía con otra carga; ensureItemSprite lo encola.
+    if (!hasSprite) {
+      ensureItemSprite(this.scene, iconKey, (key) => {
+        if (proj.active) {
+          proj.setTexture(key);
           fitProjectile(proj);
         }
       });
-      this.scene.load.start();
     }
 
     this.scene.time.delayedCall(1500, () => {

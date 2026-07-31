@@ -1,7 +1,7 @@
 import { animationsByEnemy as generatedAnims } from '../../../public/enemys/_animationsByEnemy_generated.js';
 import { versioned } from './assetVersion';
 
-export const AVAILABLE_ENEMIES = ['1', '2', '3', '4'];
+export const AVAILABLE_ENEMIES = ['1', '2', '3', '4', '5'];
 
 export const ENEMY_CONFIG = {
   enemies: AVAILABLE_ENEMIES.map(id => ({

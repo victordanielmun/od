@@ -1,4 +1,5 @@
 import api from '../../services/api';
+import { ensureItemSprite } from '../systems/itemSprites';
 
 // Owns the lobby's map item pickups: fetching them from the backend and
 // spawning the floating sprites. The scene exposes `activePickups` as a
@@ -80,26 +81,35 @@ export class PickupManager {
       });
     }
 
-    const spriteKey = `item-sprite-${item.icon_key}`;
-    // If not loaded yet, use a fallback square
-    let sprite;
-    if (scene.textures.exists(spriteKey)) {
-      sprite = scene.add.image(0, 0, spriteKey);
-    } else {
-      sprite = scene.add.rectangle(0, 0, 32, 32, 0xffff00);
-    }
-
-    sprite.setDisplaySize(32, 32);
-    container.add(sprite);
-
-    // Floating animation
-    scene.tweens.add({
-      targets: sprite,
+    // Animación de flotación, común al marcador y al icono definitivo.
+    const float = (target) => scene.tweens.add({
+      targets: target,
       y: -5,
       duration: 1500,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
+    });
+
+    // Marcador provisional. El arte de items no viene con el mapa (son decenas de
+    // PNG y solo hacen falta los que salgan), así que se pide bajo demanda y se
+    // sustituye al llegar. Si el icono no existe o falla, se queda este cuadro.
+    let sprite = scene.add.rectangle(0, 0, 32, 32, 0xffff00);
+    sprite.setDisplaySize(32, 32);
+    container.add(sprite);
+    let tween = float(sprite);
+
+    ensureItemSprite(scene, item.icon_key, (key) => {
+      // La textura puede llegar después de salir de la escena o de recoger el ítem.
+      if (!container.active || !container.scene) return;
+
+      tween?.stop();
+      container.remove(sprite, true);   // destruye el marcador
+
+      sprite = scene.add.image(0, 0, key);
+      sprite.setDisplaySize(32, 32);
+      container.add(sprite);
+      tween = float(sprite);
     });
 
     container.pickupData = pickup;

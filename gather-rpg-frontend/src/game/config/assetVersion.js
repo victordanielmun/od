@@ -5,7 +5,7 @@
 //
 // También puede fijarse por entorno con VITE_ASSET_VERSION en el .env del
 // frontend (útil para CI: usar el hash del commit como versión).
-export const ASSET_VERSION = import.meta.env.VITE_ASSET_VERSION || '2';
+export const ASSET_VERSION = import.meta.env.VITE_ASSET_VERSION || '2.1';
 
 // Añade el cache-buster a una URL de asset. Debe aplicarse en TODOS los puntos
 // que piden el mismo archivo — la precarga del dashboard (assetManifest) y los
