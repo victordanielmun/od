@@ -11,17 +11,39 @@ Write-Host "`n--- Starting Odyssey Development Environment ---" -ForegroundColor
 Write-Host "Project directory: $ScriptDir" -ForegroundColor Gray
 
 # ---------------------------------------------------------------------------
-# Local Postgres/Redis (Docker) toggle
+# Base de datos: EC2 a través de un túnel SSH
 # ---------------------------------------------------------------------------
-# ACTIVO: gather-rpg-backend\.env y voice\backend\.env apuntan a la Postgres/
-# Redis REMOTA en EC2 (18.221.199.221) mientras estemos en desarrollo, para
-# que lo que corras local quede guardado en la BD real. Por eso los
-# contenedores Docker locales (Postgres, Redis y Evolution) no hacen falta y
-# este script los omite por defecto.
+# Lo que corras en local se guarda en la BD REAL de EC2. La conexión va por un
+# túnel SSH y no directa, porque el security group de EC2 solo abre 22/80/443/
+# 3000/8000: Postgres (5433) responde desde fuera pero Redis (6379) no, y el
+# backend hace log.Fatal si no encuentra Redis. El túnel también evita exponer
+# ambos puertos a internet.
 #
-# Cuando los .env vuelvan a apuntar a la base de datos local, pon esto en
-# $true para que el script levante los contenedores otra vez.
-$UseLocalDatabase = $false
+# Por eso los .env apuntan a 127.0.0.1: ese localhost ES el túnel.
+$UseLocalDatabase = $false   # $true → Postgres/Redis en Docker local (BD vacía)
+$UseRemoteTunnel  = $true    # $false → si ya tienes el túnel abierto por tu cuenta
+
+$RemoteHost = "ec2-user@3.14.9.51"
+$RemoteKey  = "$ScriptDir\od3.pem"
+
+if ($UseRemoteTunnel -and -not $UseLocalDatabase) {
+    # ¿Ya hay algo escuchando en 5433? Entonces el túnel (o un Postgres local)
+    # ya está arriba y abrir otro solo daría un error de puerto ocupado.
+    $tunnelUp = $false
+    try {
+        $tunnelUp = (Test-NetConnection -ComputerName 127.0.0.1 -Port 5433 -InformationLevel Quiet -WarningAction SilentlyContinue)
+    } catch { $tunnelUp = $false }
+
+    if ($tunnelUp) {
+        Write-Host "[0/4] Tunel SSH ya activo (127.0.0.1:5433 responde)." -ForegroundColor DarkGray
+    } elseif (Test-Path $RemoteKey) {
+        Write-Host "[0/4] Abriendo tunel SSH a EC2 (Postgres 5433 + Redis 6379)..." -ForegroundColor Green
+        Start-Process powershell -ArgumentList "-NoExit", "-Command", "Write-Host '-- Tunel SSH a EC2 (dejar esta ventana abierta) --' -ForegroundColor Yellow; ssh -i '$RemoteKey' -N -L 5433:localhost:5433 -L 6379:localhost:6379 $RemoteHost"
+        Start-Sleep -Seconds 4
+    } else {
+        Write-Host "[0/4] No se encontro la llave $RemoteKey. El backend no podra conectar." -ForegroundColor Red
+    }
+}
 
 # 1. Docker Containers (Postgres, Redis & Evolution) — solo si $UseLocalDatabase
 if ($UseLocalDatabase) {
@@ -49,8 +71,9 @@ if ($UseLocalDatabase) {
         Write-Host "      (If you need local services, please start Docker Desktop and run the script again)" -ForegroundColor DarkGray
     }
 } else {
-    Write-Host "[1/4] Skipping local Docker containers (Postgres/Redis/Evolution): .env apunta a la BD remota en EC2." -ForegroundColor Yellow
-    Write-Host "      (Pon `$UseLocalDatabase = `$true en este script si necesitas la BD local, incl. Evolution/WhatsApp)" -ForegroundColor DarkGray
+    Write-Host "[1/4] Sin Docker local: los .env apuntan a la BD de EC2 por el tunel." -ForegroundColor Yellow
+    Write-Host "      (Pon `$UseLocalDatabase = `$true si necesitas la BD local, incl. Evolution/WhatsApp)" -ForegroundColor DarkGray
+    Write-Host "      OJO: lo que hagas aqui se escribe en la base REAL de produccion." -ForegroundColor Red
 }
 
 # 2. Go Backend
