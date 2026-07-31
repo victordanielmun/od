@@ -9,32 +9,56 @@ let criticalEverDone = false;
 
 const PNG_RE = /\.png(\?|$)/i;
 
-// Settle one URL into the browser cache. Resolves on both success AND error so
-// a missing optional file can never stall the progress bar. Images go through
-// the <img> path (decoded + held in the image cache); everything else (atlas
-// JSON, audio) through fetch with force-cache.
+// Tope por asset. Esto es solo calentar la caché del navegador, así que ninguna
+// descarga tiene derecho a bloquear el botón de entrar: onload/onerror cubren
+// el éxito y el 404, pero NO cubren una petición que se queda colgada sin
+// responder nunca (un proxy o firewall que traga la conexión en lugar de
+// rechazarla hace exactamente eso, y entonces "Preparing Realm…" no cambiaba
+// jamás). Pasado este tiempo se abandona y la cola continúa; el asset no se
+// pierde, Phaser vuelve a pedirlo al cargar el lobby.
+const WARM_TIMEOUT_MS = 10000;
+
+// Settle one URL into the browser cache. Resolves on success, on error AND on
+// timeout, para que un solo archivo no pueda detener la precarga. Images go
+// through the <img> path (decoded + held in the image cache); everything else
+// (atlas JSON, audio) through fetch with force-cache.
 function warmOne(url) {
   if (warmed.has(url)) return Promise.resolve();
 
-  const settle = (resolve) => {
-    warmed.add(url);
-    resolve();
-  };
-
-  if (PNG_RE.test(url)) {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => settle(resolve);
-      img.onerror = () => settle(resolve);
-      img.src = url;
-    });
-  }
-
   return new Promise((resolve) => {
-    fetch(url, { cache: 'force-cache' })
+    let settled = false;
+    let timer = null;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+
+    const settle = () => {
+      if (settled) return;   // onerror tras abortar, o timeout y respuesta a la vez
+      settled = true;
+      if (timer) clearTimeout(timer);
+      warmed.add(url);
+      resolve();
+    };
+
+    timer = setTimeout(() => {
+      // Cortar la petición para no dejar el socket colgando.
+      try { controller?.abort(); } catch { /* ya había terminado */ }
+      if (import.meta.env.DEV) {
+        console.warn(`[AssetPreloader] ${url} no respondió en ${WARM_TIMEOUT_MS}ms; continúo.`);
+      }
+      settle();
+    }, WARM_TIMEOUT_MS);
+
+    if (PNG_RE.test(url)) {
+      const img = new Image();
+      img.onload = settle;
+      img.onerror = settle;
+      img.src = url;
+      return;
+    }
+
+    fetch(url, { cache: 'force-cache', signal: controller?.signal })
       .then((r) => r.blob())
-      .catch(() => {})
-      .finally(() => settle(resolve));
+      .catch(() => { /* red, 404 o abort: da igual, es solo caché */ })
+      .finally(settle);
   });
 }
 
