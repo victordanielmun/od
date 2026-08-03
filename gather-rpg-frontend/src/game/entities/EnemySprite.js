@@ -212,7 +212,11 @@ export default class EnemySprite extends NPCSprite {
         spawnDamageNumber(this.scene, this.x, this.y - 30, dmg, { color: '#ffe066' });
     }
 
-    if (this.hp <= 0 && this.fsm !== STATES.DEAD) {
+    // La muerte la decide el SERVIDOR. Llegar a 0 de vida no es morir: el golpe
+    // mortal abre la Ninja Card y el enemigo solo cae si se acierta. Matarlo aquí
+    // hacía que se reprodujera la animación de muerte mientras el servidor seguía
+    // esperando la respuesta. Se espera a fsm_state='dead' o al evento enemy_died.
+    if (this.hp <= 0 && this.fsm !== STATES.DEAD && !this.serverDriven) {
         this._changeState(STATES.DEAD);
     }
   }
@@ -353,16 +357,21 @@ export default class EnemySprite extends NPCSprite {
   takeDamage(amount, knockbackVec) {
     if (this.fsm === STATES.DEAD) return;
     // También ignorar golpes mientras ya está en HURT (salvo que sea DEAD)
+    // Quedarse sin vida NO es morir cuando manda el servidor: el golpe mortal
+    // abre la Ninja Card y el enemigo solo cae si se acierta. Anticiparlo aquí
+    // reproducía la animación de muerte con la pregunta todavía en pantalla.
+    const canDieLocally = !this.serverDriven;
+
     if (this.fsm === STATES.HURT || this.fsm === STATES.KNOCKED) {
       // Acumular daño pero no re-triggear la animación
       this.hp -= amount;
-      if (this.hp <= 0) this._changeState(STATES.DEAD);
+      if (this.hp <= 0 && canDieLocally) this._changeState(STATES.DEAD);
       return;
     }
 
     this.hp -= amount;
 
-    if (this.hp <= 0) {
+    if (this.hp <= 0 && canDieLocally) {
       this._changeState(STATES.DEAD);
       return;
     }

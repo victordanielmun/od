@@ -24,6 +24,11 @@ const playerIFrames = 700 * time.Millisecond
 // misión, así que muere antes de poder defenderse.
 const combatGracePeriod = 5 * time.Second
 
+// ninjaCardResultDelay es lo que el enemigo queda aturdido tras una respuesta
+// FALLIDA, para que el desenlace se lea en el HUD antes de que vuelva a pegar.
+// Sin esta pausa se reanudaba el combate con la tarjeta todavía en pantalla.
+const ninjaCardResultDelay = 1200 * time.Millisecond
+
 // Curación por poción (server-side): cantidad fija y cooldown para acotar abuso.
 const (
 	playerHealAmount   = 30
@@ -740,6 +745,12 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 		enemy.FSMState = "chase"
 		enemy.PendingNinjaCard = ""
 		enemy.NinjaCardChallengeID = ""
+		// El enemigo NO vuelve al combate en el mismo instante en que se envía el
+		// resultado: el HUD sigue mostrando la respuesta correcta y el jugador ya
+		// estaba recibiendo golpes (y dándolos) con el cartel en pantalla. Se le
+		// deja aturdido esa ventana reusando HurtUntil, que el tick de IA ya
+		// respeta, para que el desenlace se lea antes de reanudar.
+		enemy.HurtUntil = time.Now().Add(ninjaCardResultDelay)
 		room.mu.Unlock()
 
 		// Fallar también cuenta para el diagnóstico del examen (es justo lo que
