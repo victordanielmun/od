@@ -28,6 +28,11 @@ import api from '../services/api';
 import { VirtualArcadeControls } from '../components/lobby/VirtualArcadeControls';
 import { useDeviceType } from '../hooks/useDeviceType';
 
+// Debe igualar combatGracePeriod en gather-rpg-backend/internal/websocket/hub_combat.go:
+// es el fallback cuando el banner de misión se muestra sin (todavía) tener el
+// combat_grace real del WS, para que el peor caso también coincida con la tregua real.
+const COMBAT_GRACE_FALLBACK_MS = 5000;
+
 export const LobbyLayout = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -131,6 +136,7 @@ export const LobbyLayout = () => {
   const sendChallengeMessage = useGameStore(state => state.sendChallengeMessage);
   const userRole = useAuthStore(state => state.user?.role);
   const activeMission = useGameStore(state => state.activeMission);
+  const combatGraceUntil = useGameStore(state => state.combatGraceUntil);
   const fetchActiveMission = useGameStore(state => state.fetchActiveMission);
   const acceptMission = useGameStore(state => state.acceptMission);
   const currentSceneKey = useGameStore(state => state.currentSceneKey);
@@ -368,14 +374,19 @@ export const LobbyLayout = () => {
   // El letrero dura lo mismo que la tregua de entrada, ni más ni menos: durante
   // esa ventana el servidor congela a los enemigos y la escena bloquea al
   // jugador, así que si el cartel se fuera antes (o después) el jugador estaría
-  // quieto sin saber por qué. Sin tregua (mapas sin combate) se usa el 3s de
-  // siempre.
+  // quieto sin saber por qué. `activeMission` llega por REST y `combatGraceUntil`
+  // por WebSocket ('combat_grace'): no hay garantía de orden entre ambos. Este
+  // efecto depende de `combatGraceUntil` (no solo se lee una vez al montar) para
+  // que, si el WS llega DESPUÉS de que el banner ya esté visible, el timer se
+  // recalcule con el valor real en vez de quedarse con el fallback. El fallback
+  // (sin tregua, p. ej. mapas sin combate) iguala la tregua real del backend
+  // (combatGracePeriod en hub_combat.go) para que el peor caso también coincida.
   useEffect(() => {
     if (!showMissionBanner) return undefined;
-    const graceLeft = (useGameStore.getState().combatGraceUntil || 0) - Date.now();
-    const timer = setTimeout(() => setShowMissionBanner(false), graceLeft > 0 ? graceLeft : 3000);
+    const graceLeft = (combatGraceUntil || 0) - Date.now();
+    const timer = setTimeout(() => setShowMissionBanner(false), graceLeft > 0 ? graceLeft : COMBAT_GRACE_FALLBACK_MS);
     return () => clearTimeout(timer);
-  }, [showMissionBanner]);
+  }, [showMissionBanner, combatGraceUntil]);
 
 
   const gameRef = useRef(null); // Add ref to control game from UI

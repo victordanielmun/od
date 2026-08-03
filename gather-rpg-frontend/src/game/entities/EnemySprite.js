@@ -62,6 +62,15 @@ export default class EnemySprite extends NPCSprite {
     if (this.body) {
       this.body.enable = true;
       this.body.setCircle(30, -30, -10);
+      // Su posición es autoritativa del servidor (o de su propia FSM local en el
+      // beat'em up): que el jugador choque contra él no debe desplazarlo. Sin esto
+      // Arcade Physics reparte el solape entre ambos cuerpos en cada paso de
+      // físicas —independientemente de que su velocidad se ponga a 0 en preUpdate—
+      // y el enemigo tiembla/desliza contra la posición real cuando el jugador lo
+      // pisa en melee (máximo justo durante el golpe). Mismo patrón que ya usan
+      // PlayerSprite (jugadores remotos) y NPCManager para los NPCs.
+      this.body.setImmovable(true);
+      this.body.pushable = false;
     }
 
     // Normalizar el tamaño del sprite según su frame real (el boss se reescala aparte
@@ -142,6 +151,7 @@ export default class EnemySprite extends NPCSprite {
             if (hitOutcome) this._predictedHurtUntil = 0;
             const wasSkill = this.fsm === STATES.SKILL;
             const wasCharge = this.fsm === STATES.CHARGE;
+            const wasNinjaCard = this.fsm === 'ninja_card';
             this._changeState(data.fsm_state);
             // El stun (hurt/knocked) es autoritativo del servidor. Mantener el timer
             // local arriba mientras el server siga mandando ese estado, para que la
@@ -156,6 +166,14 @@ export default class EnemySprite extends NPCSprite {
             // Reiniciar el flag de contacto al iniciar una nueva embestida.
             if (this.fsm === STATES.CHARGE && !wasCharge) {
                 this._chargeHitDealt = false;
+            }
+            // Señal visual inmediata al quedar congelado en la Ninja Card: el servidor
+            // marca fsm_state='ninja_card' (y este cliente deja de moverlo) ANTES de
+            // resolver y enviar la pregunta (consulta a la carta + viaje de red), así
+            // que sin esto el enemigo se queda plantado en idle sin ninguna pista de
+            // qué está pasando durante ese hueco.
+            if (this.fsm === 'ninja_card' && !wasNinjaCard) {
+                this._flashNinjaCardCue();
             }
         }
     }
@@ -524,8 +542,11 @@ export default class EnemySprite extends NPCSprite {
         break;
 
       case STATES.CHARGE:
-        // Embestida: la posición la mueve el servidor. Aplica daño por contacto
-        // una sola vez por embestida (gateado por targetId).
+        // Embestida: la posición la mueve el servidor. Anular la velocidad local
+        // evita que un knockback residual (takeDamage, ver KNOCKED) que no haya
+        // decaído del todo se siga integrando por encima de la posición real.
+        if (this.body) this.body.setVelocity(0, 0);
+        // Aplica daño por contacto una sola vez por embestida (gateado por targetId).
         if (this.target && this.target.active && !this._chargeHitDealt) {
           const myPlayerId = this.scene.playerManager?.myPlayerId;
           const isMine = !this.targetId || !myPlayerId || this.targetId === myPlayerId;
@@ -782,6 +803,27 @@ export default class EnemySprite extends NPCSprite {
       if (d <= radius) {
         scene.events.emit('enemy-attack', { enemy: this, damage });
       }
+    });
+  }
+
+  // Destello dorado + pulso al quedar congelado en 'ninja_card' (ver syncFromServer).
+  // Puramente cosmético: comunica "está pasando algo" durante el hueco entre que el
+  // servidor lo marca y que el modal de la carta termina de cargar.
+  _flashNinjaCardCue() {
+    if (this.sprite) {
+      this.sprite.setTint(0xffd700);
+      this.scene.time.delayedCall(500, () => {
+        if (this.active && this.sprite) this.sprite.clearTint();
+      });
+    }
+    const glow = this.scene.add.circle(this.x, this.y, 34, 0xffd700, 0.35).setDepth(this.depth - 1);
+    this.scene.tweens.add({
+      targets: glow,
+      scale: 1.8,
+      alpha: 0,
+      duration: 450,
+      ease: 'Quad.easeOut',
+      onComplete: () => glow.destroy(),
     });
   }
 }

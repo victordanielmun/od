@@ -26,8 +26,7 @@ const MissionTracker = ({ mission }) => {
 
   return (
     <div className={`absolute z-50 transition-all duration-300 animate-in fade-in pointer-events-auto shadow-2xl bg-gray-900/80 border border-gray-700 rounded-xl backdrop-blur-md
-      max-md:top-4 max-md:left-4 max-md:slide-in-from-top-4 
-      md:bottom-24 md:left-6 md:slide-in-from-bottom-4 md:w-64
+      top-4 left-4 slide-in-from-top-4 md:w-64
       ${isCollapsed ? 'p-2 w-auto max-md:max-w-[180px] md:p-3' : 'p-3 w-[calc(100vw-2rem)] md:w-64 md:p-4'}
     `}>
       <div

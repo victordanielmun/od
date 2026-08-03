@@ -9,6 +9,7 @@ export const AVAILABLE_BOSSES = Object.keys(animationsByBoss);
 // Mapeo de estado FSM del boss → animación (set de character).
 export const BOSS_STATE_TO_ANIM = {
   idle:    'idle',
+  wander:  'walk',
   chase:   'walk',
   attack:  'combo1',
   skill:   'special',

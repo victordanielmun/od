@@ -73,8 +73,8 @@ export const NinjaCardHUD = () => {
                    : 'bg-emerald-600 border-emerald-300';
 
   return (
-    <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/60 pointer-events-auto">
-      <div className="bg-slate-900 border-2 border-amber-500 p-8 rounded-xl max-w-lg w-full shadow-2xl relative overflow-hidden">
+    <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/60 pointer-events-auto animate-in fade-in duration-200">
+      <div className="bg-slate-900 border-2 border-amber-500 p-8 rounded-xl max-w-lg w-full shadow-2xl relative overflow-hidden animate-in zoom-in-95 duration-200">
 
         {/* Result Overlay */}
         {resultEffect && (

@@ -71,6 +71,36 @@ type Client struct {
 	// proximidad y los handlers sociales desde goroutines distintas.
 	blockedMu sync.RWMutex
 	blocked   map[string]bool
+
+	// Nivel de inglés cacheado (ver getChallengeForClient en hub_combat.go): sin
+	// esto, cada golpe letal pagaba una consulta a UserLearningProfile en el
+	// camino caliente entre "el enemigo se congela" y "aparece la Ninja Card".
+	// TTL corto (no indefinido) porque el nivel puede subir a mitad de sesión
+	// (ver GetRandomChallengeFromPool / auto level-up por XP); así una subida de
+	// nivel se refleja en minutos, no requiere reconectar.
+	englishLevelMu        sync.RWMutex
+	englishLevel          models.DifficultyLevel
+	englishLevelFetchedAt time.Time
+}
+
+const englishLevelCacheTTL = 30 * time.Second
+
+// CachedEnglishLevel devuelve el nivel cacheado si sigue vigente (dentro del TTL).
+func (c *Client) CachedEnglishLevel() (models.DifficultyLevel, bool) {
+	c.englishLevelMu.RLock()
+	defer c.englishLevelMu.RUnlock()
+	if c.englishLevelFetchedAt.IsZero() || time.Since(c.englishLevelFetchedAt) > englishLevelCacheTTL {
+		return "", false
+	}
+	return c.englishLevel, true
+}
+
+// SetCachedEnglishLevel guarda el nivel recién leído de la DB y resetea el TTL.
+func (c *Client) SetCachedEnglishLevel(level models.DifficultyLevel) {
+	c.englishLevelMu.Lock()
+	defer c.englishLevelMu.Unlock()
+	c.englishLevel = level
+	c.englishLevelFetchedAt = time.Now()
 }
 
 // HasBlocked reporta si este cliente bloqueó al usuario dado.

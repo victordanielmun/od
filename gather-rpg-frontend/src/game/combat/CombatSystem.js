@@ -329,6 +329,14 @@ export class CombatSystem {
     return this.scene.time.now < this.hurtStaggerUntil;
   }
 
+  // True mientras corre la animación de un golpe (J, combo K, hechizo, arrojadizo).
+  // Golpear ancla al personaje: el swing se ejecuta en el sitio, igual que el de los
+  // enemigos. Es lo que da peso al ataque y lo vuelve una decisión — si pudieras
+  // atacar corriendo, el sprite patinaría con la animación de golpe puesta.
+  isAttackLocked() {
+    return this.scene.time.now < this._attackLockUntil;
+  }
+
   // Devuelve true si la misión activa tiene al menos una tarea de combate
   // (kill_all, defeat_enemy o kill_boss). El campo "type" de la misión no
   // existe a nivel raíz — vive dentro de tasks[].type. Una misión SIN tareas
@@ -611,6 +619,8 @@ export class CombatSystem {
     if (this.scene.anims.exists(`char-${charId}-${profile.anim}`)) {
       this.scene.player.playAnimation(profile.anim, 800);
     }
+    // Castear ancla en el sitio mientras dura la animación (ver isAttackLocked).
+    this._attackLockUntil = this.scene.time.now + 800;
 
     // Lanzar el efecto correspondiente (~250ms tras el inicio, al "soltar" el cast).
     this.scene.time.delayedCall(250, () => this._castSpell(spellType, profile));
@@ -780,6 +790,8 @@ export class CombatSystem {
     if (this.scene.anims.exists(animKey)) {
       this.scene.player.playAnimation('projectile', 500);
     }
+    // Lanzar ancla en el sitio mientras dura la animación (ver isAttackLocked).
+    this._attackLockUntil = this.scene.time.now + 500;
 
     // Fallback siempre disponible: círculo de energía generado por código.
     if (!this.scene.textures.exists('energy-ball')) {

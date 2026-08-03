@@ -17,6 +17,7 @@ export const ENEMY_CONFIG = {
   // Mapeo de estados de la FSM a animaciones
   STATE_TO_ANIM: {
     idle:    'idle',
+    wander:  'walking',
     chase:   'walking',
     attack:  'attack',
     throw:   'attack',
