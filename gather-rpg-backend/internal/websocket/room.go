@@ -630,10 +630,28 @@ func (r *Room) tickAI() {
 	// arriba— porque los enemigos seguían deambulando mientras el jugador leía el
 	// letrero de la misión. Se exige que estén todos: en cooperativo, alguien que
 	// entra tarde no debe congelar un combate en curso.
-	if len(r.Clients) > 0 && len(eligibleClients) == 0 {
+	//
+	// OJO: se comprueba la tregua explícitamente y NO "eligibleClients vacío".
+	// Ese atajo también se cumplía con el jugador respondiendo una Ninja Card
+	// (un jugador ocupado tampoco es elegible), y entonces esta rama tomaba el
+	// control y dejaba fuera del broadcast al enemigo en 'ninja_card' → el
+	// cliente lo daba por desaparecido ("Removing stale enemy") en mitad de la
+	// pregunta.
+	allInGrace := len(r.Clients) > 0
+	for client := range r.Clients {
+		if !now.Before(client.CombatGraceUntil) {
+			allInGrace = false
+			break
+		}
+	}
+
+	if allInGrace {
 		frozen := make([]models.ActiveEnemy, 0, len(r.ActiveEnemies))
 		for _, enemy := range r.ActiveEnemies {
+			// Muertos y cards se reenvían tal cual: si se omiten, el cliente los
+			// elimina por ausencia.
 			if enemy.FSMState == "dead" || enemy.FSMState == "ninja_card" {
+				frozen = append(frozen, *enemy)
 				continue
 			}
 			enemy.FSMState = "idle"

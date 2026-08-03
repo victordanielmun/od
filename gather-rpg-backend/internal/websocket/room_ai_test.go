@@ -338,3 +338,22 @@ func TestALateJoinerDoesNotFreezeAnOngoingFight(t *testing.T) {
 	assert.NotEqual(t, "idle", enemy.FSMState, "el combate del veterano sigue vivo")
 	assert.Equal(t, veteran.ID.String(), enemy.TargetID, "y apunta al que ya no está en tregua")
 }
+
+// La congelación del briefing NO debe activarse porque el jugador esté ocupado
+// respondiendo una Ninja Card: si lo hiciera, el enemigo en 'ninja_card' se
+// quedaba fuera del broadcast y el cliente lo borraba en mitad de la pregunta
+// ("Removing stale enemy" → luego "enemy_died for unknown instance").
+func TestNinjaCardEnemyIsNotDroppedFromUpdates(t *testing.T) {
+	room, client := newAIRoom(t, 1000, 1000)
+	client.CombatGraceUntil = time.Now().Add(-time.Second) // tregua ya terminada
+
+	enemy := addEnemy(room, 950, 1000)
+	enemy.FSMState = "ninja_card"
+	enemy.PendingNinjaCard = client.ID.String() // el jugador está respondiendo
+
+	assert.NotPanics(t, func() { room.tickAI() })
+
+	// El enemigo sigue vivo y en su estado: el cliente lo seguirá viendo.
+	assert.Equal(t, "ninja_card", enemy.FSMState)
+	assert.Contains(t, room.ActiveEnemies, enemy.InstanceID)
+}
