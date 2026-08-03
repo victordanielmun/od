@@ -51,6 +51,10 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 		room.MaxUsers = dbRoom.MaxUsers
 		room.SceneKey = dbRoom.SceneKey
 		room.Type = dbRoom.Type
+		// Terreno del editor: sin esto los enemigos deambulan sobre los vacíos.
+		if cfg, err := h.RoomService.GetMapConfig(dbRoom.SceneKey); err == nil && cfg != nil {
+			room.SetLayout(cfg.WallsJSON)
+		}
 
 		h.Rooms[roomID] = room
 	}
@@ -810,6 +814,10 @@ func (h *Hub) handleRequestMapJoin(client *Client, sceneKey, roomType, inviteCod
 		newHubRoom.MaxUsers = newRoom.MaxUsers
 		newHubRoom.SceneKey = newRoom.SceneKey
 		newHubRoom.Type = newRoom.Type
+		// Terreno del editor: los enemigos deambulan respetando vacíos y límites.
+		if mapCfg != nil {
+			newHubRoom.SetLayout(mapCfg.WallsJSON)
+		}
 
 		h.mu.Lock()
 		h.Rooms[newHubRoom.ID] = newHubRoom

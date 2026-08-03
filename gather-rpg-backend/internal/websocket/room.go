@@ -1,8 +1,10 @@
 package websocket
 
 import (
+	"encoding/json"
 	"log"
 	"math"
+	"math/rand"
 	"sort"
 	"sync"
 	"time"
@@ -57,6 +59,13 @@ type Room struct {
 	askedChallenges map[string][]uuid.UUID          // playerID → retos ya emitidos (no repetir)
 	examWorldID     map[string]uint                 // playerID → mundo que está examinando (0/ausente = no es examen)
 	examStats       map[string]map[string]models.TagStat // playerID → tag temático → aciertos/total
+
+	// Terreno para el deambular. El cliente ya impide que el JUGADOR pise vacíos
+	// y muros (ver PlayerManager.isBlockedAt); el servidor necesita lo mismo o
+	// pasea a los enemigos por encima del vacío y fuera del mapa, porque es él
+	// quien decide su posición. Se rellena con SetLayout al crear la sala.
+	blockedCells map[[2]int]bool
+	mapW, mapH   float64
 
 	mu sync.RWMutex
 }
@@ -187,14 +196,17 @@ func (r *Room) spawnWave(waveNum int) int {
 			}
 		}
 
-		r.ActiveEnemies[instanceID] = &models.ActiveEnemy{
+		enemy := &models.ActiveEnemy{
 			InstanceID: instanceID,
 			EnemyID:    enemyID,
 			X:          e.SpawnX,
 			Y:          e.SpawnY,
+			HomeX:      e.SpawnX,
+			HomeY:      e.SpawnY,
 			HP:         hp,
 			HPMax:      hp,
-			FSMState:   "idle",
+			// Nace deambulando, no plantado: el primer tramo es de avance.
+			FSMState:   "wander",
 			WaveNum:    waveNum,
 			NPCID:      e.NPCID,
 			SpriteID:   e.SpriteID,
@@ -209,6 +221,8 @@ func (r *Room) spawnWave(waveNum int) int {
 			HPRegen:          hpRegen,
 			CardFailHealPct:  cardFailHealPct,
 		}
+		r.beginWanderLeg(enemy, time.Now(), true)
+		r.ActiveEnemies[instanceID] = enemy
 		count++
 	}
 	r.PendingSpawns = kept
@@ -217,6 +231,182 @@ func (r *Room) spawnWave(waveNum int) int {
 
 // waveSpawnDelay es la pausa entre que se limpia una oleada y aparece la siguiente.
 const waveSpawnDelay = 2 * time.Second
+
+// Ventana en la que un enemigo queda clavado tras iniciar un ataque (lo que dura
+// el swing en el cliente). Es una FRACCIÓN de su cadencia, nunca el ciclo entero:
+// si durase todo el AttackRate el enemigo se quedaría plantado entre golpe y
+// golpe en vez de reposicionarse. Los límites evitan que los lentos se congelen
+// y que los rápidos alcancen a moverse en mitad de la animación.
+const (
+	attackCommitMin = 250 * time.Millisecond
+	attackCommitMax = 600 * time.Millisecond
+)
+
+func attackCommitment(attackRateMs int) time.Duration {
+	if attackRateMs <= 0 {
+		return attackCommitMax
+	}
+	d := time.Duration(float64(attackRateMs)*0.6) * time.Millisecond
+	if d < attackCommitMin {
+		return attackCommitMin
+	}
+	if d > attackCommitMax {
+		return attackCommitMax
+	}
+	return d
+}
+
+// Deambular: un enemigo sin objetivo no se queda plantado, se pasea alrededor de
+// su punto de aparición en tramos cortos de avance y pausa. Es el estado por
+// defecto (al aparecer y al perder/ceder el objetivo), y a lo que vuelven los
+// enemigos que no tienen el turno de ataque sobre un jugador.
+const (
+	wanderRadius     = 160.0 // px máximos de separación respecto a HomeX/HomeY
+	wanderSpeedRatio = 0.35  // fracción de su velocidad de persecución
+	// Rejilla del editor de mapas: los tiles se colocan en 50, 150, 250… es decir
+	// celdas de 100px cuyo centro cae en el múltiplo + 50. Mismo criterio que
+	// snapToGrid en PlayerManager del cliente.
+	terrainGrid = 100.0
+)
+
+// cellOf devuelve la celda de rejilla que ocupa una posición.
+func cellOf(x, y float64) [2]int {
+	return [2]int{int(math.Floor(x / terrainGrid)), int(math.Floor(y / terrainGrid))}
+}
+
+// mapLayout es el subconjunto de walls_json que le importa al servidor: el
+// tamaño del mapa y las capas que bloquean el paso. `forest` NO bloquea (es
+// decoración), igual que en el cliente.
+type mapLayout struct {
+	Width     float64     `json:"width"`
+	Height    float64     `json:"height"`
+	Voids     []tileCoord `json:"voids"`
+	Walls     []tileCoord `json:"walls"`
+	Colliders []tileCoord `json:"colliders"`
+}
+
+type tileCoord struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// SetLayout carga los límites y las celdas intransitables del mapa desde el
+// walls_json del editor. Sin esto el deambular ignora el terreno.
+func (r *Room) SetLayout(wallsJSON string) {
+	if wallsJSON == "" {
+		return
+	}
+	var layout mapLayout
+	if err := json.Unmarshal([]byte(wallsJSON), &layout); err != nil {
+		log.Printf("[Room %s] walls_json ilegible, el deambular no respetará el terreno: %v", r.ID, err)
+		return
+	}
+
+	blocked := make(map[[2]int]bool)
+	for _, group := range [][]tileCoord{layout.Voids, layout.Walls, layout.Colliders} {
+		for _, t := range group {
+			blocked[cellOf(t.X, t.Y)] = true
+		}
+	}
+
+	r.mu.Lock()
+	r.blockedCells = blocked
+	if layout.Width > 0 {
+		r.mapW = layout.Width
+	}
+	if layout.Height > 0 {
+		r.mapH = layout.Height
+	}
+	r.mu.Unlock()
+
+	log.Printf("[Room %s] Terreno cargado: %.0fx%.0f, %d celdas bloqueadas", r.ID, layout.Width, layout.Height, len(blocked))
+}
+
+// canStandAt indica si un enemigo puede ocupar esa posición: dentro del mapa y
+// fuera de las celdas bloqueadas. Debe llamarse con r.mu tomado (el tick de IA
+// ya lo está). Sin terreno cargado solo comprueba los límites.
+func (r *Room) canStandAt(x, y float64) bool {
+	if r.mapW > 0 && (x < 0 || x > r.mapW) {
+		return false
+	}
+	if r.mapH > 0 && (y < 0 || y > r.mapH) {
+		return false
+	}
+	if r.blockedCells == nil {
+		return true
+	}
+	return !r.blockedCells[cellOf(x, y)]
+}
+
+// beginWanderLeg elige el siguiente tramo del paseo. forceMove garantiza que sea
+// de avance (se usa al aparecer, para que el enemigo entre en escena moviéndose).
+// El tramo se descarta si lleva contra un vacío o fuera del mapa: se prueban
+// varias direcciones y, si ninguna sirve (enemigo arrinconado), sale una pausa.
+func (r *Room) beginWanderLeg(e *models.ActiveEnemy, now time.Time, forceMove bool) {
+	pause := func() {
+		e.WanderVX, e.WanderVY = 0, 0
+		e.WanderUntil = now.Add(time.Duration(600+rand.Intn(1000)) * time.Millisecond)
+	}
+
+	// 40% de los tramos son pausas: sin ellas el paseo parece una patrulla mecánica.
+	if !forceMove && rand.Float64() < 0.4 {
+		pause()
+		return
+	}
+
+	speed := e.Speed * 0.1 * wanderSpeedRatio
+	if speed <= 0 {
+		speed = 4.0
+	}
+
+	// Si se ha alejado de casa, el tramo apunta de vuelta (con algo de dispersión)
+	// para que el paseo no lo lleve hasta la otra punta del mapa.
+	baseAngle := rand.Float64() * 2 * math.Pi
+	dx, dy := e.X-e.HomeX, e.Y-e.HomeY
+	if math.Sqrt(dx*dx+dy*dy) > wanderRadius {
+		baseAngle = math.Atan2(-dy, -dx) + (rand.Float64()-0.5)*math.Pi/2
+	}
+
+	// Se mira un poco por delante (no solo el píxel siguiente) para no empezar un
+	// tramo que choque de inmediato contra el borde de un vacío.
+	const lookahead = terrainGrid / 2
+
+	for i := 0; i < 8; i++ {
+		angle := baseAngle + float64(i)*(math.Pi/4)
+		vx, vy := math.Cos(angle)*speed, math.Sin(angle)*speed
+		if r.canStandAt(e.X+math.Cos(angle)*lookahead, e.Y+math.Sin(angle)*lookahead) {
+			e.WanderVX, e.WanderVY = vx, vy
+			e.WanderUntil = now.Add(time.Duration(800+rand.Intn(1000)) * time.Millisecond)
+			return
+		}
+	}
+
+	// Rodeado de vacío por los ocho lados: quedarse quieto es mejor que colarse.
+	pause()
+}
+
+// tickWanderLocked avanza el paseo de un enemigo sin objetivo. Debe llamarse con
+// r.mu bloqueado. Devuelve el FSMState que corresponde: "wander" mientras avanza
+// e "idle" en las pausas, para que el cliente anime caminar o reposo.
+func (r *Room) tickWanderLocked(e *models.ActiveEnemy, now time.Time) string {
+	if now.After(e.WanderUntil) {
+		r.beginWanderLeg(e, now, false)
+	}
+	if e.WanderVX == 0 && e.WanderVY == 0 {
+		return "idle"
+	}
+
+	nx, ny := e.X+e.WanderVX, e.Y+e.WanderVY
+	if !r.canStandAt(nx, ny) {
+		// Se topó con el terreno a mitad de tramo: cortar y elegir otro rumbo ya,
+		// en vez de empujar contra el vacío hasta que venza el temporizador.
+		r.beginWanderLeg(e, now, true)
+		return "idle"
+	}
+
+	e.X, e.Y = nx, ny
+	return "wander"
+}
 
 // advanceWavesLocked spawnea la siguiente oleada cuando la actual está limpia.
 // Debe llamarse con r.mu bloqueado.
@@ -376,11 +566,22 @@ func (r *Room) tickBossLocked(e *models.ActiveEnemy, dist, angle, speed float64)
 		return
 	}
 
+	// Recargando entre golpes: se reposiciona en vez de encadenar swings. Sin este
+	// gate el boss reatacaba en cuanto acababa la animación, ignorando su cadencia.
+	if now.Before(e.NextAttackAt) {
+		e.FSMState = "chase"
+		return
+	}
+
+	// Tiro y combo melee del boss: también se ejecutan clavado en el sitio (el
+	// desplazamiento es cosa de chase/charge, no de los golpes).
 	if dist > bossMeleeRange {
 		e.FSMState = "throw"
 	} else {
 		e.FSMState = "attack" // combo melee
 	}
+	e.AttackUntil = now.Add(attackCommitment(e.AttackRate))
+	e.NextAttackAt = now.Add(time.Duration(e.AttackRate) * time.Millisecond)
 }
 
 func (r *Room) tickAI() {
@@ -424,6 +625,12 @@ func (r *Room) tickAI() {
 		eligibleClients = append(eligibleClients, client)
 	}
 
+	// engagedClients: jugadores que ya tienen encima a un enemigo a media
+	// estocada. Ese enemigo no entra en el reparto (está ocupado), así que sin
+	// esto el reparto le adjudicaría el jugador a OTRO enemigo y acabarían
+	// pegándole dos a la vez. Marcándolo, el segundo se queda deambulando hasta
+	// que el primero termine.
+	engagedClients := make(map[string]bool)
 	eligibleEnemies := make([]*models.ActiveEnemy, 0)
 	for _, enemy := range r.ActiveEnemies {
 		if enemy.FSMState == "dead" || enemy.FSMState == "ninja_card" {
@@ -432,6 +639,13 @@ func (r *Room) tickAI() {
 		}
 		if now.Before(enemy.HurtUntil) {
 			// Enemigo aturdido (hurt/knocked): no participa en la asignación de objetivos.
+			continue
+		}
+		if now.Before(enemy.AttackUntil) {
+			// Ejecutando un golpe: ocupado, y su objetivo sigue "cogido".
+			if isMeleeType(enemy.Type) && enemy.TargetID != "" {
+				engagedClients[enemy.TargetID] = true
+			}
 			continue
 		}
 		eligibleEnemies = append(eligibleEnemies, enemy)
@@ -465,7 +679,9 @@ func (r *Room) tickAI() {
 	sort.Slice(pairs, func(i, j int) bool { return pairs[i].dist < pairs[j].dist })
 
 	assignedEnemies := make(map[uuid.UUID]bool)
-	assignedClients := make(map[string]bool)
+	// Los jugadores que ya están recibiendo un golpe arrancan como "cogidos":
+	// mientras dure esa estocada nadie más se les asigna (los demás deambulan).
+	assignedClients := engagedClients
 	for _, pair := range pairs {
 		if assignedEnemies[pair.enemy.InstanceID] || assignedClients[pair.client.ID.String()] {
 			continue
@@ -520,6 +736,20 @@ func (r *Room) tickAI() {
 			enemy.HurtUntil = time.Time{}
 		}
 
+		// Compromiso de ataque: el swing se ejecuta en el sitio. Mientras dura no
+		// se reasigna objetivo ni se mueve, así el cliente no ve al enemigo
+		// deslizándose con la animación de golpe puesta.
+		if now.Before(enemy.AttackUntil) {
+			// Sigue ocupando el turno de ataque sobre su objetivo: si no, otro melee
+			// podría colarse a golpear al mismo jugador durante el swing y se rompe
+			// la regla de "un atacante melee por jugador".
+			if enemy.FSMState == "attack" && isMeleeType(enemy.Type) && enemy.TargetID != "" {
+				attackTargets[enemy.TargetID] = true
+			}
+			updates = append(updates, *enemy)
+			continue
+		}
+
 		targetClient, assigned := enemyTargets[enemy.InstanceID]
 		if assigned && targetClient != nil {
 			enemy.FSMState = "chase"
@@ -549,30 +779,63 @@ func (r *Room) tickAI() {
 				} else if dist < tooClose {
 					enemy.X -= math.Cos(angle) * speed
 					enemy.Y -= math.Sin(angle) * speed
+				} else if now.Before(enemy.NextAttackAt) {
+					// Recargando: se mantiene a distancia en vez de disparar.
+					enemy.FSMState = "chase"
 				} else {
+					// El lanzamiento también se ejecuta en el sitio: si no, el
+					// thrower kitea mientras el cliente anima el tiro.
 					enemy.FSMState = "throw"
+					enemy.AttackUntil = now.Add(attackCommitment(enemy.AttackRate))
+					enemy.NextAttackAt = now.Add(time.Duration(enemy.AttackRate) * time.Millisecond)
 				}
 			} else {
 				const attackRange = 90.0
-				if dist > attackRange {
+				// Retroceso durante la recarga: sin él el enemigo se queda pegado al
+				// jugador con la animación de andar. Separarse y volver a acercarse es
+				// lo que hace visible el ciclo perseguir → atacar → perseguir.
+				const recoverRange = attackRange + 40.0
+
+				switch {
+				case dist > attackRange:
 					enemy.X += math.Cos(angle) * speed
 					enemy.Y += math.Sin(angle) * speed
-				} else if isMeleeType(enemy.Type) {
-					// Melee: a lo sumo un atacante por jugador a la vez.
+
+				case now.Before(enemy.NextAttackAt):
+					// En rango pero recargando: NO ataca. Cede el turno para que otro
+					// melee pueda entrar, y se aparta hasta la distancia de recuperación.
+					enemy.FSMState = "chase"
+					if dist < recoverRange {
+						enemy.X -= math.Cos(angle) * speed
+						enemy.Y -= math.Sin(angle) * speed
+					}
+
+				case isMeleeType(enemy.Type):
+					// Melee: a lo sumo un atacante por jugador a la vez. El que no
+					// tiene el turno no se queda plantado encima del jugador — se
+					// retira a deambular hasta que le toque.
 					if !attackTargets[targetClient.ID.String()] {
 						enemy.FSMState = "attack"
+						enemy.AttackUntil = now.Add(attackCommitment(enemy.AttackRate))
+						enemy.NextAttackAt = now.Add(time.Duration(enemy.AttackRate) * time.Millisecond)
 						attackTargets[targetClient.ID.String()] = true
 					} else {
-						enemy.FSMState = "idle"
+						enemy.TargetID = ""
+						enemy.FSMState = r.tickWanderLocked(enemy, now)
 					}
-				} else {
+
+				default:
 					// fast / boss: atacan sin exclusividad.
 					enemy.FSMState = "attack"
+					enemy.AttackUntil = now.Add(attackCommitment(enemy.AttackRate))
+					enemy.NextAttackAt = now.Add(time.Duration(enemy.AttackRate) * time.Millisecond)
 				}
 			}
 		} else {
-			enemy.FSMState = "idle"
+			// Sin objetivo (nadie cerca, o el jugador ya lo tiene cogido otro):
+			// deambula alrededor de su punto de aparición.
 			enemy.TargetID = ""
+			enemy.FSMState = r.tickWanderLocked(enemy, now)
 		}
 
 		updates = append(updates, *enemy)

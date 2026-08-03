@@ -81,6 +81,26 @@ type ActiveEnemy struct {
 	FSMState   string    `json:"fsm_state"` // "idle", "chase", "attack", "hurt", "knocked", "dead", "ninja_card"
 	TargetID   string    `json:"target_id"` // UserID of the targeted player
 	HurtUntil  time.Time `json:"-"`         // mientras now < HurtUntil el enemigo está aturdido (no se mueve ni ataca)
+	// AttackUntil: compromiso de ataque. Al entrar en "attack" el enemigo se queda
+	// clavado hasta que termina el swing, igual que el jugador con su attack lock.
+	// Sin esto volvía a "chase" al primer tick y avanzaba mientras el cliente aún
+	// animaba el golpe: el enemigo atacaba deslizándose.
+	AttackUntil time.Time `json:"-"`
+	// NextAttackAt: cadencia REAL entre golpes. AttackUntil solo dura lo que el
+	// swing (una fracción, con tope de 600ms), así que sin esto el enemigo volvía
+	// a atacar en cuanto terminaba la animación e ignoraba el AttackRate del
+	// admin: un enemigo de 2000ms atacaba cada 600ms. Entre swing y swing vuelve
+	// a "chase", que es lo que hace legible el ciclo perseguir→atacar→perseguir.
+	NextAttackAt time.Time `json:"-"`
+
+	// Deambular (estado "wander"): es el estado por defecto de un enemigo sin
+	// objetivo. Se mueve en tramos cortos alrededor de su punto de aparición
+	// (HomeX/HomeY) alternando avance y pausa, en vez de quedarse plantado.
+	HomeX       float64   `json:"-"`
+	HomeY       float64   `json:"-"`
+	WanderUntil time.Time `json:"-"` // fin del tramo actual (avance o pausa)
+	WanderVX    float64   `json:"-"` // px/tick del tramo; (0,0) = tramo de pausa
+	WanderVY    float64   `json:"-"`
 	PendingNinjaCard string `json:"pending_ninja_card,omitempty"` // Player ID that triggered the ninja card
 	// NinjaCardChallengeID es el reto que el servidor emitió para esta card (single player).
 	// La respuesta se evalúa SIEMPRE contra este reto, nunca contra el challenge_id que
