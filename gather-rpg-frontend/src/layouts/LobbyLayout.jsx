@@ -365,17 +365,16 @@ export const LobbyLayout = () => {
     }
   }, [activeMission, activeOverlay, currentSceneKey]);
 
-  // Handle the auto-hide timer when showMissionBanner is activated
+  // El letrero dura lo mismo que la tregua de entrada, ni más ni menos: durante
+  // esa ventana el servidor congela a los enemigos y la escena bloquea al
+  // jugador, así que si el cartel se fuera antes (o después) el jugador estaría
+  // quieto sin saber por qué. Sin tregua (mapas sin combate) se usa el 3s de
+  // siempre.
   useEffect(() => {
-    let timer;
-    if (showMissionBanner) {
-      timer = setTimeout(() => {
-        setShowMissionBanner(false);
-      }, 3000);
-    }
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
+    if (!showMissionBanner) return undefined;
+    const graceLeft = (useGameStore.getState().combatGraceUntil || 0) - Date.now();
+    const timer = setTimeout(() => setShowMissionBanner(false), graceLeft > 0 ? graceLeft : 3000);
+    return () => clearTimeout(timer);
   }, [showMissionBanner]);
 
 

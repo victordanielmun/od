@@ -557,7 +557,12 @@ export class LobbyScene extends Phaser.Scene {
 
     // 2. Dead state: stop everything for local player
     const hasNinjaCard = useGameStore.getState().ninjaCardData != null;
-    if (this.isDead || hasNinjaCard || this.isStunned) {
+    // Briefing de misión: durante la tregua de entrada el servidor tiene a los
+    // enemigos congelados, así que el jugador tampoco se mueve — poder pasearse
+    // entre estatuas mientras se lee el letrero rompía la entrada a la misión.
+    // Es la misma ventana que decide cuánto dura el letrero (ver LobbyLayout).
+    const inBriefing = Date.now() < (useGameStore.getState().combatGraceUntil || 0);
+    if (this.isDead || hasNinjaCard || this.isStunned || inBriefing) {
       if (this.player.body) this.player.body.setVelocity(0, 0);
       return;
     }
@@ -580,10 +585,12 @@ export class LobbyScene extends Phaser.Scene {
       this.lastSyncUpdate = time;
     }
 
-    // Ensure enemies have player as target (needed if player respawns or scene restarts)
+    // Ensure enemies have player as target (needed if player respawns or scene restarts).
+    // Excepto durante la tregua de entrada: ahí el target se anula a propósito
+    // (ver EnemySystem/combatGrace) y volver a ponerlo lo desharía cada frame.
     if (this.activeEnemies && this.player) {
       this.activeEnemies.forEach(sprite => {
-        if (!sprite.target) sprite.target = this.player;
+        if (!sprite.target && !sprite.combatGrace) sprite.target = this.player;
       });
     }
 
@@ -644,7 +651,12 @@ export class LobbyScene extends Phaser.Scene {
     const body = this.player.body;
     body.setVelocity(0);
 
-    if (!this.isTyping()) {
+    // Golpear ancla en el sitio: mientras corre la animación del ataque no se lee
+    // movimiento (los enemigos hacen lo mismo). No hacemos `return` para que el
+    // bloque de red de abajo siga emitiendo la animación de golpe a los demás.
+    const attackRooted = this.combatSystem?.isAttackLocked?.() === true;
+
+    if (!this.isTyping() && !attackRooted) {
       const left = this.cursors.left.isDown || this.wasd.left.isDown || (this.virtualInputs && this.virtualInputs.left);
       const right = this.cursors.right.isDown || this.wasd.right.isDown || (this.virtualInputs && this.virtualInputs.right);
       const up = this.cursors.up.isDown || this.wasd.up.isDown || (this.virtualInputs && this.virtualInputs.up);

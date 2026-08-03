@@ -625,6 +625,33 @@ func (r *Room) tickAI() {
 		eligibleClients = append(eligibleClients, client)
 	}
 
+	// Briefing: mientras TODOS los presentes están en su tregua de entrada, el
+	// mapa se queda quieto. No basta con no asignarles objetivo —eso ya se hacía
+	// arriba— porque los enemigos seguían deambulando mientras el jugador leía el
+	// letrero de la misión. Se exige que estén todos: en cooperativo, alguien que
+	// entra tarde no debe congelar un combate en curso.
+	if len(r.Clients) > 0 && len(eligibleClients) == 0 {
+		frozen := make([]models.ActiveEnemy, 0, len(r.ActiveEnemies))
+		for _, enemy := range r.ActiveEnemies {
+			if enemy.FSMState == "dead" || enemy.FSMState == "ninja_card" {
+				continue
+			}
+			enemy.FSMState = "idle"
+			enemy.TargetID = ""
+			// Se aplaza el paseo para que al terminar el briefing arranque con un
+			// tramo nuevo en vez de continuar uno vencido hace rato.
+			enemy.WanderUntil = now
+			frozen = append(frozen, *enemy)
+		}
+		if len(frozen) > 0 {
+			r.broadcastToAll(&models.WSMessage{
+				Type:    MsgEnemyUpdate,
+				Payload: models.EnemyUpdateBroadcast{RoomID: r.ID, Enemies: frozen},
+			})
+		}
+		return
+	}
+
 	// engagedClients: jugadores que ya tienen encima a un enemigo a media
 	// estocada. Ese enemigo no entra en el reparto (está ocupado), así que sin
 	// esto el reparto le adjudicaría el jugador a OTRO enemigo y acabarían

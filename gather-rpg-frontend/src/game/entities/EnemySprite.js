@@ -8,6 +8,7 @@ import { ensureItemSprite } from '../systems/itemSprites';
 // Estados posibles de la FSM
 const STATES = {
   IDLE:    'idle',
+  WANDER:  'wander', // sin objetivo: se pasea cerca de donde apareció (lo mueve el servidor)
   CHASE:   'chase',
   ATTACK:  'attack',
   THROW:   'throw',
@@ -48,6 +49,10 @@ export default class EnemySprite extends NPCSprite {
     this.attackCooldown = 0;
     this._attackHitDealt = false;
     this.target = null;    // referencia al jugador
+    // true en cuanto llega el primer update del servidor: a partir de ahí la FSM
+    // local no decide a quién perseguir, solo reproduce lo que dicta la sala.
+    // (El beat'em up usa este mismo sprite SIN servidor y sigue decidiendo solo.)
+    this.serverDriven = false;
 
     // Asegurar que tiene físicas si no se añadieron en super
     if (!this.body) {
@@ -116,6 +121,7 @@ export default class EnemySprite extends NPCSprite {
   // ─── Sincronizar desde el Servidor (Multiplayer) ─────────────────────────
   syncFromServer(data) {
     if (this.fsm === STATES.DEAD) return;
+    this.serverDriven = true;
     this.enemyType = data.type || 'melee';
     if (this.enemyType === 'boss') this._setupBoss();
     const oldX = this.x;
@@ -433,9 +439,20 @@ export default class EnemySprite extends NPCSprite {
 
       case STATES.IDLE:
         if (this.body) this.body.setVelocity(0, 0);
-        if (this._distToTarget() < (this.config?.detectRange ?? 280)) {
+        // Enganchar al jugador por cercanía es decisión del SERVIDOR cuando la
+        // sala manda (él reparte un atacante por jugador y manda a deambular al
+        // resto). Predecirlo aquí hacía que un enemigo al que el servidor había
+        // mandado a pasear se lanzara igual a por ti, tirando cada uno de su lado.
+        // En el beat'em up no hay servidor: ahí la FSM local sí decide.
+        if (!this.serverDriven && this._distToTarget() < (this.config?.detectRange ?? 280)) {
           this._changeState(STATES.CHASE);
         }
+        break;
+
+      case STATES.WANDER:
+        // Paseo sin objetivo: la posición la marca el servidor (tramos cortos
+        // alrededor de su punto de aparición), aquí solo se anima.
+        if (this.body) this.body.setVelocity(0, 0);
         break;
 
       case STATES.CHASE:
@@ -444,10 +461,18 @@ export default class EnemySprite extends NPCSprite {
           this._changeState(STATES.IDLE);
           break;
         }
-        // El thrower no persigue ni hace melee localmente: su posición (incluido
-        // el kiting) la gobierna el servidor, que lo pasa a 'throw' en rango.
-        if (this.enemyType === 'thrower') {
+        // Cuando manda el servidor, la POSICIÓN es suya: aquí solo se anima y se
+        // mira hacia el jugador. Perseguir también en local arrastraba al enemigo
+        // hacia el jugador entre tick y tick, incluso mientras el servidor lo
+        // tenía clavado ejecutando el golpe: los rangos no coinciden (servidor
+        // 90px, cliente 70), así que en esa franja el servidor decía "attack" y
+        // el cliente seguía en "chase" empujando. De ahí el "se mueve mientras
+        // ataca". En el beat'em up local no hay servidor y la FSM sí persigue.
+        if (this.serverDriven || this.enemyType === 'thrower') {
           if (this.body) this.body.setVelocity(0, 0);
+          if (this.target?.active) {
+            this.setFacing(this.target.x < this.x ? 'left' : 'right');
+          }
           break;
         }
         this._moveTowardTarget();

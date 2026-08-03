@@ -286,3 +286,55 @@ func TestLayoutIsOptional(t *testing.T) {
 	})
 	assert.Contains(t, []string{"wander", "idle"}, enemy.FSMState)
 }
+
+// ── Briefing: el mapa se queda quieto mientras se lee el letrero ────────────
+// No basta con que el enemigo no te apunte: seguía deambulando por encima
+// mientras el jugador leía la misión.
+
+func TestEnemiesFreezeDuringEntryGrace(t *testing.T) {
+	room, client := newAIRoom(t, 5000, 5000) // jugador lejos: nadie persigue
+	client.CombatGraceUntil = time.Now().Add(5 * time.Second)
+	enemy := addEnemy(room, 300, 300)
+
+	x, y := enemy.X, enemy.Y
+	for i := 0; i < 30; i++ {
+		room.tickAI()
+	}
+
+	assert.Equal(t, "idle", enemy.FSMState, "durante el briefing el enemigo está quieto")
+	assert.Equal(t, x, enemy.X, "no debe desplazarse mientras dura la tregua")
+	assert.Equal(t, y, enemy.Y)
+}
+
+func TestEnemiesResumeAfterTheGrace(t *testing.T) {
+	room, client := newAIRoom(t, 5000, 5000)
+	client.CombatGraceUntil = time.Now().Add(5 * time.Second)
+	enemy := addEnemy(room, 300, 300)
+
+	room.tickAI()
+	assert.Equal(t, "idle", enemy.FSMState)
+
+	// Terminada la tregua vuelve a deambular.
+	client.CombatGraceUntil = time.Now().Add(-time.Millisecond)
+	room.tickAI()
+	assert.Contains(t, []string{"wander", "idle"}, enemy.FSMState)
+}
+
+// En cooperativo, alguien que entra tarde NO debe congelar el combate en curso.
+func TestALateJoinerDoesNotFreezeAnOngoingFight(t *testing.T) {
+	room, veteran := newAIRoom(t, 1000, 1000)
+	veteran.CombatGraceUntil = time.Now().Add(-time.Second) // ya lleva rato dentro
+
+	newcomer := &Client{
+		ID: uuid.New(), X: 1005, Y: 1005, Anim: "idle",
+		send:             make(chan []byte, 256),
+		CombatGraceUntil: time.Now().Add(5 * time.Second),
+	}
+	room.Clients[newcomer] = true
+
+	enemy := addEnemy(room, 950, 1000)
+	room.tickAI()
+
+	assert.NotEqual(t, "idle", enemy.FSMState, "el combate del veterano sigue vivo")
+	assert.Equal(t, veteran.ID.String(), enemy.TargetID, "y apunta al que ya no está en tregua")
+}
