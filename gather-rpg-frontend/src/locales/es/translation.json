@@ -446,6 +446,12 @@
     },
     "loading_world": "CARGANDO MUNDO...",
     "loading_assets": "Cargando recursos",
+    "room_chat": {
+      "title": "Chat de sala",
+      "no_messages": "Aún no ha hablado nadie.",
+      "input_placeholder": "Mensaje a la sala...",
+      "send": "Enviar"
+    },
     "challenge": {
       "title": "Reto",
       "joining": "Uniéndose...",

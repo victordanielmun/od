@@ -101,7 +101,11 @@ type PlayerMovedBroadcast struct {
 	IsMoving    bool      `json:"is_moving"`
 	Username    string    `json:"username"`
 	CharacterID string    `json:"character_id"`
-	Timestamp   int64     `json:"timestamp,omitempty"`
+	// IsAI marca a los jugadores gobernados por el servidor (los del lobby). El
+	// cliente lo necesita para no ofrecerles los flujos sociales de una persona
+	// real (petición de amistad, invitación a sala, bloqueo).
+	IsAI      bool  `json:"is_ai,omitempty"`
+	Timestamp int64 `json:"timestamp,omitempty"`
 }
 
 type JoinChallengePayload struct {

@@ -444,6 +444,12 @@
     },
     "loading_world": "LOADING WORLD...",
     "loading_assets": "Loading resources",
+    "room_chat": {
+      "title": "Room chat",
+      "no_messages": "Nobody has spoken yet.",
+      "input_placeholder": "Message the room...",
+      "send": "Send"
+    },
     "challenge": {
       "title": "Challenge",
       "joining": "Joining...",

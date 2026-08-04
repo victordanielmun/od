@@ -79,6 +79,10 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     activeChallengeId: null,
     challengeParticipants: [],
     challengeMessages: [],
+    // Chat de sala: solo llega en instancias de grupo (cooperativas y privadas por
+    // PIN). En un mapa público el servidor lo rechaza a propósito — allí se habla
+    // 1:1 por mensajes privados. Ver Room.IsGroupInstance en el backend.
+    roomMessages: [],
     activeMission: null,
     inventory: [],
     virtualControlsMode: loadVirtualControlsMode(), // 'auto' | 'always' | 'never'
@@ -238,7 +242,8 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                         // (p. ej. lobby) no pasa por ahí y queda como sala normal (null).
                         currentRoomType: isPending ? (pending.roomType || null) : null,
                         currentInviteCode: payload.invite_code || null,
-                        players: new Map() // Clear players from previous room
+                        players: new Map(), // Clear players from previous room
+                        roomMessages: []    // el chat es de ESTA sala, no se arrastra
                     });
                     // Request initial positions
                     wsClient.send('request_positions', {});
@@ -390,6 +395,10 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                                     anim: pos.anim || existing.anim,
                                     direction: pos.direction || existing.direction,
                                     character_id: pos.character_id || existing.character_id,
+                                    // is_ai no cambia una vez conocido, pero el flag viaja
+                                    // con cada posición: conservarlo evita perderlo si un
+                                    // mensaje llegara sin él.
+                                    is_ai: pos.is_ai ?? existing.is_ai ?? false,
                                     timestamp: Number(pos.timestamp || Date.now()),
                                     __logCounter: logCounter
                                 });
@@ -402,6 +411,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                                     anim: pos.anim || 'idle',
                                     direction: pos.direction || 'right',
                                     character_id: pos.character_id || '1',
+                                    is_ai: !!pos.is_ai,
                                     timestamp: pos.timestamp || Date.now()
                                 });
                             }
@@ -517,6 +527,34 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                     set(state => ({
                         challengeParticipants: state.challengeParticipants.filter(p => String(p.user_id) !== String(payload.user_id))
                     }));
+                });
+
+                wsClient.on('chat_broadcast', (payload) => {
+                    const senderId = String(payload.user_id || '');
+                    // Moderación: el servidor ya no entrega mensajes de usuarios
+                    // bloqueados, pero el filtro local cubre la ventana entre que se
+                    // crea el bloqueo y el hub lo recarga.
+                    if (senderId && get().blockedIds.has(senderId)) return;
+
+                    set(state => ({
+                        roomMessages: [
+                            ...state.roomMessages,
+                            {
+                                user_id: payload.user_id,
+                                username: payload.username,
+                                message: payload.message,
+                                timestamp: payload.timestamp
+                            }
+                        ]
+                    }));
+
+                    // Burbuja sobre el sprite del emisor. Los avisos del sistema
+                    // (user_id nulo) no tienen sprite al que colgarse: solo van al panel.
+                    if (senderId && senderId !== '00000000-0000-0000-0000-000000000000') {
+                        window.dispatchEvent(new CustomEvent('chat-message-received', {
+                            detail: { senderId, text: payload.message }
+                        }));
+                    }
                 });
 
                 wsClient.on('challenge_chat_broadcast', (payload) => {
@@ -731,6 +769,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
             activeChallengeId: null,
             challengeParticipants: [],
             challengeMessages: [],
+            roomMessages: [],
             chatRequests: [],
             activeChat: null
         });
@@ -772,6 +811,17 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
 
     closeChat: () => {
         set({ activeChat: null });
+    },
+
+    // Chat de sala (instancias de grupo). A diferencia de sendPrivateMessage NO
+    // añade el mensaje de forma optimista: el servidor devuelve el eco al propio
+    // emisor, así que el mensaje aparece cuando de verdad se ha aceptado — y
+    // añadirlo aquí además lo pintaría dos veces.
+    sendRoomMessage: (message) => {
+        const text = String(message || '').trim();
+        const roomId = get().currentRoomId;
+        if (!text || !roomId) return;
+        wsClient.send('chat_message', { room_id: roomId, message: text });
     },
 
     sendEmoji: (emojiId) => {
@@ -848,7 +898,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
         // so we don't bring ghost players/enemies to the new map.
         // _joiningRoomId marca la sala destino desde YA: a partir de aquí los
         // eventos de combate de la sala anterior (ticks en vuelo) se descartan.
-        set({ players: new Map(), enemies: new Map(), _joiningRoomId: roomId, _joiningSince: Date.now() });
+        set({ players: new Map(), enemies: new Map(), roomMessages: [], _joiningRoomId: roomId, _joiningSince: Date.now() });
 
         wsClient.send('join_room', payload);
     },

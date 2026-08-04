@@ -41,6 +41,13 @@ func main() {
 	// Schema setup (enums + AutoMigrate). Skipped when AUTO_MIGRATE=false: against a
 	// remote DB the introspection AutoMigrate runs takes minutes, so once the schema
 	// is stable you can start fast and only re-enable it after pulling schema changes.
+	// Cambios de esquema por DDL directo. Va FUERA del if de AutoMigrate a
+	// propósito: son sentencias idempotentes que Postgres resuelve en milisegundos
+	// (sin la introspección del esquema entero que hace AutoMigrate y que contra la
+	// BD remota tarda minutos), así que pueden correr en todos los arranques.
+	// Es el sitio donde añadir un cambio de esquema que deba aplicarse solo.
+	database.EnsureFastSchema()
+
 	if !cfg.AutoMigrate {
 		log.Println("AUTO_MIGRATE=false → skipping enum sync + AutoMigrate (fast startup)")
 	} else {
@@ -88,7 +95,8 @@ func main() {
 			&models.MapPickup{},
 			&models.MapPickupClaim{},
 			&models.PlayerNPCGift{},
-			&models.UserBlock{}, // bloqueos entre usuarios (moderación)
+			&models.UserBlock{},  // bloqueos entre usuarios (moderación)
+			&models.AIPlayer{},   // jugadores con IA (bots de charla); DDL manual en ai_players_schema.sql
 			// ── Membership / Billing (Stripe) ────────────────────────────────
 			&models.Subscription{},
 			&models.InfoTranslation{}, // cache de traducción de letreros de info (por hash de texto)
@@ -156,6 +164,9 @@ func main() {
 
 	translationService := services.NewTranslationService(llmClient)
 	dialogueService := services.NewDialogueService(npcRepo, missionRepo, missionService, llmClient, translationService)
+	// Jugadores con IA (bots de charla del lobby). Camino propio, sin relación con
+	// el pipeline de NPC/misiones que resuelve dialogueService.
+	aiPlayerService := services.NewAIPlayerService(llmClient)
 
 	// TTS Service & Handler
 	ttsService := services.NewTTSService(cfg.PiperExePath, cfg.PiperModelsDir, cfg.PiperCacheDir, cfg.TTSCacheTTLDays, cfg.TTSCacheMaxMB)
@@ -166,6 +177,7 @@ func main() {
 	// Acota las Ninja Cards al mundo/examen del jugador. Opcional por diseño: si
 	// falta, el combate cae al pool global de siempre.
 	hub.WorldService = worldService
+	hub.AIPlayerService = aiPlayerService
 	go hub.Run()
 
 	// Handlers
@@ -173,6 +185,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authService)
 	roomHandler := handlers.NewRoomHandler(roomService)
 	adminHandler := handlers.NewAdminHandler(npcService)
+	adminAIPlayerHandler := handlers.NewAdminAIPlayerHandler(aiPlayerService)
 	friendHandler := handlers.NewFriendHandler(friendService, hub)
 	learningHandler := handlers.NewLearningHandler(learningService, translationService)
 	dialogueHandler := handlers.NewDialogueHandler(dialogueService, hub)
@@ -320,6 +333,14 @@ func main() {
 	admin.Post("/skills", adminHandler.CreateSkill)
 	admin.Put("/skills/:id", adminHandler.UpdateSkill)
 	admin.Delete("/skills/:id", adminHandler.DeleteSkill)
+	// Jugadores con IA (bots de charla). CRUD propio: no comparte nada con el de
+	// NPCs porque son entidades distintas.
+	admin.Get("/ai-players", adminAIPlayerHandler.List)
+	admin.Post("/ai-players", adminAIPlayerHandler.Create)
+	admin.Post("/ai-players/seed-defaults", adminAIPlayerHandler.SeedDefaults)
+	admin.Put("/ai-players/:id", adminAIPlayerHandler.Update)
+	admin.Delete("/ai-players/:id", adminAIPlayerHandler.Delete)
+
 	admin.Get("/enemies", adminHandler.ListEnemies)
 	admin.Post("/enemies", adminHandler.CreateEnemy)
 	admin.Put("/enemies/:id", adminHandler.UpdateEnemy)

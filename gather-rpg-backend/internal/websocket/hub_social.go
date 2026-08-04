@@ -91,6 +91,14 @@ func (h *Hub) handleChatRequest(client *Client, payload models.ChatRequestPayloa
 		return
 	}
 
+	// Jugadores con IA: la conversación se abre en el acto. No pueden pulsar
+	// "aceptar" una solicitud, así que el trámite de amistad no aplica; y hacerles
+	// pasar por él dejaría al jugador esperando una respuesta que no llega nunca.
+	if h.isAIPlayer(targetID) {
+		h.openAIPlayerChat(client, targetID)
+		return
+	}
+
 	if database.DB == nil {
 		targetClient := h.findClientByID(targetID.String())
 
@@ -346,8 +354,10 @@ func (h *Hub) handlePrivateMessage(client *Client, payload models.PrivateMessage
 		return
 	}
 
-	// Only allow private messages between friends.
-	if !h.areFriends(client.ID, targetID) {
+	// Only allow private messages between friends. Los jugadores con IA quedan
+	// exentos: no tienen (ni pueden aceptar) solicitudes de amistad, y el sentido
+	// de que estén en el lobby es justamente poder escribirles sin trámite.
+	if !h.isAIPlayer(targetID) && !h.areFriends(client.ID, targetID) {
 		client.SendError("Solo puedes enviar mensajes a tus amigos")
 		return
 	}

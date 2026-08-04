@@ -38,6 +38,18 @@ type Client struct {
 	closeMu sync.RWMutex
 	closed  bool
 
+	// IsAI marca a los jugadores gobernados por el servidor (los bots de charla
+	// del lobby). No tienen socket: Conn es nil, así que NUNCA se les arrancan
+	// ReadPump/WritePump ni se les manda un close frame. Se registran solo en el
+	// índice clientsByID del hub —jamás en room.Clients— porque lo único que
+	// necesitan es que un mensaje privado sepa encontrarlos.
+	IsAI bool
+
+	// inbox recibe lo que a un jugador normal le llegaría por el socket. Sin él,
+	// un SendJSON a un bot llenaría su canal de salida (256 mensajes) y el hub
+	// empezaría a soltar "Client buffer full" en bucle, porque nadie lo drena.
+	inbox func(*models.WSMessage)
+
 	// Rate Limiter for position updates
 	// 20 updates per second, burst of 20
 	PosLimiter *rate.Limiter
@@ -228,7 +240,35 @@ func (c *Client) WritePump() {
 	}
 }
 
+// NewAIClient crea el cliente que representa a un bot. No hay socket al otro
+// lado: todo lo que le "envíe" el servidor va a su inbox, que es su cerebro.
+func NewAIClient(hub *Hub, id uuid.UUID, username, characterID string, inbox func(*models.WSMessage)) *Client {
+	return &Client{
+		Hub:         hub,
+		ID:          id,
+		Username:    username,
+		CharacterID: characterID,
+		IsAI:        true,
+		inbox:       inbox,
+		// Sin socket no hay canal de salida que drenar, pero se deja creado para
+		// que cualquier ruta que lo toque por descuido no encuentre un nil.
+		send: make(chan []byte, 1),
+	}
+}
+
 func (c *Client) SendJSON(v interface{}) {
+	// Los bots no tienen socket: el mensaje va a su cerebro y nunca al canal de
+	// salida. En una goroutine aparte porque responder implica llamar al LLM y
+	// esto se invoca desde el hilo del hub.
+	if c.IsAI {
+		if c.inbox != nil {
+			if msg, ok := v.(*models.WSMessage); ok {
+				go c.inbox(msg)
+			}
+		}
+		return
+	}
+
 	data, err := json.Marshal(v)
 	if err != nil {
 		log.Printf("Error marshalling JSON: %v", err)

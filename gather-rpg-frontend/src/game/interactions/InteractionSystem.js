@@ -107,6 +107,10 @@ export class InteractionSystem {
         );
 
         if (dist < 120) { // Increased from 80 to 120 so physical colliders (radius 40px each = min 80px apart) don't block interaction
+          // Los jugadores con IA entran por aquí igual que una persona, a
+          // propósito: la E manda chat_request y el servidor, al ver que el
+          // destino es un bot, abre la conversación en el acto en vez de tramitar
+          // una solicitud de amistad que nadie podría aceptar.
           foundPlayer = { id, name: sprite.username };
           break;
         }

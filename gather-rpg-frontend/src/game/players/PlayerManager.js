@@ -248,6 +248,11 @@ export class PlayerManager {
       false
     );
 
+    // Jugadores gobernados por el servidor (los del lobby). El sprite es idéntico
+    // al de una persona; la marca sirve para no ofrecerles los flujos sociales
+    // reales (amistad, invitación, bloqueo) desde InteractionSystem.
+    newPlayer.isAI = !!player.is_ai;
+
     this.scene.add.existing(newPlayer);
     this.sprites.set(id, newPlayer);
 

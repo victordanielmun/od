@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore';
-import { LayoutDashboard, Map as MapIcon, Settings, LogOut, Gamepad2, Users, Terminal, ScrollText, Package, ShoppingBag, Swords, Brain, MessageSquare, Ban, Sparkles, FlaskConical, Crown, Globe } from 'lucide-react';
+import { LayoutDashboard, Map as MapIcon, Settings, LogOut, Gamepad2, Users, Terminal, ScrollText, Package, ShoppingBag, Swords, Brain, MessageSquare, Ban, Sparkles, FlaskConical, Crown, Globe, Bot } from 'lucide-react';
 import { LanguageSwitcher } from '../components/common/LanguageSwitcher';
 
 export const AdminLayout = () => {
@@ -45,6 +45,7 @@ export const AdminLayout = () => {
         { path: '/admin/enemy-models', label: t('admin.nav.enemy_models'), icon: Swords },
         { path: '/admin/enemies', label: t('admin.nav.enemy_visualizer'), icon: Gamepad2 },
         { path: '/admin/bosses', label: 'Visualizador Jefes', icon: Crown },
+        { path: '/admin/ai-players', label: 'Jugadores IA', icon: Bot },
         { path: '/admin/ai-test', label: t('admin.nav.ai_test'), icon: Terminal },
         { path: '/admin/characters', label: t('admin.nav.characters'), icon: Gamepad2 },
         { path: '/admin/whatsapp', label: 'WhatsApp', icon: MessageSquare },

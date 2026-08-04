@@ -18,6 +18,7 @@ import { AdminCharacters } from './pages/admin/AdminCharacters';
 import { AdminNPCDefinitions } from './pages/admin/AdminNPCDefinitions';
 import { AdminNPCs } from './pages/admin/AdminNPCs';
 import { AdminAITester } from './pages/admin/AdminAITester';
+import { AdminAIPlayers } from './pages/admin/AdminAIPlayers';
 import { AdminMissions } from './pages/admin/AdminMissions';
 import { AdminWorlds } from './pages/admin/AdminWorlds';
 import { AdminItems } from './pages/admin/AdminItems';
@@ -127,6 +128,7 @@ function App() {
           <Route path="missions" element={<AdminMissions />} />
           <Route path="enemies" element={<AdminEnemies />} />
           <Route path="enemy-models" element={<AdminEnemyDefinitions />} />
+          <Route path="ai-players" element={<AdminAIPlayers />} />
           <Route path="ai-test" element={<AdminAITester />} />
           <Route path="challenges" element={<AdminChallenges />} />
           <Route path="whatsapp" element={<AdminWhatsApp />} />
