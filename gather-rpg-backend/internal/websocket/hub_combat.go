@@ -22,7 +22,7 @@ const playerIFrames = 700 * time.Millisecond
 // no eligen al recién llegado como objetivo ni le hacen daño. Sin ella el jugador
 // aparece y los ogros ya lo están golpeando mientras aún se muestra el cartel de la
 // misión, así que muere antes de poder defenderse.
-const combatGracePeriod = 5 * time.Second
+const combatGracePeriod = 1 * time.Second
 
 // ninjaCardResultDelay es lo que el enemigo queda aturdido tras una respuesta
 // FALLIDA, para que el desenlace se lea en el HUD antes de que vuelva a pegar.

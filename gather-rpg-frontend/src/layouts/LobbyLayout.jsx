@@ -29,10 +29,8 @@ import api from '../services/api';
 import { VirtualArcadeControls } from '../components/lobby/VirtualArcadeControls';
 import { useDeviceType } from '../hooks/useDeviceType';
 
-// Debe igualar combatGracePeriod en gather-rpg-backend/internal/websocket/hub_combat.go:
-// es el fallback cuando el banner de misión se muestra sin (todavía) tener el
-// combat_grace real del WS, para que el peor caso también coincida con la tregua real.
-const COMBAT_GRACE_FALLBACK_MS = 5000;
+// Cuánto permanece visible el letrero "Aventura Iniciada" antes de ocultarse solo.
+const MISSION_BANNER_DURATION_MS = 2000;
 
 export const LobbyLayout = () => {
   const { t, i18n } = useTranslation();
@@ -41,7 +39,7 @@ export const LobbyLayout = () => {
   const user = useAuthStore(state => state.user);
   const { isTouch } = useDeviceType();
   const virtualControlsMode = useGameStore(state => state.virtualControlsMode);
-  
+
   const musicVolume = useAudioStore(state => state.musicVolume);
   const setVolume = useAudioStore(state => state.setVolume);
   const [prevVolume, setPrevVolume] = useState(musicVolume > 0 ? musicVolume : 0.5);
@@ -137,7 +135,6 @@ export const LobbyLayout = () => {
   const sendChallengeMessage = useGameStore(state => state.sendChallengeMessage);
   const userRole = useAuthStore(state => state.user?.role);
   const activeMission = useGameStore(state => state.activeMission);
-  const combatGraceUntil = useGameStore(state => state.combatGraceUntil);
   const fetchActiveMission = useGameStore(state => state.fetchActiveMission);
   const acceptMission = useGameStore(state => state.acceptMission);
   const currentSceneKey = useGameStore(state => state.currentSceneKey);
@@ -300,17 +297,22 @@ export const LobbyLayout = () => {
   }, [activeChallengeId, activeOverlay, minigameData]);
 
   useEffect(() => {
-    if (currentRoomId && currentSceneKey) {
-      // Dedupe per scene: during a teleport scene_key updates before room_id, and
-      // React StrictMode double-invokes effects in dev, so this fired twice and
-      // showed the "mission mode" notification twice. The fetch is scene-based, so
-      // one fetch per distinct scene is enough.
+    if (currentSceneKey) {
+      // No se espera currentRoomId: el fetch es scene-based (room-agnostic, ver
+      // fetchActiveMission), y scene_key ya está disponible antes que room_id
+      // (éste solo llega con el room_joined, el último paso del handshake). Antes
+      // se esperaban ambos y el letrero de misión quedaba retenido hasta después
+      // de todo el round-trip de sala en vez de pedirse en paralelo.
+      //
+      // Dedupe per scene: React StrictMode double-invokes effects in dev, so this
+      // fired twice and showed the "mission mode" notification twice. The fetch is
+      // scene-based, so one fetch per distinct scene is enough.
       if (fetchedMissionSceneRef.current === currentSceneKey) return;
       fetchedMissionSceneRef.current = currentSceneKey;
       console.log(`[LobbyLayout] Fetching mission for scene: ${currentSceneKey}`);
       fetchActiveMission(currentSceneKey);
     }
-  }, [currentRoomId, currentSceneKey, fetchActiveMission]);
+  }, [currentSceneKey, fetchActiveMission]);
 
   // Accept the scene's mission on arrival in its instance (One Map, One Mission).
   // Progress is no longer auto-created, so this binds the mission to THIS room so
@@ -372,22 +374,11 @@ export const LobbyLayout = () => {
     }
   }, [activeMission, activeOverlay, currentSceneKey]);
 
-  // El letrero dura lo mismo que la tregua de entrada, ni más ni menos: durante
-  // esa ventana el servidor congela a los enemigos y la escena bloquea al
-  // jugador, así que si el cartel se fuera antes (o después) el jugador estaría
-  // quieto sin saber por qué. `activeMission` llega por REST y `combatGraceUntil`
-  // por WebSocket ('combat_grace'): no hay garantía de orden entre ambos. Este
-  // efecto depende de `combatGraceUntil` (no solo se lee una vez al montar) para
-  // que, si el WS llega DESPUÉS de que el banner ya esté visible, el timer se
-  // recalcule con el valor real en vez de quedarse con el fallback. El fallback
-  // (sin tregua, p. ej. mapas sin combate) iguala la tregua real del backend
-  // (combatGracePeriod en hub_combat.go) para que el peor caso también coincida.
   useEffect(() => {
     if (!showMissionBanner) return undefined;
-    const graceLeft = (combatGraceUntil || 0) - Date.now();
-    const timer = setTimeout(() => setShowMissionBanner(false), graceLeft > 0 ? graceLeft : COMBAT_GRACE_FALLBACK_MS);
+    const timer = setTimeout(() => setShowMissionBanner(false), MISSION_BANNER_DURATION_MS);
     return () => clearTimeout(timer);
-  }, [showMissionBanner, combatGraceUntil]);
+  }, [showMissionBanner]);
 
 
   const gameRef = useRef(null); // Add ref to control game from UI
@@ -423,11 +414,10 @@ export const LobbyLayout = () => {
         <div className="absolute top-4 right-4 z-20 pointer-events-auto flex items-center gap-2">
           <button
             onClick={toggleMusicMute}
-            className={`flex items-center justify-center p-2 rounded-xl border transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-lg ${
-              musicVolume === 0
-                ? 'bg-red-600/30 hover:bg-red-600/50 text-red-200 border-red-500/30'
-                : 'bg-yellow-500/10 hover:bg-yellow-500/25 text-yellow-400 border-yellow-500/20'
-            }`}
+            className={`flex items-center justify-center p-2 rounded-xl border transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-lg ${musicVolume === 0
+              ? 'bg-red-600/30 hover:bg-red-600/50 text-red-200 border-red-500/30'
+              : 'bg-yellow-500/10 hover:bg-yellow-500/25 text-yellow-400 border-yellow-500/20'
+              }`}
             title={musicVolume === 0 ? "Unmute Music" : "Mute Music"}
           >
             {musicVolume === 0 ? (
@@ -493,13 +483,12 @@ export const LobbyLayout = () => {
               {(!i18n.language.startsWith('en') ? (activeMission.description || activeMission.description_en) : (activeMission.description_en || activeMission.description)) || activeMission.scene_key || t('lobby.mission.mysterious_adventure')}
             </div>
             {['individual', 'cooperative', 'competitive'].includes(activeMission.mode) && (
-              <div className={`mt-3 sm:mt-4 text-[10px] sm:text-xs font-semibold px-3 py-1 rounded-full border text-center ${
-                activeMission.mode === 'cooperative'
-                  ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
-                  : activeMission.mode === 'competitive'
-                    ? 'bg-red-500/15 border-red-400/40 text-red-200'
-                    : 'bg-sky-500/15 border-sky-400/40 text-sky-200'
-              }`}>
+              <div className={`mt-3 sm:mt-4 text-[10px] sm:text-xs font-semibold px-3 py-1 rounded-full border text-center ${activeMission.mode === 'cooperative'
+                ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
+                : activeMission.mode === 'competitive'
+                  ? 'bg-red-500/15 border-red-400/40 text-red-200'
+                  : 'bg-sky-500/15 border-sky-400/40 text-sky-200'
+                }`}>
                 {t(`lobby.mission.mode_${activeMission.mode}`)}
               </div>
             )}
@@ -586,19 +575,62 @@ export const LobbyLayout = () => {
 
       {/* Overlays (Z-Index 40) */}
       {activeOverlay && (
-      <div className="absolute inset-0 bg-black/70 z-[60] flex items-center justify-center p-8 backdrop-blur-sm">
-        {activeOverlay === 'minigame' && minigameData && minigameData.minigameType === 'chess' ? (
-          <ChessMinigameHUD
-            minigameId={minigameData.minigameId}
-            onClose={() => {
-              leaveChallenge();
-              setActiveOverlay(null);
-              setMinigameData(null);
-            }}
-          />
-        ) : activeOverlay === 'read' ? (
-          <div className="bg-gray-950/95 border border-yellow-500/30 rounded-2xl w-full max-w-lg overflow-hidden relative shadow-[0_0_50px_rgba(234,179,8,0.15)] animate-fade-in flex flex-col p-8 items-center text-center pointer-events-auto backdrop-blur-sm">
-            <div className="absolute top-4 right-4">
+        <div className="absolute inset-0 bg-black/70 z-[60] flex items-center justify-center p-8 backdrop-blur-sm">
+          {activeOverlay === 'minigame' && minigameData && minigameData.minigameType === 'chess' ? (
+            <ChessMinigameHUD
+              minigameId={minigameData.minigameId}
+              onClose={() => {
+                leaveChallenge();
+                setActiveOverlay(null);
+                setMinigameData(null);
+              }}
+            />
+          ) : activeOverlay === 'read' ? (
+            <div className="bg-gray-950/95 border border-yellow-500/30 rounded-2xl w-full max-w-lg overflow-hidden relative shadow-[0_0_50px_rgba(234,179,8,0.15)] animate-fade-in flex flex-col p-8 items-center text-center pointer-events-auto backdrop-blur-sm">
+              <div className="absolute top-4 right-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveOverlay(null);
+                    setReadPopupText('');
+                    setReadPopupTranslating(false);
+                    readReqRef.current = '';
+                  }}
+                  className="text-gray-400 hover:text-white transition cursor-pointer p-1 rounded-lg hover:bg-white/5 border-0 bg-transparent outline-none"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="w-12 h-12 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center mb-4 text-yellow-500 shadow-inner">
+                <ScrollText size={24} />
+              </div>
+
+              <h3 className="text-lg font-bold text-white mb-4 tracking-wide uppercase flex items-center gap-2">
+                {t('lobby.read_popup.title') || "Mensaje del Letrero"}
+                {readPopupTranslating && (
+                  <span className="text-[10px] font-semibold text-yellow-400/80 normal-case tracking-normal animate-pulse">
+                    {t('lobby.read_popup.translating') || 'traduciendo…'}
+                  </span>
+                )}
+              </h3>
+
+              <div className="bg-gray-900/60 border border-gray-800/80 rounded-xl p-6 w-full mb-2 max-h-[60vh] overflow-y-auto custom-scrollbar text-left text-sm text-gray-300 font-sans">
+                <InfoMarkdown content={(readPopupShowOriginal || !readPopupTranslated) ? readPopupText : readPopupTranslated} />
+              </div>
+
+              {readPopupTranslated && (
+                <button
+                  type="button"
+                  onClick={() => setReadPopupShowOriginal(v => !v)}
+                  className="self-end text-[11px] text-yellow-400/70 hover:text-yellow-300 underline mb-4 outline-none cursor-pointer bg-transparent border-0"
+                >
+                  {readPopupShowOriginal
+                    ? (t('lobby.read_popup.show_translation') || 'Ver traducción')
+                    : (t('lobby.read_popup.show_original') || 'Ver original')}
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
@@ -607,101 +639,57 @@ export const LobbyLayout = () => {
                   setReadPopupTranslating(false);
                   readReqRef.current = '';
                 }}
-                className="text-gray-400 hover:text-white transition cursor-pointer p-1 rounded-lg hover:bg-white/5 border-0 bg-transparent outline-none"
+                className="bg-yellow-500/10 hover:bg-yellow-500/25 border border-yellow-500/30 hover:border-yellow-500/50 text-yellow-400 w-full py-2.5 rounded-xl transition text-xs font-bold active:scale-95 cursor-pointer uppercase tracking-wider outline-none"
               >
-                <X size={20} />
+                {t('lobby.read_popup.close') || "Entendido"}
               </button>
             </div>
-            
-            <div className="w-12 h-12 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center mb-4 text-yellow-500 shadow-inner">
-              <ScrollText size={24} />
-            </div>
+          ) : activeOverlay === 'minigame' && minigameData && minigameData.minigameType === 'park' ? (
+            <div className="bg-gray-800 rounded-xl w-full max-w-md overflow-hidden relative shadow-2xl border border-gray-700 animate-fade-in flex flex-col p-8 items-center text-center pointer-events-auto">
+              <h2 className="text-2xl font-bold text-white mb-2">🌳 Zona Social del Parque</h2>
+              <p className="text-xs text-gray-400 mb-6 font-semibold">Comparte audio con los demás en esta sala.</p>
 
-            <h3 className="text-lg font-bold text-white mb-4 tracking-wide uppercase flex items-center gap-2">
-              {t('lobby.read_popup.title') || "Mensaje del Letrero"}
-              {readPopupTranslating && (
-                <span className="text-[10px] font-semibold text-yellow-400/80 normal-case tracking-normal animate-pulse">
-                  {t('lobby.read_popup.translating') || 'traduciendo…'}
-                </span>
-              )}
-            </h3>
-
-            <div className="bg-gray-900/60 border border-gray-800/80 rounded-xl p-6 w-full mb-2 max-h-[60vh] overflow-y-auto custom-scrollbar text-left text-sm text-gray-300 font-sans">
-              <InfoMarkdown content={(readPopupShowOriginal || !readPopupTranslated) ? readPopupText : readPopupTranslated} />
-            </div>
-
-            {readPopupTranslated && (
-              <button
-                type="button"
-                onClick={() => setReadPopupShowOriginal(v => !v)}
-                className="self-end text-[11px] text-yellow-400/70 hover:text-yellow-300 underline mb-4 outline-none cursor-pointer bg-transparent border-0"
-              >
-                {readPopupShowOriginal
-                  ? (t('lobby.read_popup.show_translation') || 'Ver traducción')
-                  : (t('lobby.read_popup.show_original') || 'Ver original')}
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => {
-                setActiveOverlay(null);
-                setReadPopupText('');
-                setReadPopupTranslating(false);
-                readReqRef.current = '';
-              }}
-              className="bg-yellow-500/10 hover:bg-yellow-500/25 border border-yellow-500/30 hover:border-yellow-500/50 text-yellow-400 w-full py-2.5 rounded-xl transition text-xs font-bold active:scale-95 cursor-pointer uppercase tracking-wider outline-none"
-            >
-              {t('lobby.read_popup.close') || "Entendido"}
-            </button>
-          </div>
-        ) : activeOverlay === 'minigame' && minigameData && minigameData.minigameType === 'park' ? (
-          <div className="bg-gray-800 rounded-xl w-full max-w-md overflow-hidden relative shadow-2xl border border-gray-700 animate-fade-in flex flex-col p-8 items-center text-center pointer-events-auto">
-            <h2 className="text-2xl font-bold text-white mb-2">🌳 Zona Social del Parque</h2>
-            <p className="text-xs text-gray-400 mb-6 font-semibold">Comparte audio con los demás en esta sala.</p>
-            
-            <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 w-full mb-6">
-              <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-3 text-left">Participantes en voz ({challengeParticipants.length}/5)</div>
-              <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                {challengeParticipants.map(p => (
-                  <div key={String(p.user_id)} className="text-sm text-gray-200 bg-gray-800 border border-gray-700 px-3 py-2 rounded truncate text-left">
-                    🎙️ {p.username}
-                  </div>
-                ))}
+              <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 w-full mb-6">
+                <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-3 text-left">Participantes en voz ({challengeParticipants.length}/5)</div>
+                <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                  {challengeParticipants.map(p => (
+                    <div key={String(p.user_id)} className="text-sm text-gray-200 bg-gray-800 border border-gray-700 px-3 py-2 rounded truncate text-left">
+                      🎙️ {p.username}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <button
-              onClick={async () => {
-                if (!localStream) {
-                  await startMedia();
-                } else {
-                  toggleAudio();
-                }
-              }}
-              title={isAudioEnabled ? 'Silenciarme' : 'Activar micrófono'}
-              className={`mb-4 w-full p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border active:scale-95 cursor-pointer ${
-                isAudioEnabled
+              <button
+                onClick={async () => {
+                  if (!localStream) {
+                    await startMedia();
+                  } else {
+                    toggleAudio();
+                  }
+                }}
+                title={isAudioEnabled ? 'Silenciarme' : 'Activar micrófono'}
+                className={`mb-4 w-full p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border active:scale-95 cursor-pointer ${isAudioEnabled
                   ? 'bg-green-950/30 hover:bg-green-950/50 border-green-700/50 text-green-400 font-bold text-xs'
                   : 'bg-red-950/30 hover:bg-red-950/50 border-red-800/50 text-red-400 font-bold text-xs'
-              }`}
-            >
-              {isAudioEnabled ? <Mic size={14} /> : <MicOff size={14} />}
-              <span>{isAudioEnabled ? 'Micrófono Activo' : 'Micrófono Silenciado'}</span>
-            </button>
+                  }`}
+              >
+                {isAudioEnabled ? <Mic size={14} /> : <MicOff size={14} />}
+                <span>{isAudioEnabled ? 'Micrófono Activo' : 'Micrófono Silenciado'}</span>
+              </button>
 
-            <button
-              onClick={() => {
-                leaveChallenge();
-                setActiveOverlay(null);
-                setMinigameData(null);
-              }}
-              className="bg-red-700 hover:bg-red-600 text-white w-full py-2.5 rounded-xl transition text-xs font-bold active:scale-95 cursor-pointer"
-            >
-              Salir de la Sala
-            </button>
-          </div>
-        ) : activeOverlay === 'challenge' ? (
+              <button
+                onClick={() => {
+                  leaveChallenge();
+                  setActiveOverlay(null);
+                  setMinigameData(null);
+                }}
+                className="bg-red-700 hover:bg-red-600 text-white w-full py-2.5 rounded-xl transition text-xs font-bold active:scale-95 cursor-pointer"
+              >
+                Salir de la Sala
+              </button>
+            </div>
+          ) : activeOverlay === 'challenge' ? (
             <div className="bg-gray-800 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden relative shadow-2xl border border-gray-700 animate-fade-in flex flex-col">
               <div className="p-6 border-b border-gray-700 flex items-center justify-between">
                 <div className="min-w-0">
