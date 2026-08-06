@@ -105,12 +105,12 @@ func (h *Hub) checkUserProximity(roomID, userID string, x, y float64) {
 		return
 	}
 
-	// Cooperative rooms use a "meeting room" audio model: every participant is
-	// connected at full volume from the moment they join (see handleJoinRoom).
-	// They share the same session_id ("room:"+roomID), so running proximity here
-	// would attenuate volume by distance and tear down connections when players
-	// walk apart — breaking the full-room audio. Skip proximity for these rooms.
-	if room.Type == "cooperative" {
+	// Las salas de grupo (cooperativas e instancias privadas) usan audio de "sala
+	// de reuniones": todos quedan conectados a volumen máximo desde que entran
+	// (ver handleJoinRoom). Comparten el mismo session_id ("room:"+roomID), así que
+	// dejar correr la proximidad aquí atenuaría el volumen por distancia y cortaría
+	// las conexiones al separarse — justo lo que rompe el audio de sala completa.
+	if room.IsGroupInstance() {
 		return
 	}
 

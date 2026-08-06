@@ -789,11 +789,14 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 // se va abriendo hasta el pool global, porque quedarse sin card dejaría al
 // enemigo inmatable.
 func (h *Hub) getChallengeForClient(client *Client, room *Room) *models.LearningChallenge {
-	var profile models.UserLearningProfile
 	level := models.DifficultyBeginner
-	if database.DB != nil {
+	if cached, ok := client.CachedEnglishLevel(); ok {
+		level = cached
+	} else if database.DB != nil {
+		var profile models.UserLearningProfile
 		if dbErr := database.DB.Where("user_id = ?", client.ID).First(&profile).Error; dbErr == nil {
 			level = profile.EnglishLevel
+			client.SetCachedEnglishLevel(level)
 		}
 	}
 

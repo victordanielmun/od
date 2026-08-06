@@ -7,6 +7,7 @@ import (
 	"gather-rpg-backend/internal/models"
 	"log"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,6 +52,13 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 		room.MaxUsers = dbRoom.MaxUsers
 		room.SceneKey = dbRoom.SceneKey
 		room.Type = dbRoom.Type
+		// InviteCode e IsPublic también se rehidratan. Faltaban: una sala privada
+		// que se recreara en memoria por esta vía (reinicio del backend, o
+		// cualquier join_room directo tras haberse vaciado) perdía su PIN, así que
+		// el emparejamiento por código de handleRequestMapJoin ya no la encontraba
+		// y abría una instancia nueva dejando dentro a quien ya estaba.
+		room.InviteCode = dbRoom.InviteCode
+		room.IsPublic = dbRoom.IsPublic
 		// Terreno del editor: sin esto los enemigos deambulan sobre los vacíos.
 		if cfg, err := h.RoomService.GetMapConfig(dbRoom.SceneKey); err == nil && cfg != nil {
 			room.SetLayout(cfg.WallsJSON)
@@ -96,8 +104,13 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 				// NEW: If the room is now empty, destroy it so it resets (crucial for missions)
 				if len(oldRoom.Clients) == 0 {
 					log.Printf("[Hub] Room %s is empty after client switch. Destroying.", client.RoomID)
-					oldRoom.Close()
+					// Igual que en handleUnregister: los bots de esa sala dejan de
+					// ser localizables. Aquí h.mu no está tomado, así que se toma.
+					h.mu.Lock()
+					h.unregisterBotClientsLocked(oldRoom)
 					delete(h.Rooms, client.RoomID)
+					h.mu.Unlock()
+					oldRoom.Close()
 				}
 			}
 			// Always tell the old room peers to remove this player so no ghost persists
@@ -139,9 +152,13 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 	h.loadPlayerMana(client)
 	h.sendPlayerMP(client)
 
-	// Notify others that an ally has joined (System Notification)
-	if room.Type == "cooperative" || room.Type == "mission" {
-		h.broadcastToRoomSimple(room, &models.WSMessage{
+	// Aviso de sistema en el chat de sala: ha llegado un aliado. Va a los que YA
+	// estaban, nunca al recién llegado — a él anunciarle su propia llegada ("X ha
+	// llegado", siendo X él mismo) no tiene sentido. Pasaba desapercibido mientras
+	// nadie pintaba chat_broadcast en el cliente; ahora que el chat de sala existe,
+	// se vería.
+	if room.IsGroupInstance() {
+		joinNotice := &models.WSMessage{
 			Type: MsgChatBroadcast,
 			Payload: models.ChatMessageBroadcast{
 				UserID:    uuid.Nil,
@@ -150,7 +167,14 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 				Timestamp: time.Now().Format(time.RFC3339),
 				RoomID:    roomID,
 			},
-		})
+		}
+		room.mu.RLock()
+		for c := range room.Clients {
+			if c != client {
+				c.SendJSON(joinNotice)
+			}
+		}
+		room.mu.RUnlock()
 	}
 
 	// Fetch CharacterID from DB if not already set
@@ -182,6 +206,12 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 	// Clear stale data and add fresh entry to Grid
 	room.Grid.RemoveUser(client.ID.String())
 	room.Grid.AddUser(client.ID.String(), x, y)
+
+	// La escena se puebla de jugadores con IA la primera vez que entra alguien.
+	// Los que no tengan ancla configurada se colocan alrededor de donde aparece:
+	// así están donde hay gente, en vez de en una esquina del mapa. Idempotente,
+	// y los bots mueren con la sala.
+	h.ensureLobbyBots(room, x, y)
 
 	// Track position on the client immediately (used by AI and teleport-to-friend).
 	// Without this, a friend who joined but hasn't moved would report (0,0).
@@ -224,10 +254,11 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 	}
 	h.broadcastToRoomSimple(room, msg)
 
-	// COOPERATIVE AUDIO: connect new client with every existing peer immediately.
-	// In cooperative rooms the session acts as a "meeting room" — all participants
-	// hear each other at full volume regardless of their map position.
-	if room.Type == "cooperative" {
+	// AUDIO DE GRUPO: se conecta al recién llegado con todos los presentes de una
+	// vez. En estas salas la sesión funciona como una "sala de reuniones": todos se
+	// oyen a volumen máximo, estén donde estén del mapa. Cubre las cooperativas y
+	// las instancias privadas por PIN (ver Room.IsGroupInstance).
+	if room.IsGroupInstance() {
 		sessionID := "room:" + roomID
 		room.mu.RLock()
 		for existingClient := range room.Clients {
@@ -500,8 +531,51 @@ func (h *Hub) broadcastPositionUpdate(room *Room, userID string, x, y float64, d
 	// log.Printf("Broadcast pos of %s to %d clients in room %s", userID, sentCount, room.ID)
 }
 
+// handleChatMessage difunde un mensaje de texto a toda la sala. Es el gemelo de
+// handleChallengeChatMessage, con la sala como ámbito en vez de la sesión de reto.
+//
+// Solo existe en las salas de grupo (ver Room.IsGroupInstance). En un mapa público
+// la conversación es 1:1 a propósito — petición de chat y mensajes privados — para
+// que un sitio por el que pasan desconocidos no se convierta en un canal donde
+// cualquiera escribe a todos.
 func (h *Hub) handleChatMessage(client *Client, payload models.ChatMessagePayload) {
-	// ... (Existing logic)
+	message := strings.TrimSpace(payload.Message)
+	if message == "" {
+		return
+	}
+
+	room, ok := h.getRoom(client.RoomID)
+	if !ok {
+		return
+	}
+	if !room.IsGroupInstance() {
+		client.SendError("Esta sala no tiene chat de grupo")
+		return
+	}
+
+	msg := &models.WSMessage{
+		Type: MsgChatBroadcast,
+		Payload: models.ChatMessageBroadcast{
+			UserID:    client.ID,
+			Username:  client.Username,
+			Message:   message,
+			Timestamp: time.Now().Format(time.RFC3339),
+			RoomID:    room.ID,
+		},
+	}
+
+	room.mu.RLock()
+	defer room.mu.RUnlock()
+	for c := range room.Clients {
+		// Moderación: mismo criterio que en voz y proximidad — con un bloqueo en
+		// cualquier dirección el mensaje no se entrega, y en silencio (al emisor no
+		// se le revela que lo han bloqueado). El eco al propio emisor sí va: así el
+		// cliente pinta su mensaje cuando el servidor lo acepta, sin adivinarlo.
+		if c != client && (c.HasBlocked(client.ID.String()) || client.HasBlocked(c.ID.String())) {
+			continue
+		}
+		c.SendJSON(msg)
+	}
 }
 
 func (h *Hub) cleanupPositions() {
@@ -814,6 +888,7 @@ func (h *Hub) handleRequestMapJoin(client *Client, sceneKey, roomType, inviteCod
 		newHubRoom.MaxUsers = newRoom.MaxUsers
 		newHubRoom.SceneKey = newRoom.SceneKey
 		newHubRoom.Type = newRoom.Type
+		newHubRoom.IsPublic = newRoom.IsPublic
 		// Terreno del editor: los enemigos deambulan respetando vacíos y límites.
 		if mapCfg != nil {
 			newHubRoom.SetLayout(mapCfg.WallsJSON)

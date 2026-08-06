@@ -37,6 +37,9 @@ type Hub struct {
 	CombatService   *services.CombatService
 	MissionService  *services.MissionService
 	LearningService *services.LearningService
+	// AIPlayerService gobierna los jugadores con IA (bots de charla). Opcional:
+	// con nil simplemente no se puebla ninguna escena.
+	AIPlayerService *services.AIPlayerService
 	// WorldService scopes the Ninja Cards to the world the player is learning in.
 	// Optional: when nil (or when no world resolves) the card engine falls back to
 	// the legacy global pool, so combat never breaks on an unconfigured world.
@@ -193,6 +196,10 @@ func (h *Hub) handleUnregister(client *Client) {
 				})
 
 				if len(room.Clients) == 0 {
+					// Los bots mueren con la sala: sus fichas viven dentro de ella,
+					// pero su entrada en el índice de clientes hay que retirarla o
+					// quedarían localizables para un mensaje privado eternamente.
+					h.unregisterBotClientsLocked(room)
 					room.Close()
 					delete(h.Rooms, client.RoomID)
 				}

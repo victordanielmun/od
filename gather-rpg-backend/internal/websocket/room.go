@@ -16,7 +16,9 @@ import (
 )
 
 // Arquetipos de enemigo. La regla de exclusividad ("un solo enemigo ataca a
-// cada jugador a la vez") SOLO aplica a melee; el resto pueden atacar en paralelo.
+// cada jugador a la vez") aplica a melee y fast; el thrower (a distancia) y el
+// boss (su propio state machine en tickBossLocked, fuera de este mecanismo)
+// pueden atacar en paralelo con quien tenga el turno.
 const (
 	EnemyTypeMelee   = "melee"
 	EnemyTypeThrower = "thrower"
@@ -24,10 +26,12 @@ const (
 	EnemyTypeBoss    = "boss"
 )
 
-// isMeleeType indica si el enemigo usa la regla de exclusividad (un atacante por
-// jugador). Solo melee (y el valor vacío por compatibilidad) la aplican.
-func isMeleeType(t string) bool {
-	return t == EnemyTypeMelee || t == ""
+// needsAttackExclusivity indica si el enemigo usa la regla de exclusividad (un
+// atacante por jugador). Melee y fast la aplican (y el valor vacío por
+// compatibilidad); thrower queda exceptuado a propósito (ataca a distancia,
+// no le "quita el turno" a nadie cuerpo a cuerpo).
+func needsAttackExclusivity(t string) bool {
+	return t == EnemyTypeMelee || t == EnemyTypeFast || t == ""
 }
 
 type Room struct {
@@ -40,6 +44,11 @@ type Room struct {
 	InviteCode string
 	MaxUsers   int
 	MissionID  uint
+	// IsPublic replica el campo homónimo de la fila de BD. Hace falta en memoria
+	// porque de él cuelga el canal de grupo (ver IsGroupInstance): el PIN no sirve
+	// como señal de privacidad, ya que una sala rehidratada desde BD podría no
+	// traerlo. Por defecto true, igual que la columna.
+	IsPublic bool
 	Broadcast  chan *models.WSMessage // Local broadcast channel if needed, or Hub handles it
 
 	// Combat
@@ -60,6 +69,10 @@ type Room struct {
 	examWorldID     map[string]uint                 // playerID → mundo que está examinando (0/ausente = no es examen)
 	examStats       map[string]map[string]models.TagStat // playerID → tag temático → aciertos/total
 
+	// Jugadores con IA que pueblan el lobby (ver bots.go). No son clientes: no
+	// ocupan plaza, no son objetivo de los enemigos y no entran en la voz.
+	bots []*LobbyBot
+
 	// Terreno para el deambular. El cliente ya impide que el JUGADOR pise vacíos
 	// y muros (ver PlayerManager.isBlockedAt); el servidor necesita lo mismo o
 	// pasea a los enemigos por encima del vacío y fuera del mapa, porque es él
@@ -76,7 +89,8 @@ func NewRoom(id string, mapData *models.MapData) *Room {
 		Clients:       make(map[*Client]bool),
 		Grid:          spatial.NewSpatialGrid(),
 		MapData:       mapData,
-		MaxUsers:      50, // Default
+		MaxUsers:      50,   // Default
+		IsPublic:      true, // Default, igual que la columna de BD
 		ActiveEnemies: make(map[uuid.UUID]*models.ActiveEnemy),
 		stopAI:        make(chan bool),
 
@@ -89,6 +103,28 @@ func NewRoom(id string, mapData *models.MapData) *Room {
 	r.startAILoop()
 
 	return r
+}
+
+// IsGroupInstance distingue las salas donde la gente ha venido JUNTA a lo suyo de
+// los mapas abiertos por los que cualquiera pasa. De este único predicado cuelgan
+// los dos canales de grupo, y por eso van siempre de la mano:
+//
+//   - Voz en malla ("sala de reuniones"): todos se oyen a volumen máximo sin
+//     importar la distancia, en vez de por proximidad.
+//   - Chat de sala: un mensaje llega a todos los presentes (ver handleChatMessage).
+//
+// Son de grupo las cooperativas y CUALQUIER instancia privada: quien entra con un
+// PIN viene con su gente. En un mapa público la conversación es 1:1 a propósito —
+// ni voz de sala ni chat abierto — para que un sitio por el que pasan desconocidos
+// no se convierta en un canal donde todos escriben a todos.
+//
+// Competitivo queda fuera aunque sea privado: comparten mapa, pero están corriendo
+// una carrera el uno contra el otro, no celebrando una reunión.
+func (r *Room) IsGroupInstance() bool {
+	if r.Type == roomTypeCompetitive {
+		return false
+	}
+	return r.Type == roomTypeCooperative || !r.IsPublic
 }
 
 func (r *Room) initializeEnemies() {
@@ -338,23 +374,25 @@ func (r *Room) canStandAt(x, y float64) bool {
 	return !r.blockedCells[cellOf(x, y)]
 }
 
-// beginWanderLeg elige el siguiente tramo del paseo. forceMove garantiza que sea
-// de avance (se usa al aparecer, para que el enemigo entre en escena moviéndose).
-// El tramo se descarta si lleva contra un vacío o fuera del mapa: se prueban
-// varias direcciones y, si ninguna sirve (enemigo arrinconado), sale una pausa.
-func (r *Room) beginWanderLeg(e *models.ActiveEnemy, now time.Time, forceMove bool) {
-	pause := func() {
-		e.WanderVX, e.WanderVY = 0, 0
-		e.WanderUntil = now.Add(time.Duration(600+rand.Intn(1000)) * time.Millisecond)
+// pickWanderLeg elige el siguiente tramo del paseo para algo que se pasea
+// alrededor de un ancla: devuelve su velocidad (0,0 = pausa) y cuánto dura.
+// La geometría es la misma para los enemigos y para los jugadores con IA del
+// lobby, así que vive aquí una sola vez.
+//
+// forceMove garantiza un tramo de avance (se usa al aparecer, para entrar en
+// escena moviéndose). Un tramo se descarta si lleva contra un vacío o fuera del
+// mapa: se prueban ocho direcciones y, si ninguna sirve (arrinconado), sale una
+// pausa. Debe llamarse con r.mu tomado (canStandAt lee el terreno).
+func (r *Room) pickWanderLeg(x, y, homeX, homeY, speed float64, forceMove bool) (vx, vy float64, dur time.Duration) {
+	pause := func() (float64, float64, time.Duration) {
+		return 0, 0, time.Duration(600+rand.Intn(1000)) * time.Millisecond
 	}
 
 	// 40% de los tramos son pausas: sin ellas el paseo parece una patrulla mecánica.
 	if !forceMove && rand.Float64() < 0.4 {
-		pause()
-		return
+		return pause()
 	}
 
-	speed := e.Speed * 0.1 * wanderSpeedRatio
 	if speed <= 0 {
 		speed = 4.0
 	}
@@ -362,7 +400,7 @@ func (r *Room) beginWanderLeg(e *models.ActiveEnemy, now time.Time, forceMove bo
 	// Si se ha alejado de casa, el tramo apunta de vuelta (con algo de dispersión)
 	// para que el paseo no lo lleve hasta la otra punta del mapa.
 	baseAngle := rand.Float64() * 2 * math.Pi
-	dx, dy := e.X-e.HomeX, e.Y-e.HomeY
+	dx, dy := x-homeX, y-homeY
 	if math.Sqrt(dx*dx+dy*dy) > wanderRadius {
 		baseAngle = math.Atan2(-dy, -dx) + (rand.Float64()-0.5)*math.Pi/2
 	}
@@ -373,16 +411,22 @@ func (r *Room) beginWanderLeg(e *models.ActiveEnemy, now time.Time, forceMove bo
 
 	for i := 0; i < 8; i++ {
 		angle := baseAngle + float64(i)*(math.Pi/4)
-		vx, vy := math.Cos(angle)*speed, math.Sin(angle)*speed
-		if r.canStandAt(e.X+math.Cos(angle)*lookahead, e.Y+math.Sin(angle)*lookahead) {
-			e.WanderVX, e.WanderVY = vx, vy
-			e.WanderUntil = now.Add(time.Duration(800+rand.Intn(1000)) * time.Millisecond)
-			return
+		if r.canStandAt(x+math.Cos(angle)*lookahead, y+math.Sin(angle)*lookahead) {
+			return math.Cos(angle) * speed,
+				math.Sin(angle) * speed,
+				time.Duration(800+rand.Intn(1000)) * time.Millisecond
 		}
 	}
 
 	// Rodeado de vacío por los ocho lados: quedarse quieto es mejor que colarse.
-	pause()
+	return pause()
+}
+
+// beginWanderLeg aplica el siguiente tramo del paseo a un enemigo.
+func (r *Room) beginWanderLeg(e *models.ActiveEnemy, now time.Time, forceMove bool) {
+	vx, vy, dur := r.pickWanderLeg(e.X, e.Y, e.HomeX, e.HomeY, e.Speed*0.1*wanderSpeedRatio, forceMove)
+	e.WanderVX, e.WanderVY = vx, vy
+	e.WanderUntil = now.Add(dur)
 }
 
 // tickWanderLocked avanza el paseo de un enemigo sin objetivo. Debe llamarse con
@@ -487,6 +531,7 @@ func (r *Room) startAILoop() {
 			select {
 			case <-r.aiTicker.C:
 				r.tickAI()
+				r.tickBots()
 			case <-r.stopAI:
 				return
 			}
@@ -688,7 +733,7 @@ func (r *Room) tickAI() {
 		}
 		if now.Before(enemy.AttackUntil) {
 			// Ejecutando un golpe: ocupado, y su objetivo sigue "cogido".
-			if isMeleeType(enemy.Type) && enemy.TargetID != "" {
+			if needsAttackExclusivity(enemy.Type) && enemy.TargetID != "" {
 				engagedClients[enemy.TargetID] = true
 			}
 			continue
@@ -697,13 +742,13 @@ func (r *Room) tickAI() {
 	}
 
 	// 3. Asignación de objetivos:
-	//    - melee: emparejamiento codicioso 1:1 (a lo sumo un melee por jugador).
-	//    - fast/thrower/boss: cada uno persigue al jugador más cercano, SIN
+	//    - melee/fast: emparejamiento codicioso 1:1 (a lo sumo uno por jugador).
+	//    - thrower/boss: cada uno persigue al jugador más cercano, SIN
 	//      exclusividad (pueden engancharse al mismo jugador en simultáneo).
 	enemyTargets := make(map[uuid.UUID]*Client)
 	const detectRange = 500.0
 
-	// 3a. Melee — greedy 1:1.
+	// 3a. Melee/fast — greedy 1:1.
 	type enemyPlayerPair struct {
 		enemy  *models.ActiveEnemy
 		client *Client
@@ -711,7 +756,7 @@ func (r *Room) tickAI() {
 	}
 	pairs := make([]enemyPlayerPair, 0)
 	for _, enemy := range eligibleEnemies {
-		if !isMeleeType(enemy.Type) {
+		if !needsAttackExclusivity(enemy.Type) {
 			continue
 		}
 		for _, client := range eligibleClients {
@@ -736,9 +781,9 @@ func (r *Room) tickAI() {
 		enemyTargets[pair.enemy.InstanceID] = pair.client
 	}
 
-	// 3b. No-melee — cada uno al jugador más cercano, sin exclusividad.
+	// 3b. Thrower/boss — cada uno al jugador más cercano, sin exclusividad.
 	for _, enemy := range eligibleEnemies {
-		if isMeleeType(enemy.Type) {
+		if needsAttackExclusivity(enemy.Type) {
 			continue
 		}
 		var nearest *Client
@@ -785,10 +830,10 @@ func (r *Room) tickAI() {
 		// se reasigna objetivo ni se mueve, así el cliente no ve al enemigo
 		// deslizándose con la animación de golpe puesta.
 		if now.Before(enemy.AttackUntil) {
-			// Sigue ocupando el turno de ataque sobre su objetivo: si no, otro melee
+			// Sigue ocupando el turno de ataque sobre su objetivo: si no, otro melee/fast
 			// podría colarse a golpear al mismo jugador durante el swing y se rompe
-			// la regla de "un atacante melee por jugador".
-			if enemy.FSMState == "attack" && isMeleeType(enemy.Type) && enemy.TargetID != "" {
+			// la regla de "un atacante por jugador".
+			if enemy.FSMState == "attack" && needsAttackExclusivity(enemy.Type) && enemy.TargetID != "" {
 				attackTargets[enemy.TargetID] = true
 			}
 			updates = append(updates, *enemy)
@@ -848,17 +893,18 @@ func (r *Room) tickAI() {
 
 				case now.Before(enemy.NextAttackAt):
 					// En rango pero recargando: NO ataca. Cede el turno para que otro
-					// melee pueda entrar, y se aparta hasta la distancia de recuperación.
+					// melee/fast pueda entrar, y se aparta hasta la distancia de recuperación.
 					enemy.FSMState = "chase"
 					if dist < recoverRange {
 						enemy.X -= math.Cos(angle) * speed
 						enemy.Y -= math.Sin(angle) * speed
 					}
 
-				case isMeleeType(enemy.Type):
-					// Melee: a lo sumo un atacante por jugador a la vez. El que no
-					// tiene el turno no se queda plantado encima del jugador — se
-					// retira a deambular hasta que le toque.
+				case needsAttackExclusivity(enemy.Type):
+					// Melee/fast: a lo sumo un atacante por jugador a la vez (el thrower y
+					// el boss quedan fuera de esta rama, ver comentario de la constante).
+					// El que no tiene el turno no se queda plantado encima del jugador —
+					// se retira a deambular hasta que le toque.
 					if !attackTargets[targetClient.ID.String()] {
 						enemy.FSMState = "attack"
 						enemy.AttackUntil = now.Add(attackCommitment(enemy.AttackRate))
@@ -870,7 +916,9 @@ func (r *Room) tickAI() {
 					}
 
 				default:
-					// fast / boss: atacan sin exclusividad.
+					// Ningún tipo actual cae aquí (thrower/boss se resuelven antes de
+					// este switch, melee/fast entran al case de arriba): fallback
+					// defensivo por si aparece un arquetipo nuevo sin clasificar.
 					enemy.FSMState = "attack"
 					enemy.AttackUntil = now.Add(attackCommitment(enemy.AttackRate))
 					enemy.NextAttackAt = now.Add(time.Duration(enemy.AttackRate) * time.Millisecond)
