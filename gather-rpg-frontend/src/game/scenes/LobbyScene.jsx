@@ -196,6 +196,10 @@ export class LobbyScene extends Phaser.Scene {
     this.playerMp = 100;
     this.playerMaxMp = 100;
     this.playerAttackIFrames = 0;
+    // Leídos en update() para aplicar el impulso del dash (los escribe
+    // CombatSystem.handlePlayerDash, ver CombatSystem.js).
+    this.isDashing = false;
+    this.dashVelocity = { x: 0, y: 0 };
 
     if (!this.editorController) {
       this.editorController = new EditorController(this);

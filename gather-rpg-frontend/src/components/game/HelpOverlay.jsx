@@ -15,10 +15,9 @@ export const HelpOverlay = ({ onClose }) => {
 
   const controls = [
     { keys: ['W', 'A', 'S', 'D'], desc: isEs ? 'Mover personaje (Arriba, Izquierda, Abajo, Derecha)' : 'Move character (Up, Left, Down, Right)' },
-    { keys: ['J', 'Click Izq'], desc: isEs ? 'Golpe Rápido (seguro: pegas y te reposicionas)' : 'Quick Strike (safe: hit and reposition)' },
-    { keys: ['K'], desc: isEs ? 'Combo de 3 Golpes (te expone, pero desgasta mucho más rápido)' : '3-Hit Combo (exposes you, but wears down far faster)' },
+    { keys: ['J', 'Click Izq'], desc: isEs ? 'Combo de 3 Golpes cuerpo a cuerpo' : '3-Hit Melee Combo' },
+    { keys: ['K'], desc: isEs ? 'Lanzar Daga Arrojadiza' : 'Throw Dagger' },
     { keys: ['L'], desc: isEs ? 'Lanzar Hechizo Mágico (Nova / Fire Rain)' : 'Cast Magic Spell' },
-    { keys: ['U'], desc: isEs ? 'Lanzar Daga Arrojadiza' : 'Throw Dagger' },
     { keys: ['SPACE'], desc: isEs ? 'Esquivar / Dash de velocidad' : 'Dash / Evade' },
     { keys: ['Q'], desc: isEs ? 'Consumir Poción de Vida (Health Potion)' : 'Drink Health Potion' },
     { keys: ['R'], desc: isEs ? 'Consumir Poción de Maná (Mana Potion)' : 'Drink Mana Potion' },
@@ -139,8 +138,8 @@ export const HelpOverlay = ({ onClose }) => {
                 </h3>
                 <p className="text-[11px] md:text-sm leading-relaxed">
                   {isEs
-                    ? 'Cruza portales o acepta misiones para entrar en zonas de combate (Beat \'em up). El golpe rápido (J / Clic) es seguro y te deja reposicionarte, pero el combo de 3 golpes (K) desgasta al enemigo mucho más rápido a cambio de dejarte expuesto durante la secuencia; los hechizos (L) pegan aún más fuerte pero gastan maná. Cuando el enemigo está a punto de caer aparece una Ninja Card: acierta la pregunta y lo derrotas. ¡Vigila tu barra de vida y usa pociones (Q) si estás en peligro!'
-                    : 'Cross portals or accept quests to enter combat zones (Beat \'em up). The quick strike (J / Click) is safe and lets you reposition, but the 3-hit combo (K) wears enemies down much faster in exchange for leaving you exposed during the sequence; spells (L) hit even harder but cost mana. When an enemy is about to fall, a Ninja Card appears: answer correctly to defeat it. Watch your health bar and use potions (Q) if you are in danger!'}
+                    ? 'Cruza portales o acepta misiones para entrar en zonas de combate (Beat \'em up). El combo de 3 golpes (J / Clic Izq) es tu ataque cuerpo a cuerpo; los hechizos (L) pegan aún más fuerte pero gastan maná. Cuando el enemigo está a punto de caer aparece una Ninja Card: acierta la pregunta y lo derrotas. ¡Vigila tu barra de vida y usa pociones (Q) si estás en peligro!'
+                    : 'Cross portals or accept quests to enter combat zones (Beat \'em up). The 3-hit combo (J / Left Click) is your melee attack; spells (L) hit even harder but cost mana. When an enemy is about to fall, a Ninja Card appears: answer correctly to defeat it. Watch your health bar and use potions (Q) if you are in danger!'}
                 </p>
               </div>
 

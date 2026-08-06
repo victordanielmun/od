@@ -14,7 +14,12 @@ export const ENEMY_CONFIG = {
   // Mapeo dinámico generado por map_enemy_frames.cjs
   animationsByEnemy: generatedAnims,
 
-  // Mapeo de estados de la FSM a animaciones
+  // Mapeo de estados de la FSM a animaciones.
+  // knocked → 'hurt' (no 'knocked'): en las hojas de enemigo esa animación es casi
+  // idéntica a 'dying' (mismo colapso, mismas dimensiones de frame), así que un golpe
+  // fuerte de combo parecía matar al enemigo cada 3er golpe. El estado FSM 'knocked'
+  // sigue existiendo igual (más stun/knockback que 'hurt'), solo cambia qué animación
+  // se reproduce mientras dura. Mismo criterio que ya usa BOSS_STATE_TO_ANIM.
   STATE_TO_ANIM: {
     idle:    'idle',
     wander:  'walking',
@@ -24,7 +29,7 @@ export const ENEMY_CONFIG = {
     skill:   'attack',
     charge:  'walking',
     hurt:    'hurt',
-    knocked: 'knocked',
+    knocked: 'hurt',
     dead:    'dying'
   }
 };

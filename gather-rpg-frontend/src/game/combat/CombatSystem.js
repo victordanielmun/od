@@ -3,9 +3,11 @@ import { useNotificationStore } from '../../store/notificationStore';
 import { spawnDamageNumber } from '../systems/floatingText';
 import { ensureItemSprite } from '../systems/itemSprites';
 
-// Regen automático de maná del jugador (MP por segundo). En 0 para que el maná solo se
-// recupere con pociones — si no, la regeneración pasiva le quita valor a las pociones.
-const MP_REGEN_PER_SEC = 0;
+// Regen automático de maná del jugador (MP por segundo). Predicción local optimista:
+// el server regenera de verdad a este mismo ritmo (ver mpRegenPerSec en room.go) y
+// reconcilia por player-mp-update, así que esto solo evita que la barra local se vea
+// "congelada" entre esos mensajes (llegan ~1 vez por segundo).
+const MP_REGEN_PER_SEC = 2;
 
 // Hit-stop arcade: al recibir un golpe el jugador queda aturdido (no se mueve ni ataca)
 // este tiempo y recibe un pequeño empuje. 350ms = igual que el hurt del enemigo.
@@ -42,18 +44,13 @@ function resolveSpellType(item) {
 // Tipos de tarea que habilitan el combate (atacar enemigos).
 const COMBAT_TASK_TYPES = ['defeat_enemy', 'kill_boss', 'kill_all'];
 
-// Cadencia de los dos estilos de ataque. El enemigo NO muere por HP: cuando un golpe lo
-// dejaría en 0 el servidor dispara la Ninja Card y es la respuesta correcta la que lo
-// mata. Así que lo único que importa es cuánto se tarda en tiempo real en llegar a ese
-// umbral → DPS = daño / lock. El daño es autoritativo del server (attackDamage en
-// hub_combat.go): basic 10 | combo1 10 | combo2 12 | combo3_finisher 20.
-//
-//   J (golpe rápido): 10 / 450ms           → ~22 DPS — poco compromiso, sueltas y te mueves.
-//   K (combo 1→2→3):  42 / (380+380+480)   → ~34 DPS — te clava en la secuencia, rinde ~1.5x.
-//
-// INVARIANTE: el combo debe rendir MÁS DPS que machacar J. Si no, J lo vuelve inútil —
-// nadie se comprometería a la secuencia larga si el golpe suelto llega antes a la card.
-const QUICK_ATTACK_LOCK = 450;
+// Cadencia del único ataque cuerpo a cuerpo (K, combo 1→2→3). El enemigo NO muere por
+// HP: cuando un golpe lo dejaría en 0 el servidor dispara la Ninja Card y es la
+// respuesta correcta la que lo mata. El daño es autoritativo del server (attackDamage
+// en hub_combat.go): combo1 10 | combo2 12 | combo3_finisher 20.
+// (Existió un segundo botón "golpe rápido" en J con menos daño/lock; se retiró porque
+// tener dos botones de melee muy parecidos confundía más de lo que aportaba — ver
+// LobbyInputController.COMBAT_KEYS.)
 const COMBO_LOCKS = { combo1: 380, combo2: 380, combo3_finisher: 480 };
 
 export class CombatSystem {
@@ -71,7 +68,7 @@ export class CombatSystem {
     this._pendingDeath = false; // muerte recibida con una Ninja Card abierta (ver onPlayerDeath)
     this.isStunned = false;
     this.hurtStaggerUntil = 0; // hit-stop arcade: aturdimiento breve tras recibir un golpe
-    this._attackLockUntil = 0; // "un swing a la vez": bloquea nuevos ataques (J/K) hasta que termina la animación en curso
+    this._attackLockUntil = 0; // "un swing a la vez": bloquea nuevas acciones (combo J, arrojadizo K, hechizo L...) hasta que termina la animación en curso
 
     // Attack timers & combos
     // Timestamps de cooldown inicializados "listos": al entrar al mapa el reloj de Phaser
@@ -87,8 +84,6 @@ export class CombatSystem {
     this._lastPotionTime = READY;
     this._lastManaPotionTime = READY;
     this._lastDashTime = READY;
-    this.dashVelocity = { x: 0, y: 0 };
-    this.isDashing = false;
 
     this.hpBar = null;
     this.hpText = null;
@@ -329,7 +324,7 @@ export class CombatSystem {
     return this.scene.time.now < this.hurtStaggerUntil;
   }
 
-  // True mientras corre la animación de un golpe (J, combo K, hechizo, arrojadizo).
+  // True mientras corre la animación de un golpe (combo J, arrojadizo K, hechizo L).
   // Golpear ancla al personaje: el swing se ejecuta en el sitio, igual que el de los
   // enemigos. Es lo que da peso al ataque y lo vuelve una decisión — si pudieras
   // atacar corriendo, el sprite patinaría con la animación de golpe puesta.
@@ -434,54 +429,6 @@ export class CombatSystem {
     this.updateHpBar();
   }
 
-  handlePlayerAttack() {
-    if (!this.scene.player || this.scene.isTyping()) return;
-    if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
-
-    if (this._isCombatBlocked()) return;
-
-    // Un swing a la vez: ignorar la pulsación si aún corre la animación del ataque
-    // anterior. Así el daño se aplica UNA sola vez por golpe (no se spamea el collider).
-    const now = this.scene.time.now;
-    if (now < this._attackLockUntil) return;
-    // Golpe rápido (J / clic): es la opción de POCO COMPROMISO, no la de más daño. Su
-    // lock lo deja por debajo del DPS del combo a propósito (ver QUICK_ATTACK_LOCK):
-    // sirve para picar y reposicionarte, no para machacar hasta la card.
-    this._attackLockUntil = now + QUICK_ATTACK_LOCK;
-    // Un golpe rápido interrumpe cualquier combo en curso: J y K son dos estilos
-    // de ataque separados, no se pueden alternar para "trampear" el combo de K.
-    this._comboStep = 0;
-
-    const charId = this.scene.player.characterId || '1';
-    // El ataque básico usa 'combo1' del sheet de combate. Antes pedía 'slash', que no
-    // existe en las animaciones del personaje, así que el ataque básico no animaba nada.
-    if (this.scene.anims.exists(`char-${charId}-combo1`)) {
-      this.scene.player.playAnimation('combo1', QUICK_ATTACK_LOCK);
-    }
-
-    const nearestEnemy = this._findNearestEnemy(120);
-
-    if (nearestEnemy) {
-      console.log(`[CombatSystem] Hit enemy ${nearestEnemy.id} at dist ${nearestEnemy.dist.toFixed(1)}px`);
-      useGameStore.getState().sendPlayerAttack(nearestEnemy.id, 'basic');
-
-      const hitEnemy = nearestEnemy.enemy;
-      // Flinch en el frame del impacto (el server lo confirma ~100-250ms después);
-      // así el hitstop de abajo congela la pose de dolor, no la de caminar/atacar.
-      hitEnemy.predictHit?.(false);
-      if (hitEnemy.sprite) {
-        hitEnemy.sprite.setTint(0xff2222);
-        this.scene.time.delayedCall(200, () => {
-          if (hitEnemy.active && hitEnemy.sprite) hitEnemy.sprite.clearTint();
-        });
-      }
-      this._spawnHitEffect(hitEnemy.x, hitEnemy.y);
-      // Freeze-frames de impacto en atacante y golpeado + sacudida sutil de cámara.
-      this._hitstop([this.scene.player, hitEnemy]);
-      this.scene.cameras?.main?.shake(50, 0.004);
-    }
-  }
-
   handlePlayerCombo() {
     if (!this.scene.player || this.scene.isTyping()) return;
     if (this.isDead || useGameStore.getState().ninjaCardData || this.isStunned || this.isHurtStaggered()) return;
@@ -490,12 +437,12 @@ export class CombatSystem {
 
     const now = this.scene.time.now;
     // Un swing a la vez: si la animación del golpe anterior sigue, ignorar la pulsación.
-    // Esto evita que machacar K dispare varios golpes/colliders muy rápido.
+    // Esto evita que machacar J dispare varios golpes/colliders muy rápido.
     if (now < this._attackLockUntil) return;
 
-    // K (combo): cada golpe encadenado dentro de 1s sube de combo1 → combo2 →
-    // combo3_finisher, con más daño y lock más largo que el golpe rápido de J. Si pasa
-    // más de 1s sin pulsar K (o si se usó J, que resetea _comboStep) vuelve a empezar.
+    // J (único ataque de melee): cada golpe encadenado dentro de 1s sube de combo1 →
+    // combo2 → combo3_finisher, con más daño y lock más largo. Si pasa más de 1s sin
+    // pulsar J vuelve a empezar desde combo1.
     if (now - (this._lastComboTime || 0) > 1000) {
       this._comboStep = 0;
     }
@@ -1002,9 +949,12 @@ export class CombatSystem {
     if (now - (this._lastDashTime || 0) < 1500) return;
     this._lastDashTime = now;
 
-    // Consume Mana
+    // Consume Mana (descuento local optimista + gasto autoritativo en el servidor,
+    // igual que hechizo/arrojadizo — sin sendSpendMana el gasto nunca se persistía y
+    // el siguiente player-mp-update del servidor lo revertía).
     this.playerMp -= 15;
     this.updateHpBar();
+    useGameStore.getState().sendSpendMana(15);
 
     let dx = 0;
     let dy = 0;
@@ -1029,9 +979,12 @@ export class CombatSystem {
       dy /= len;
     }
 
+    // Se escribe en la ESCENA (no en `this`): LobbyScene.update() es quien lee
+    // isDashing/dashVelocity cada frame para aplicar el impulso al body de física;
+    // dejarlo en el CombatSystem hacía que el dash gastara maná sin mover al jugador.
     const dashSpeed = 400;
-    this.dashVelocity = { x: dx * dashSpeed, y: dy * dashSpeed };
-    this.isDashing = true;
+    this.scene.dashVelocity = { x: dx * dashSpeed, y: dy * dashSpeed };
+    this.scene.isDashing = true;
 
     this.scene.player.setAlpha(0.6);
     if (this.scene.player.sprite) {
@@ -1039,7 +992,7 @@ export class CombatSystem {
     }
 
     this.scene.time.delayedCall(150, () => {
-      this.isDashing = false;
+      this.scene.isDashing = false;
       if (this.scene.player) {
         this.scene.player.setAlpha(1.0);
         if (this.scene.player.sprite) {

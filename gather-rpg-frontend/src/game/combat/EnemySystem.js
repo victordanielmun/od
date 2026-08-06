@@ -110,7 +110,11 @@ export class EnemySystem {
     const sprite = this.activeEnemies.get(instance_id);
     if (sprite) {
       console.log(`[EnemySystem] enemy_died received → playing death + removing ${instance_id}`);
-      sprite.updateHealth(0, 100); // Triggers death animation
+      // NO updateHealth(0,100): esa función solo mata localmente si !serverDriven, y
+      // en el mundo abierto todo enemigo es serverDriven — la llamada no hacía nada
+      // (el enemigo se quedaba en su última pose hasta el destroy). playDeathAnimation
+      // fuerza la animación 'dying' porque este evento YA es la confirmación autoritativa.
+      sprite.playDeathAnimation();
       this.scene.time.delayedCall(1500, () => {
         if (sprite.active) sprite.destroy();
         this.activeEnemies.delete(instance_id);

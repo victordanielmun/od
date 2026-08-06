@@ -10,6 +10,7 @@ import api from '../../services/api';
 import { normalizeBehavior } from '../../game/config/enemyBehaviors';
 import { versioned } from '../../game/config/assetVersion';
 import { InfoSignEditor } from './InfoSignEditor';
+import { ItemIcon } from '../common/ItemIcon';
 
 const TILE_COLORS = {
   wall: '#666666',
@@ -174,6 +175,15 @@ export const MapEditorUI = ({ gameRef }) => {
     historySize: 0, redoSize: 0 
   });
   const [availableEnemies, setAvailableEnemies] = useState([]);
+  const [showProjectilePicker, setShowProjectilePicker] = useState(false);
+  // Sprites elegibles como proyectil del "Lanzador": tanto 'throwable' (arrojables
+  // de verdad, p.ej. Throwing Dagger) como 'weapon' (armas cuerpo a cuerpo con look
+  // de arrojadiza, p.ej. Kunai) — el campo es puramente visual (icon_key), no exige
+  // que el ítem sea mecánicamente lanzable.
+  const projectileSpriteOptions = useMemo(
+    () => availableItems.filter(i => i.item_type === 'throwable' || i.item_type === 'weapon'),
+    [availableItems]
+  );
   const [playerSpeed, setPlayerSpeed] = useState(160);
   const [enemiesPaused, setEnemiesPaused] = useState(false);
 
@@ -1016,13 +1026,56 @@ export const MapEditorUI = ({ gameRef }) => {
                     </div>
                   </div>
 
-                  {/* Lanzador: sprite del proyectil (icon_key); vacío → círculo rojo */}
+                  {/* Lanzador: sprite del proyectil. Selector visual sobre los ítems
+                      arma-arrojable ya creados en Admin > Ítems (mismo `icon_key` que
+                      usa el jugador al lanzar) en vez de un icon_key a ciegas por
+                      texto; vacío = círculo rojo por defecto. */}
                   {enemyMeta.type === 'thrower' && (
                     <div>
-                      <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.projectile_sprite') || 'Proyectil (icon_key)'}</label>
-                      <input type="text" placeholder="ej: dagger (vacío = círculo)" value={enemyMeta.projectileSprite}
-                        onChange={e => setEnemyMeta(p => ({ ...p, projectileSprite: e.target.value }))}
-                        className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50" />
+                      <label className="block text-[9px] text-gray-500 mb-0.5">{t('lobby.editor.projectile_sprite') || 'Sprite del Proyectil'}</label>
+                      <div className="relative">
+                        <button type="button"
+                          onClick={() => setShowProjectilePicker(v => !v)}
+                          className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-red-500/50 flex items-center gap-2 hover:border-red-500/40 transition-colors">
+                          <ItemIcon iconKey={enemyMeta.projectileSprite} type="throwable" size={20} />
+                          <span className="flex-1 text-left truncate">
+                            {enemyMeta.projectileSprite || (t('lobby.editor.projectile_default') || 'Círculo rojo (por defecto)')}
+                          </span>
+                          <ChevronDown size={11} className={`transition-transform ${showProjectilePicker ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {showProjectilePicker && (
+                          <div className="absolute z-50 mt-1 w-full bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-2">
+                            <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto pr-0.5"
+                              style={{ scrollbarWidth: 'thin', scrollbarColor: '#4b5563 transparent' }}>
+                              <button type="button"
+                                onClick={() => { setEnemyMeta(p => ({ ...p, projectileSprite: '' })); setShowProjectilePicker(false); }}
+                                className={`flex flex-col items-center gap-1 p-1.5 rounded border transition-all ${
+                                  !enemyMeta.projectileSprite ? 'bg-red-500/20 border-red-500/50' : 'bg-gray-800 border-gray-800 hover:border-gray-600'
+                                }`}>
+                                <div className="w-5 h-5 rounded-full bg-red-500/80 border border-red-300/50" />
+                                <span className="text-[7px] text-gray-400">{t('lobby.editor.none') || 'Ninguno'}</span>
+                              </button>
+                              {projectileSpriteOptions.map(item => (
+                                <button key={item.id} type="button"
+                                  onClick={() => { setEnemyMeta(p => ({ ...p, projectileSprite: item.icon_key || '' })); setShowProjectilePicker(false); }}
+                                  className={`flex flex-col items-center gap-1 p-1.5 rounded border transition-all ${
+                                    enemyMeta.projectileSprite === item.icon_key ? 'bg-red-500/20 border-red-500/50' : 'bg-gray-800 border-gray-800 hover:border-gray-600'
+                                  }`}
+                                  title={item.name}>
+                                  <ItemIcon iconKey={item.icon_key} type={item.item_type} size={20} />
+                                  <span className="text-[7px] text-gray-400 truncate w-full text-center">{item.name}</span>
+                                </button>
+                              ))}
+                              {projectileSpriteOptions.length === 0 && (
+                                <div className="col-span-4 py-3 text-center text-[9px] text-gray-500 italic">
+                                  {t('lobby.editor.no_throwable_items') || 'No hay ítems tipo "Arma Arrojable" en Admin > Ítems.'}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 

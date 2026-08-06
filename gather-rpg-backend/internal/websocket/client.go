@@ -76,6 +76,10 @@ type Client struct {
 	// compartida con el inventario (pociones de maná) y la barra del HUD/Sidebar.
 	MP    int
 	MPMax int
+	// LastMPRegenAt: último instante en que se aplicó el autoregen pasivo de maná
+	// (ver Room.regenPlayerManaLocked en room.go). Cero mientras no ha regenerado
+	// nada todavía en esta sala.
+	LastMPRegenAt time.Time
 
 	// blocked: usuarios que ESTE cliente bloqueó (moderación). Se carga de la
 	// tabla user_blocks antes de registrar el cliente y se actualiza en caliente

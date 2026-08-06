@@ -239,6 +239,14 @@ export default class EnemySprite extends NPCSprite {
     }
   }
 
+  // Fuerza la animación de muerte ('dying'). A diferencia de updateHealth(), esto NO
+  // está condicionado a !serverDriven: solo se llama desde EnemySystem al recibir el
+  // evento enemy_died (autoritativo del servidor), así que aquí sabemos con certeza
+  // que ya murió de verdad — no es la predicción local que ese guard evita.
+  playDeathAnimation() {
+    this._changeState(STATES.DEAD);
+  }
+
   _drawHealthBar() {
     if (!this.healthBar) {
         this.healthBar = this.scene.add.graphics();

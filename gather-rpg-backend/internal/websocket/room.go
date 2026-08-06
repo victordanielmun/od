@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"gather-rpg-backend/internal/spatial"
 
@@ -48,8 +49,8 @@ type Room struct {
 	// porque de él cuelga el canal de grupo (ver IsGroupInstance): el PIN no sirve
 	// como señal de privacidad, ya que una sala rehidratada desde BD podría no
 	// traerlo. Por defecto true, igual que la columna.
-	IsPublic bool
-	Broadcast  chan *models.WSMessage // Local broadcast channel if needed, or Hub handles it
+	IsPublic  bool
+	Broadcast chan *models.WSMessage // Local broadcast channel if needed, or Hub handles it
 
 	// Combat
 	ActiveEnemies map[uuid.UUID]*models.ActiveEnemy
@@ -58,15 +59,15 @@ type Room struct {
 
 	// Waves (oleadas): los enemigos se spawnean por oleada. La wave N+1 aparece
 	// cuando todos los enemigos de la wave N han muerto.
-	CurrentWave   int                   // número de la oleada activa (1-based); 0 = sin iniciar
-	MaxWave       int                   // mayor wave_num presente en el mapa
-	PendingSpawns []models.EnemySpawn   // enemigos de oleadas futuras, aún no spawneados
-	NextWaveAt    time.Time             // si no es cero, momento en que aparece la siguiente oleada
+	CurrentWave   int                 // número de la oleada activa (1-based); 0 = sin iniciar
+	MaxWave       int                 // mayor wave_num presente en el mapa
+	PendingSpawns []models.EnemySpawn // enemigos de oleadas futuras, aún no spawneados
+	NextWaveAt    time.Time           // si no es cero, momento en que aparece la siguiente oleada
 
 	// Sesión de retos (Ninja Cards) por jugador. Vive en memoria mientras dura la
 	// sala: las salas de combate son efímeras, así que la "sesión" es la estancia.
-	askedChallenges map[string][]uuid.UUID          // playerID → retos ya emitidos (no repetir)
-	examWorldID     map[string]uint                 // playerID → mundo que está examinando (0/ausente = no es examen)
+	askedChallenges map[string][]uuid.UUID               // playerID → retos ya emitidos (no repetir)
+	examWorldID     map[string]uint                      // playerID → mundo que está examinando (0/ausente = no es examen)
 	examStats       map[string]map[string]models.TagStat // playerID → tag temático → aciertos/total
 
 	// Jugadores con IA que pueblan el lobby (ver bots.go). No son clientes: no
@@ -242,14 +243,14 @@ func (r *Room) spawnWave(waveNum int) int {
 			HP:         hp,
 			HPMax:      hp,
 			// Nace deambulando, no plantado: el primer tramo es de avance.
-			FSMState:   "wander",
-			WaveNum:    waveNum,
-			NPCID:      e.NPCID,
-			SpriteID:   e.SpriteID,
-			Damage:     damage,
-			Speed:      speed,
-			AttackRate: attackRate,
-			Type:       enemyType,
+			FSMState:         "wander",
+			WaveNum:          waveNum,
+			NPCID:            e.NPCID,
+			SpriteID:         e.SpriteID,
+			Damage:           damage,
+			Speed:            speed,
+			AttackRate:       attackRate,
+			Type:             enemyType,
 			ProjectileSprite: e.ProjectileSprite,
 			ManaMax:          manaMax,
 			Mana:             manaMax, // empieza con maná lleno
@@ -629,6 +630,57 @@ func (r *Room) tickBossLocked(e *models.ActiveEnemy, dist, angle, speed float64)
 	e.NextAttackAt = now.Add(time.Duration(e.AttackRate) * time.Millisecond)
 }
 
+// mpRegenPerSec: maná que recupera un jugador vivo por segundo, fuera de uso activo.
+// Referencia de costes (ver SPELL_PROFILES/handlePlayerDash en CombatSystem.js): dash
+// 15, arrojadizo 10, hechizos 25-40. A este ritmo el maná máximo por defecto (50) se
+// llena en ~25s si no se gasta nada — no es instantáneo, pero tampoco obliga a vivir
+// de pociones.
+const mpRegenPerSec = 2
+
+// regenPlayerManaLocked recupera maná pasivamente a los jugadores vivos de la sala
+// (no aplica a bots). Debe llamarse con r.mu bloqueado (se invoca desde tickAI, cada
+// 100ms, pero solo aplica el regen una vez por segundo real transcurrido). Persiste en
+// BD y notifica al cliente el segundo en que efectivamente sube, para no spamear el
+// socket ni la DB en cada tick.
+func (r *Room) regenPlayerManaLocked() {
+	now := time.Now()
+	for client := range r.Clients {
+		if client.IsAI {
+			continue
+		}
+		if client.IsDead || client.MP >= client.MPMax {
+			// No acumular tiempo mientras está muerto o al tope: si no, al revivir
+			// o al gastar maná recibiría de golpe todo el regen "atrasado".
+			client.LastMPRegenAt = now
+			continue
+		}
+		if client.LastMPRegenAt.IsZero() {
+			client.LastMPRegenAt = now
+			continue
+		}
+		secs := int(now.Sub(client.LastMPRegenAt) / time.Second)
+		if secs <= 0 {
+			continue
+		}
+		client.MP += mpRegenPerSec * secs
+		if client.MP > client.MPMax {
+			client.MP = client.MPMax
+		}
+		client.LastMPRegenAt = client.LastMPRegenAt.Add(time.Duration(secs) * time.Second)
+
+		database.DB.Model(&models.PlayerStats{}).
+			Where("user_id = ?", client.ID).
+			Update("mp_current", client.MP)
+		client.SendJSON(&models.WSMessage{
+			Type: MsgPlayerMP,
+			Payload: map[string]interface{}{
+				"mp":     client.MP,
+				"mp_max": client.MPMax,
+			},
+		})
+	}
+}
+
 func (r *Room) tickAI() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -636,6 +688,8 @@ func (r *Room) tickAI() {
 	if len(r.Clients) == 0 {
 		return
 	}
+
+	r.regenPlayerManaLocked()
 
 	// Avance de oleadas: si la wave actual está limpia y quedan más, spawnear la
 	// siguiente (tras un breve delay). Va antes del early-return por si entre
@@ -746,7 +800,7 @@ func (r *Room) tickAI() {
 	//    - thrower/boss: cada uno persigue al jugador más cercano, SIN
 	//      exclusividad (pueden engancharse al mismo jugador en simultáneo).
 	enemyTargets := make(map[uuid.UUID]*Client)
-	const detectRange = 500.0
+	const detectRange = 280.0
 
 	// 3a. Melee/fast — greedy 1:1.
 	type enemyPlayerPair struct {
@@ -948,7 +1002,7 @@ func (r *Room) tickAI() {
 }
 
 func (r *Room) broadcastToAll(msg *models.WSMessage) {
-	// This is slightly inefficient if called every tick, 
+	// This is slightly inefficient if called every tick,
 	// but ok for room-scoped events
 	for client := range r.Clients {
 		client.SendJSON(msg)

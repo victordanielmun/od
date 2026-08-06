@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"gather-rpg-backend/internal/database"
 	"gather-rpg-backend/internal/models"
 	"log"
 	"math/rand"
@@ -127,6 +128,11 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 	client.RoomID = roomID
 	room.AddClient(client)
 
+	// Capturado ANTES de resetear IsDead más abajo: distingue "reingreso tras morir"
+	// (reintentar la misión / volver al lobby desde la Death Overlay) de un simple
+	// cambio de mapa estando vivo — solo el primer caso recarga el maná (ver abajo).
+	wasDead := client.IsDead
+
 	// Reset de combate al entrar a una sala (respawn por re-entrada).
 	// La animación también se limpia: si el jugador murió y reentra al MISMO mapa
 	// (reintentar la misión), tickAI seguiría viéndolo como "die" y los enemigos
@@ -147,9 +153,21 @@ func (h *Hub) handleJoinRoom(client *Client, payload models.JoinRoomPayload) {
 		},
 	})
 
-	// Maná: a diferencia del HP, NO se resetea — se carga el valor persistente de
-	// PlayerStats (fuente de verdad compartida con el inventario y el Sidebar).
+	// Maná: a diferencia del HP, normalmente NO se resetea — se carga el valor
+	// persistente de PlayerStats (fuente de verdad compartida con el inventario y el
+	// Sidebar), porque no hay regeneración automática (ver CombatSystem.js,
+	// MP_REGEN_PER_SEC=0) y cambiar de mapa estando vivo no debe ser una forma
+	// gratuita de rellenar maná. Excepción: si el jugador murió, este join ES el
+	// respawn/reintento de la misión — igual que el HP, el maná se recarga a tope,
+	// si no quedaría permanentemente bajo tras la primera muerte sin más recurso
+	// que comprar pociones.
 	h.loadPlayerMana(client)
+	if wasDead {
+		client.MP = client.MPMax
+		database.DB.Model(&models.PlayerStats{}).
+			Where("user_id = ?", client.ID).
+			Update("mp_current", client.MP)
+	}
 	h.sendPlayerMP(client)
 
 	// Aviso de sistema en el chat de sala: ha llegado un aliado. Va a los que YA

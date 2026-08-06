@@ -2,20 +2,20 @@ const Phaser = window.Phaser;
 
 // Combat action keys → CombatSystem handler name. Each only fires while the
 // canvas is focused and the player isn't typing in an HTML field.
-// J = golpe rápido (lock corto, se puede machacar). K = combo de 3 golpes
-// (más lento, más daño, encadena combo1→combo2→combo3_finisher). Ver CombatSystem.
+// Agrupadas en J-K-L (adyacentes) para que las tres acciones principales queden
+// cerca de la mano: J = único ataque cuerpo a cuerpo (combo de 3 golpes que
+// encadena combo1→combo2→combo3_finisher), K = daga arrojadiza, L = hechizo.
+// Ver CombatSystem.
 const COMBAT_KEYS = [
-  ['J', 'handlePlayerAttack'],
-  ['K', 'handlePlayerCombo'],
+  ['J', 'handlePlayerCombo'],
+  ['K', 'handlePlayerThrow'],
   ['L', 'handlePlayerSpell'],
-  ['U', 'handlePlayerThrow'],
   ['Q', 'handlePlayerPotion'],
   ['R', 'handlePlayerManaPotion'],
 ];
 
 // Virtual (on-screen touch) button → CombatSystem handler for action buttons.
 const VIRTUAL_ACTIONS = {
-  attack: 'handlePlayerAttack',
   combo: 'handlePlayerCombo',
   spell: 'handlePlayerSpell',
   throw: 'handlePlayerThrow',
@@ -52,7 +52,7 @@ export class LobbyInputController {
       up: KC.W, down: KC.S, left: KC.A, right: KC.D
     });
 
-    // Combat action keys: J, K, L, U, Q, R
+    // Combat action keys: J, K, L, Q, R
     COMBAT_KEYS.forEach(([keyName, handler]) => {
       const key = scene.input.keyboard.addKey(KC[keyName]);
       key.on('down', () => {
@@ -100,16 +100,17 @@ export class LobbyInputController {
 
     // Stop Phaser from calling preventDefault() on WASD, Arrows, and Space.
     // This allows React input fields to receive these keystrokes normally!
-    scene.input.keyboard.removeCapture('W,A,S,D,UP,DOWN,LEFT,RIGHT,SPACE,J,K,L,U,Q,R,H');
+    scene.input.keyboard.removeCapture('W,A,S,D,UP,DOWN,LEFT,RIGHT,SPACE,J,K,L,Q,R,H');
 
     this._setupCanvasFocus();
 
-    // TAREA 7: Clic izquierdo = ataque. (También desactivamos menú contextual por si acaso).
+    // TAREA 7: Clic izquierdo = combo (único input de melee). (También desactivamos
+    // menú contextual por si acaso).
     this._onContextMenu = (e) => e.preventDefault();
     scene.game.canvas.addEventListener('contextmenu', this._onContextMenu);
     scene.input.on('pointerdown', (pointer) => {
       if (pointer.leftButtonDown() && !scene.isTyping()) {
-        scene.combatSystem?.handlePlayerAttack?.();
+        scene.combatSystem?.handlePlayerCombo?.();
       }
     });
   }
@@ -138,7 +139,7 @@ export class LobbyInputController {
 
     // Un <button> del HUD (mute, zoom, inventario…) se queda con el foco al
     // pulsarlo, y _isCanvasFocused() lo trata como "el jugador está en la UI":
-    // a partir de ahí J/K/L/U dejan de responder y parece que el ataque está
+    // a partir de ahí J/K/L dejan de responder y parece que el ataque está
     // roto. Al soltar el puntero devolvemos el foco al canvas. Solo por puntero
     // (la navegación con teclado conserva el suyo) y solo si ningún overlay ha
     // pedido el input con phaser-disable-input.

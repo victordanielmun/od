@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../../store/gameStore';
-import { Swords, Sword, Hand, RefreshCw, Flame, Zap, Sparkles } from 'lucide-react';
+import { Swords, Hand, RefreshCw, Flame, Zap, Sparkles } from 'lucide-react';
 
 // Tareas que hacen de un mapa un mapa de combate (mismo criterio que CombatSystem).
 const COMBAT_TASK_TYPES = ['defeat_enemy', 'kill_boss', 'kill_all'];
@@ -37,7 +37,6 @@ export const VirtualArcadeControls = () => {
     interact: false,
     dash: false,
     combo: false,
-    attack: false,
     spell: false
   });
 
@@ -85,7 +84,6 @@ export const VirtualArcadeControls = () => {
       interact: false,
       dash: false,
       combo: false,
-      attack: false,
       spell: false
     };
     setActiveInputs(defaultStates);
@@ -307,7 +305,7 @@ export const VirtualArcadeControls = () => {
               <span className="text-[5px] md:text-[8px] font-black tracking-tighter">MANA (R)</span>
             </button>
 
-            {/* Throw (U) */}
+            {/* Throw (K) */}
             <button
               data-action="throw"
               onMouseDown={() => handleButtonPress('throw', true)}
@@ -318,10 +316,10 @@ export const VirtualArcadeControls = () => {
                   ? 'bg-teal-500/35 border-teal-400/40 text-white scale-90 shadow-[0_0_15px_rgba(20,184,166,0.4)]'
                   : 'bg-teal-600/10 border-teal-500/20 shadow-[0_0_10px_rgba(20,184,166,0.15)]'
               }`}
-              title="Throw (U)"
+              title="Throw (K)"
             >
               <Flame className="w-3.5 h-3.5 md:w-[18px] md:h-[18px] rotate-45" />
-              <span className="text-[5px] md:text-[8px] font-black tracking-tighter">THR (U)</span>
+              <span className="text-[5px] md:text-[8px] font-black tracking-tighter">THR (K)</span>
             </button>
 
             {/* Interact (E) */}
@@ -348,7 +346,7 @@ export const VirtualArcadeControls = () => {
               onMouseDown={() => handleButtonPress('dash', true)}
               onMouseUp={() => handleButtonPress('dash', false)}
               onMouseLeave={() => handleButtonPress('dash', false)}
-              className={`absolute bottom-1 right-36 w-11 h-11 md:bottom-2 md:right-52 md:w-16 md:h-16 border text-slate-200 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+              className={`absolute bottom-1 right-24 w-11 h-11 md:bottom-2 md:right-36 md:w-16 md:h-16 border text-slate-200 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
                 activeInputs.dash
                   ? 'bg-slate-500/35 border-slate-400/40 text-white scale-90 shadow-[0_0_15px_rgba(100,116,139,0.4)]'
                   : 'bg-slate-600/10 border-slate-500/20 shadow-[0_0_8px_rgba(100,116,139,0.15)]'
@@ -359,38 +357,22 @@ export const VirtualArcadeControls = () => {
               <span className="text-[5px] md:text-[8px] font-black tracking-tighter">DASH</span>
             </button>
 
-            {/* Combo (K) */}
+            {/* Combo (J) — único botón de melee (golpe rápido se retiró: dos
+                botones de ataque muy parecidos confundían más de lo que ayudaban) */}
             <button
               data-action="combo"
               onMouseDown={() => handleButtonPress('combo', true)}
               onMouseUp={() => handleButtonPress('combo', false)}
               onMouseLeave={() => handleButtonPress('combo', false)}
-              className={`absolute bottom-1 right-24 w-11 h-11 md:bottom-2 md:right-36 md:w-16 md:h-16 border text-cyan-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
+              className={`absolute bottom-1 right-12 w-11 h-11 md:bottom-2 md:right-20 md:w-16 md:h-16 border text-cyan-300 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
                 activeInputs.combo
                   ? 'bg-cyan-500/35 border-cyan-400/40 text-white scale-90 shadow-[0_0_18px_rgba(6,182,212,0.5)]'
                   : 'bg-cyan-600/10 border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
               }`}
-              title="Combo (K)"
+              title="Combo (J)"
             >
               <Swords className="w-3.5 h-3.5 md:w-[18px] md:h-[18px]" />
               <span className="text-[5px] md:text-[8px] font-black tracking-tight">COMBO</span>
-            </button>
-
-            {/* Attack (J) */}
-            <button
-              data-action="attack"
-              onMouseDown={() => handleButtonPress('attack', true)}
-              onMouseUp={() => handleButtonPress('attack', false)}
-              onMouseLeave={() => handleButtonPress('attack', false)}
-              className={`absolute bottom-1 right-12 w-11 h-11 md:bottom-2 md:right-20 md:w-16 md:h-16 border text-red-200 rounded-full flex flex-col items-center justify-center transition-all duration-100 cursor-pointer pointer-events-auto select-none touch-none ${
-                activeInputs.attack
-                  ? 'bg-red-500/45 border-red-400/50 text-white scale-90 shadow-[0_0_20px_rgba(239,68,68,0.5)]'
-                  : 'bg-red-600/12 border-red-500/20 shadow-[0_0_12px_rgba(239,68,68,0.25)]'
-              }`}
-              title="Quick Strike (J)"
-            >
-              <Sword className="w-4 h-4 md:w-5 md:h-5 animate-pulse" />
-              <span className="text-[6px] md:text-[9px] font-black tracking-wide">QUICK</span>
             </button>
 
             {/* Spell (L) */}
