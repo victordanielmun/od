@@ -134,9 +134,16 @@ export default class EnemySprite extends NPCSprite {
     this.enemyType = data.type || 'melee';
     if (this.enemyType === 'boss') this._setupBoss();
     const oldX = this.x;
-    // Actualizar posición (suavizado o directo)
-    this.setPosition(data.x, data.y);
-    
+    // Actualizar posición (suavizado o directo). El editor de mapas pausa a los
+    // enemigos poniendo `paused=true` (ver EditorController.pauseEnemies) para
+    // que no estorben mientras se edita — pero la IA sigue corriendo en el
+    // servidor, así que sin este check el enemigo se seguiría teletransportando
+    // a su posición autoritativa en cada tick aunque preUpdate ya no lo mueva
+    // localmente. El resto del estado (HP, animaciones) sigue sincronizando.
+    if (!this.paused) {
+        this.setPosition(data.x, data.y);
+    }
+
     // Actualizar estado de la animación
     if (data.fsm_state) {
         // Ventana de predicción local (predictHit): al conectar un golpe, este cliente

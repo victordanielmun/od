@@ -7,7 +7,6 @@ import { CreateRoomModal } from '../components/lobby/CreateRoomModal';
 import { CharacterSelector } from '../components/lobby/CharacterSelector';
 import { LobbyGameCanvas } from '../components/lobby/LobbyGameCanvas';
 import { BottomHUD } from '../components/lobby/BottomHUD';
-import { RoomChatPanel } from '../components/lobby/RoomChatPanel';
 import { Sidebar } from '../components/lobby/Sidebar';
 import { MapEditorUI } from '../components/lobby/MapEditorUI';
 import { DeathOverlay } from '../components/lobby/DeathOverlay';
@@ -503,9 +502,6 @@ export const LobbyLayout = () => {
         <>
           <BottomHUD />
           {!showMissionBanner && <MissionTracker mission={activeMission} />}
-          {/* Chat de sala: se monta solo en instancias de grupo (el propio panel
-              decide según el tipo de sala). En el lobby público no aparece. */}
-          <RoomChatPanel />
         </>
       )}
 

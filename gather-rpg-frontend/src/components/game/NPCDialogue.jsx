@@ -141,7 +141,18 @@ export const NPCDialogue = ({ npcData, onClose }) => {
     const scrollRef = useRef(null);
     const recordingTimeoutRef = useRef(null);
     const user = useAuthStore(state => state.user);
-    const { currentSceneKey, requestMapJoin, fetchActiveMission } = useGameStore();
+    const { currentSceneKey, requestMapJoin, fetchActiveMission, setNpcDialogueRoomId } = useGameStore();
+
+    // Mientras este diálogo está montado, el listener de mission_completed en
+    // gameStore no debe disparar el overlay global de "misión completada" para
+    // ESTA sala: este componente ya maneja ese cierre por su cuenta (espera a
+    // que el jugador termine de leer al NPC antes de mostrar recompensas, ver
+    // isMissionComplete).
+    useEffect(() => {
+        setNpcDialogueRoomId(npcData.roomId);
+        return () => setNpcDialogueRoomId(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [npcData.roomId, setNpcDialogueRoomId]);
 
     // Normalize NPC data (Handle nested definition if it's an instance)
     const definition = npcData.npc_template?.npc_definition || npcData;

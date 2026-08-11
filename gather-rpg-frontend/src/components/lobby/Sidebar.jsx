@@ -9,6 +9,8 @@ import api from '../../services/api';
 import SettingsMenu from '../common/SettingsMenu';
 import { BlockUserModal } from '../common/BlockUserModal';
 
+const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
+
 export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }) => {
     const { t } = useTranslation();
     const { user, logout } = useAuthStore();
@@ -28,12 +30,19 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
     // Derived Open State
     const isOpen = isPinned || isHovered;
 
-    const { players, movePlayer, activeChat, sendPrivateMessage, closeChat, chatRequests, acceptChatRequest, rejectChatRequest, sendChatRequest, teleportToFriend, sendRoomInvite, blockUser } = useGameStore();
+    const { players, movePlayer, activeChat, sendPrivateMessage, closeChat, chatRequests, acceptChatRequest, rejectChatRequest, sendChatRequest, teleportToFriend, sendRoomInvite, blockUser, currentRoomType, roomMessages, sendRoomMessage } = useGameStore();
     const { addNotification } = useNotificationStore();
 
     const [chatInput, setChatInput] = useState("");
+    const [roomChatInput, setRoomChatInput] = useState("");
     const messagesEndRef = useRef(null);
+    const roomMessagesEndRef = useRef(null);
     const sidebarRef = useRef(null);
+
+    // Chat de sala: solo llega en instancias de grupo (cooperativas y privadas por
+    // PIN). Espejo en cliente de Room.IsGroupInstance (backend). En un mapa
+    // público (lobby incluido) no hay canal de grupo — allí se habla 1:1.
+    const isGroupRoom = ['cooperative', 'mission'].includes(currentRoomType);
 
     const isGuest = user?.is_guest ?? (user?.username?.startsWith('Guest_') || false);
 
@@ -78,6 +87,11 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
         if (!activeChat) return;
         scrollToBottom();
     }, [activeChat, scrollToBottom]);
+
+    useEffect(() => {
+        if (activeChat || !isGroupRoom) return;
+        roomMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [roomMessages, activeChat, isGroupRoom]);
 
     const refreshFriends = useCallback(async () => {
         if (!isOpen) return;
@@ -139,6 +153,15 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
                 detail: { senderId: user.id, text: chatInput.trim() }
             }));
         }
+    };
+
+    const handleSendRoomChat = (e) => {
+        e.preventDefault();
+        const text = roomChatInput.trim();
+        if (!text) return;
+        // El servidor devuelve el eco al emisor, así que el mensaje aparece solo.
+        sendRoomMessage(text);
+        setRoomChatInput("");
     };
 
     // ... Friend Handlers (omitted for brevity, assume same logic as before) ...
@@ -399,6 +422,59 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
                                     </button>
                                 </form>
 
+                            </div>
+                        ) : isGroupRoom ? (
+                            <div className="flex flex-col h-full">
+                                <div className="flex justify-between items-center mb-3 pb-2 border-b border-white/10">
+                                    <span className="text-yellow-400 text-sm font-bold flex items-center gap-2">
+                                        <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+                                        {t('lobby.room_chat.title', 'Chat de sala')}
+                                    </span>
+                                </div>
+
+                                <div className="flex-1 space-y-1.5 overflow-y-auto pr-2 custom-scrollbar">
+                                    {roomMessages.length === 0 ? (
+                                        <p className="text-gray-500 text-[10px] text-center uppercase tracking-widest font-bold mt-6 opacity-40">
+                                            {t('lobby.room_chat.no_messages', 'Aún no ha hablado nadie.')}
+                                        </p>
+                                    ) : (
+                                        roomMessages.map((m, idx) => {
+                                            const isSystem = String(m.user_id || '') === SYSTEM_USER_ID;
+                                            const isMine = !isSystem && user?.id && String(m.user_id) === String(user.id);
+                                            if (isSystem) {
+                                                return (
+                                                    <div key={idx} className="text-xs text-amber-300/80 italic">
+                                                        {m.message}
+                                                    </div>
+                                                );
+                                            }
+                                            return (
+                                                <div key={idx} className="text-xs leading-snug">
+                                                    <span className={isMine ? 'text-emerald-300 font-semibold' : 'text-orange-300 font-semibold'}>
+                                                        {m.username}
+                                                    </span>
+                                                    <span className="text-gray-400">: </span>
+                                                    <span className="text-gray-200 break-words">{m.message}</span>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                    <div ref={roomMessagesEndRef} />
+                                </div>
+
+                                <form onSubmit={handleSendRoomChat} className="mt-4 flex gap-2 pt-3 border-t border-white/10">
+                                    <input
+                                        type="text"
+                                        value={roomChatInput}
+                                        onChange={(e) => setRoomChatInput(e.target.value)}
+                                        maxLength={200}
+                                        placeholder={t('lobby.room_chat.input_placeholder', 'Mensaje a la sala...')}
+                                        className="flex-1 bg-gray-950/60 text-white text-xs px-3 py-2 border border-white/10 rounded-xl focus:border-yellow-500 focus:outline-none"
+                                    />
+                                    <button type="submit" disabled={!roomChatInput.trim()} className="bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-black font-extrabold p-2.5 rounded-xl shadow-lg active:scale-95 transition-all cursor-pointer disabled:opacity-40">
+                                        <Send size={16} />
+                                    </button>
+                                </form>
                             </div>
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-gray-500">

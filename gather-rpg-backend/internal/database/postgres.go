@@ -14,7 +14,9 @@ var DB *gorm.DB
 func ConnectPostgres(cfg *config.Config) {
 	dsn := cfg.GetDBDSN()
 	var err error
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	// TranslateError lets callers check `errors.Is(err, gorm.ErrDuplicatedKey)` etc.
+	// instead of parsing driver-specific error strings/codes.
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{TranslateError: true})
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}

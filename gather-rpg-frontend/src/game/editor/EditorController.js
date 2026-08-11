@@ -21,6 +21,10 @@ export class EditorController {
     this.gridOverlay = null;
     this.isDragging = false;
     this.dragStartGrid = null;
+    // Herramienta inspector: al hacer pointerdown sobre un tile existente se
+    // agarra aquí para poder arrastrarlo (ver setupInput/_finishMovingTile).
+    // null mientras no se está arrastrando nada.
+    this._movingTile = null;
     this.rectPreview = null;
     this.cursorCoordLabel = null;
     this.tiles = new Map();
@@ -104,12 +108,18 @@ export class EditorController {
       this.cursorCoordLabel.setPosition(gx + G / 2 + 4, gy - G / 2);
       this.cursorCoordLabel.setText(`${Math.floor(wp.x / G)},${Math.floor(wp.y / G)}`);
 
-      if (this.isDragging && this.tool !== 'rect') {
+      if (this.isDragging && this.tool !== 'rect' && this.tool !== 'inspector') {
         this._editorPlaceOrErase(gx, gy);
       }
 
       if (this.isDragging && this.tool === 'rect' && this.dragStartGrid) {
         this._drawRectPreview(this.dragStartGrid.x, this.dragStartGrid.y, gx, gy);
+      }
+
+      // Arrastrando un tile agarrado con el inspector: lo seguimos con el
+      // cursor, encajado a grilla, hasta soltar (ver pointerup).
+      if (this.isDragging && this.tool === 'inspector' && this._movingTile) {
+        this._movingTile.tile.setPosition(gx, gy);
       }
     });
 
@@ -165,6 +175,13 @@ export class EditorController {
       if (this.tool !== 'rect') {
         if (this.tool === 'inspector') {
           this._pickObjectAt(gx, gy);
+          // Si había un tile en esta celda, queda agarrado para arrastrarlo:
+          // pointermove lo va siguiendo y pointerup decide dónde se suelta.
+          const found = this.scene._findTileAt(gx, gy);
+          if (found) {
+            this._movingTile = { tile: found.tile, type: found.type, fromX: gx, fromY: gy, originalAlpha: found.tile.alpha };
+            found.tile.setAlpha?.(0.6);
+          }
         } else {
           console.log(`[Editor] Interaction: ${this.tool} on (${gx}, ${gy}) with tileType: ${this.tileType}`);
           this._editorPlaceOrErase(gx, gy);
@@ -186,6 +203,11 @@ export class EditorController {
         this.rectPreview.clear();
         this.rectPreview.setVisible(false);
       }
+
+      if (this._movingTile) {
+        this._finishMovingTile();
+      }
+
       this.dragStartGrid = null;
     });
   }
@@ -319,13 +341,14 @@ export class EditorController {
 
     if (this.scene.player) {
       if (enabled) {
-        // Default to 'character' mode so the player stays fully visible when editor opens.
-        // The user can switch to 'camera' mode via the UI if needed.
-        this.moveMode = 'character';
-        this._applyMoveMode('character');
+        // Default to 'camera' mode: editar (sobre todo colocar/inspeccionar
+        // enemigos) es más cómodo con la cámara libre que atado al personaje.
+        // El usuario puede pasar a 'character' mode desde la UI si lo necesita.
+        this.moveMode = 'camera';
+        this._applyMoveMode('camera');
         this.scene.preEditorPos = { x: this.scene.player.x, y: this.scene.player.y };
-        // Sync the React UI to 'character' mode
-        window.dispatchEvent(new CustomEvent('editor-move-mode-changed', { detail: { mode: 'character' } }));
+        // Sync the React UI to 'camera' mode
+        window.dispatchEvent(new CustomEvent('editor-move-mode-changed', { detail: { mode: 'camera' } }));
       } else {
         this.moveMode = 'character';
         this.scene.player.setAlpha(1);
@@ -442,6 +465,46 @@ export class EditorController {
         duration: 300,
         onComplete: () => flash.destroy()
     });
+  }
+
+  // Suelta el tile agarrado con el inspector (ver pointerdown/pointermove).
+  // pointermove ya lo fue moviendo en vivo; acá solo se decide si el destino
+  // es válido o si hay que devolverlo a su celda original.
+  _finishMovingTile() {
+    const moving = this._movingTile;
+    this._movingTile = null;
+    if (!moving) return;
+
+    moving.tile.setAlpha?.(moving.originalAlpha ?? 1);
+
+    const G = this.GRID_SIZE;
+    const pointer = this.scene.input.activePointer;
+    const wp = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const gx = Math.floor(wp.x / G) * G + G / 2;
+    const gy = Math.floor(wp.y / G) * G + G / 2;
+
+    const outOfBounds = gx < 0 || gx > this.scene.mapWidth || gy < 0 || gy > this.scene.mapHeight;
+    const sameCell = gx === moving.fromX && gy === moving.fromY;
+    // Ya hay OTRO tile del mismo tipo en el destino: cancelar en vez de dejar
+    // dos superpuestos en silencio (el propio `moving.tile` ya está ahí por el
+    // arrastre en vivo, así que se excluye de la comparación).
+    const collides = !sameCell && this.scene._findAllTilesAt(gx, gy)
+      .some(t => t.type === moving.type && t.tile !== moving.tile);
+
+    if (outOfBounds || collides) {
+      moving.tile.setPosition(moving.fromX, moving.fromY);
+      if (collides) {
+        useNotificationStore.getState().addNotification('error', 'Ya hay un objeto del mismo tipo en esa celda.');
+      }
+      return;
+    }
+
+    if (sameCell) return; // soltado donde mismo: no-op
+
+    moving.tile.setPosition(gx, gy);
+    this._pushHistory({ action: 'move', type: moving.type, fromX: moving.fromX, fromY: moving.fromY, toX: gx, toY: gy });
+    this.redoStack = [];
+    this.emitStats();
   }
 
   applyBuildMetadataToAll() {
@@ -711,6 +774,9 @@ export class EditorController {
       const found = this.scene._findTileAt(entry.x, entry.y, entry.newType);
       if (found) found.tile.destroy();
       this.scene._placeTileDirect(entry.oldType, entry.x, entry.y);
+    } else if (entry.action === 'move') {
+      const found = this.scene._findTileAt(entry.toX, entry.toY, entry.type);
+      if (found) found.tile.setPosition(entry.fromX, entry.fromY);
     }
   }
 
@@ -741,6 +807,9 @@ export class EditorController {
       const found = this.scene._findTileAt(entry.x, entry.y, entry.oldType);
       if (found) found.tile.destroy();
       this.scene._placeTileDirect(entry.newType, entry.x, entry.y);
+    } else if (entry.action === 'move') {
+      const found = this.scene._findTileAt(entry.fromX, entry.fromY, entry.type);
+      if (found) found.tile.setPosition(entry.toX, entry.toY);
     }
   }
 

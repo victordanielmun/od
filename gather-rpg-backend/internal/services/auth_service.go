@@ -178,6 +178,20 @@ func (s *AuthService) LoginGuest(characterIDs []string, nativeLang string, devic
 	})
 
 	if err != nil {
+		// Two requests for the same brand-new device_id (e.g. a double-click before
+		// the button disables itself) can both pass the FindByEmail check above and
+		// then race on the same guest email's unique constraint. Only one wins the
+		// insert; the loser just logs into the account the winner created instead
+		// of surfacing a 500 for what is, from the player's perspective, a no-op.
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			if existing, findErr := s.Repo.FindByEmail(email); findErr == nil {
+				token, tokenErr := utils.GenerateToken(existing.ID.String(), existing.Username, existing.Role)
+				if tokenErr != nil {
+					return nil, tokenErr
+				}
+				return &models.AuthResponse{Token: token, User: *existing}, nil
+			}
+		}
 		return nil, err
 	}
 

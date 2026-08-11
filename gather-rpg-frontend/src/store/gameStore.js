@@ -84,9 +84,20 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     // 1:1 por mensajes privados. Ver Room.IsGroupInstance en el backend.
     roomMessages: [],
     activeMission: null,
+    // room_id del NPCDialogue abierto ahora mismo (null si no hay ninguno).
+    // NPCDialogue.jsx lo marca al montar/desmontar. El listener de
+    // mission_completed lo compara contra el room_id del broadcast para no
+    // pisar la pantalla propia de fin de misión del diálogo (que a propósito
+    // espera a que el jugador termine de leer al NPC) con el overlay global —
+    // pero solo cuando es la MISMA sala, para no silenciar el aviso a un
+    // compañero de una misión coop que esté charlando con otro NPC cuando el
+    // resto del grupo la completa.
+    npcDialogueRoomId: null,
     inventory: [],
     virtualControlsMode: loadVirtualControlsMode(), // 'auto' | 'always' | 'never'
     virtualControlsLayout: loadVirtualControlsLayout(), // { dpadSide, scale, opacity, offsetY }
+
+    setNpcDialogueRoomId: (roomId) => set({ npcDialogueRoomId: roomId }),
 
     setVirtualControlsMode: (mode) => {
         localStorage.setItem('virtual_controls_mode', mode);
@@ -656,11 +667,20 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                     // Clear active mission state
                     set({ activeMission: null });
 
-                    // Mostrar un modal claro de "Misión Completada" (sin auto-redirigir).
-                    // El jugador decide cuándo volver al lobby.
-                    window.dispatchEvent(new CustomEvent('mission-completed-overlay', {
-                        detail: { title }
-                    }));
+                    // Si el diálogo abierto pertenece a ESTA MISMA sala, es (con altísima
+                    // probabilidad) el que completó la misión, y ya tiene su propia
+                    // pantalla de cierre que espera a que el jugador termine de leer al
+                    // NPC antes de mostrar recompensas. Disparar también el overlay
+                    // global aquí lo interrumpiría de inmediato (llega por WS, sin ese
+                    // delay) y dejaría dos pantallas de "misión completada" en fila. Solo
+                    // se muestra el overlay cuando no hay diálogo abierto para esta sala
+                    // (misión completada por otra vía, p. ej. combate/kills, o un
+                    // compañero de misión coop que está charlando con otro NPC).
+                    if (get().npcDialogueRoomId !== payload.room_id) {
+                        window.dispatchEvent(new CustomEvent('mission-completed-overlay', {
+                            detail: { title }
+                        }));
+                    }
                 });
 
                 wsClient.on('enemy_update', (payload) => {
@@ -904,6 +924,12 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     },
 
     requestMapJoin: (sceneKey, type = 'public', inviteCode = '') => {
+        // Optimista: dejamos de anunciarnos como sala de grupo apenas pedimos salir,
+        // en vez de esperar la confirmación (map_join_approved) de la sala destino.
+        // Sin esto, el chat de sala del navbar (Sidebar) seguía marcado con el tipo
+        // de la sala VIEJA durante esa ventana, así que el chat de la misión se veía
+        // un instante de más incluso volviendo a un lobby público sin chat de grupo.
+        set({ currentRoomType: null });
         wsClient.send('request_map_join', { scene_key: sceneKey, type, invite_code: inviteCode });
     },
 

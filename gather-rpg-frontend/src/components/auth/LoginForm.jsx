@@ -8,9 +8,21 @@ export const LoginForm = () => {
   const [password, setPassword] = useState(localStorage.getItem('savedPassword') || '');
   const [rememberMe, setRememberMe] = useState(localStorage.getItem('rememberMe') === 'true');
   const [showPassword, setShowPassword] = useState(false);
+  const [startingGuest, setStartingGuest] = useState(false);
   const login = useAuthStore(state => state.login);
   const error = useAuthStore(state => state.error);
   const navigate = useNavigate();
+
+  const handlePlayAsGuest = async () => {
+    if (startingGuest) return;
+    setStartingGuest(true);
+    try {
+      const success = await useAuthStore.getState().loginGuest();
+      if (success) navigate('/dashboard');
+    } finally {
+      setStartingGuest(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -102,13 +114,11 @@ export const LoginForm = () => {
 
         <button
           type="button"
-          onClick={async () => {
-            const success = await useAuthStore.getState().loginGuest();
-            if (success) navigate('/dashboard');
-          }}
-          className="w-full bg-gray-900 hover:bg-gray-800 text-white font-extrabold py-3 rounded-xl transition-all font-medieval uppercase tracking-widest border border-white/10 hover:border-white/20 cursor-pointer"
+          onClick={handlePlayAsGuest}
+          disabled={startingGuest}
+          className="w-full bg-gray-900 hover:bg-gray-800 text-white font-extrabold py-3 rounded-xl transition-all font-medieval uppercase tracking-widest border border-white/10 hover:border-white/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Jugar como invitado
+          {startingGuest ? 'Entrando…' : 'Jugar como invitado'}
         </button>
       </form>
 
