@@ -174,19 +174,24 @@ func (h *Hub) processEnemyKill(killerUUID uuid.UUID, enemyTemplateID uuid.UUID, 
 		}
 	}
 
-	// 2. kill_all: contar enemigos muertos en la sala
+	// 2. kill_all: ¿está limpia la wave actual? (allDead/moreWavesPending siguen
+	// scopeados a la wave activa a propósito: eso es justo lo que determina si
+	// hay que esperar a la siguiente). Lo que se REPORTA al HUD, en cambio, usa
+	// los contadores acumulados del encuentro completo (TotalKilled /
+	// TotalEnemiesInEncounter) — antes usaban len(ActiveEnemies)/dead, que solo
+	// reflejaba la wave activa: con un mapa de 3 waves el HUD marcaba "3/3"
+	// (100%) al limpiar la wave 1 y "reiniciaba" a 0% al spawnear la wave 2.
 	room.mu.RLock()
 	allDead := true
-	totalEnemies := len(room.ActiveEnemies)
-	deadEnemies := 0
 	for _, e := range room.ActiveEnemies {
-		if e.FSMState == "dead" {
-			deadEnemies++
-		} else {
+		if e.FSMState != "dead" {
 			allDead = false
+			break
 		}
 	}
 	moreWavesPending := len(room.PendingSpawns) > 0
+	totalKilled := room.TotalKilled
+	totalEncounter := room.TotalEnemiesInEncounter
 	room.mu.RUnlock()
 
 	// El nivel solo está limpiado si la oleada actual está muerta Y no quedan
@@ -194,8 +199,8 @@ func (h *Hub) processEnemyKill(killerUUID uuid.UUID, enemyTemplateID uuid.UUID, 
 	// tickAI spawneará la siguiente.
 	levelCleared := allDead && !moreWavesPending
 
-	log.Printf("[Combat] Room %s enemy status: %d/%d dead | allDead=%v | morePending=%v | levelCleared=%v",
-		roomID, deadEnemies, totalEnemies, allDead, moreWavesPending, levelCleared)
+	log.Printf("[Combat] Room %s enemy status: %d/%d killed (encuentro completo) | allDead(wave actual)=%v | morePending=%v | levelCleared=%v",
+		roomID, totalKilled, totalEncounter, allDead, moreWavesPending, levelCleared)
 
 	if !levelCleared {
 		// Progreso incremental para que el HUD muestre kills en tiempo real.
@@ -206,8 +211,8 @@ func (h *Hub) processEnemyKill(killerUUID uuid.UUID, enemyTemplateID uuid.UUID, 
 				Payload: map[string]interface{}{
 					"mission_id":     res.MissionID,
 					"task_id":        res.TaskID,
-					"kills_done":     deadEnemies,
-					"required_kills": totalEnemies,
+					"kills_done":     totalKilled,
+					"required_kills": totalEncounter,
 					"task_completed": false,
 				},
 			})
@@ -583,8 +588,7 @@ func (h *Hub) handlePlayerAttack(client *Client, payload interface{}) {
 	log.Printf("[Combat] Enemy %s took %d damage (%s) from %s. HP: %d", instanceUUID, dmg, p.AttackType, client.ID, enemy.HP)
 
 	if enemy.HP <= 0 {
-		enemy.HP = 0
-		enemy.FSMState = "dead"
+		room.killEnemyLocked(enemy)
 		enemyTemplateID := enemy.EnemyID
 		room.mu.Unlock()
 
@@ -679,8 +683,7 @@ func (h *Hub) handleNinjaCardAnswer(client *Client, payload interface{}) {
 	// separado en cada rama, ya abajo.
 
 	if isCorrect {
-		enemy.HP = 0
-		enemy.FSMState = "dead"
+		room.killEnemyLocked(enemy)
 		enemyTemplateID := enemy.EnemyID
 		room.mu.Unlock()
 
@@ -1003,8 +1006,7 @@ func (h *Hub) handleBossCardAnswerLocked(client *Client, room *Room, enemy *mode
 
 	var enemyTemplateID uuid.UUID
 	if allCorrect {
-		enemy.HP = 0
-		enemy.FSMState = "dead"
+		room.killEnemyLocked(enemy)
 		enemyTemplateID = enemy.EnemyID
 	} else {
 		enemy.HP = bossCardFailHP(enemy)

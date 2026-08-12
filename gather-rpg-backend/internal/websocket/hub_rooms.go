@@ -787,14 +787,13 @@ func (h *Hub) handleRequestMapJoin(client *Client, sceneKey, roomType, inviteCod
 			// enemigos muertos): el recién llegado se encontraría el mapa hecho.
 			// En competitivo la carrera empieza para todos a la vez, así que el
 			// mismo criterio evita que alguien entre a competir con ventaja.
+			// Usa el progreso del ENCUENTRO completo (TotalKilled/TotalEnemiesInEncounter),
+			// no len(ActiveEnemies) —que solo refleja la wave activa—: si no, un mapa
+			// de varias waves marcaba 100% al limpiar la wave 1 (rechazando a
+			// cualquiera que se quisiera unir) y volvía a 0% apenas spawneaba la 2.
 			room.mu.RLock()
-			total := len(room.ActiveEnemies)
-			dead := 0
-			for _, e := range room.ActiveEnemies {
-				if e.FSMState == "dead" {
-					dead++
-				}
-			}
+			total := room.TotalEnemiesInEncounter
+			dead := room.TotalKilled
 			room.mu.RUnlock()
 
 			progress := 0.0

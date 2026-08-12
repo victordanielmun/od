@@ -35,6 +35,31 @@ func needsAttackExclusivity(t string) bool {
 	return t == EnemyTypeMelee || t == EnemyTypeFast || t == ""
 }
 
+// detectRangeFor da el radio (px) al que cada arquetipo nota a un jugador y
+// empieza a perseguirlo. Coherente con el rango de ataque propio de cada uno:
+// el thrower y el boss "ven" desde donde ya pueden empezar a actuar a
+// distancia (throwRange/bossThrowRange), fast es más agresivo que el melee
+// base, y "" (compat) cae en el valor histórico único de antes de diferenciar
+// por tipo. El piso de melee (380) no es arbitrario: room_ai_test.go ya
+// probaba que a 300-350px de un jugador un melee sigue persiguiendo (ver
+// TestEnemyChasesThenAttacksAndStaysPutDuringSwing/TestEnemyResumesChaseAfterSwing),
+// contrato que quedó roto en silencio cuando detectRange bajó de 500 a 280 sin
+// tocar esos tests.
+func detectRangeFor(enemyType string) float64 {
+	switch enemyType {
+	case EnemyTypeMelee:
+		return 380.0
+	case EnemyTypeFast:
+		return 420.0
+	case EnemyTypeThrower:
+		return 460.0
+	case EnemyTypeBoss:
+		return 520.0
+	default:
+		return 280.0
+	}
+}
+
 type Room struct {
 	ID         string
 	Clients    map[*Client]bool
@@ -63,6 +88,17 @@ type Room struct {
 	MaxWave       int                 // mayor wave_num presente en el mapa
 	PendingSpawns []models.EnemySpawn // enemigos de oleadas futuras, aún no spawneados
 	NextWaveAt    time.Time           // si no es cero, momento en que aparece la siguiente oleada
+
+	// Progreso del ENCUENTRO completo (todas las waves), a diferencia de
+	// ActiveEnemies —que solo contiene la wave activa: se purga entre oleadas y
+	// las futuras ni siquiera existen todavía como structs—. Sin esto, el HUD de
+	// "X/Y enemigos" y el matchmaking de salas de equipo confundían "esta wave
+	// está limpia" con "la misión está limpia": al terminar la wave 1 de 3
+	// mostraban 100% y luego "reiniciaban" a 0% al spawnear la wave 2.
+	// TotalEnemiesInEncounter se fija una vez en initializeEnemies (cuenta TODOS
+	// los spawns del mapa); TotalKilled solo sube, nunca se resetea ni se purga.
+	TotalEnemiesInEncounter int
+	TotalKilled             int
 
 	// Sesión de retos (Ninja Cards) por jugador. Vive en memoria mientras dura la
 	// sala: las salas de combate son efímeras, así que la "sesión" es la estancia.
@@ -153,6 +189,7 @@ func (r *Room) initializeEnemies() {
 		minWave = 1
 	}
 	r.MaxWave = maxWave
+	r.TotalEnemiesInEncounter = len(r.MapData.Enemies)
 
 	// Spawnear solo la primera oleada; el resto queda en PendingSpawns.
 	spawned := r.spawnWave(minWave)
@@ -266,6 +303,17 @@ func (r *Room) spawnWave(waveNum int) int {
 	return count
 }
 
+// killEnemyLocked marca a un enemigo como muerto y suma al contador acumulado
+// del encuentro (TotalKilled), que a diferencia de ActiveEnemies nunca se
+// resetea ni se purga entre waves. Todo lugar del código que mata a un
+// enemigo (golpe directo, Ninja Card, Boss Card) debe pasar por acá para que
+// ese contador quede completo. Debe llamarse con r.mu ya bloqueado.
+func (r *Room) killEnemyLocked(e *models.ActiveEnemy) {
+	e.HP = 0
+	e.FSMState = "dead"
+	r.TotalKilled++
+}
+
 // waveSpawnDelay es la pausa entre que se limpia una oleada y aparece la siguiente.
 const waveSpawnDelay = 2 * time.Second
 
@@ -373,6 +421,24 @@ func (r *Room) canStandAt(x, y float64) bool {
 		return true
 	}
 	return !r.blockedCells[cellOf(x, y)]
+}
+
+// stepEnemy avanza al enemigo (dx, dy) solo si el destino es transitable; si
+// no, se queda quieto ese tick. A diferencia del paseo (pickWanderLeg), el
+// resto de movimientos de combate —perseguir, retroceder al recargar,
+// embestida del boss— movían enemy.X/Y en línea recta sin validar terreno,
+// así que un jugador parado cerca del borde de un vacío podía hacer que el
+// retroceso (o la embestida) lo empujara ahí. Una vez ahí, canStandAt nunca
+// se revisaba de nuevo hasta que volviera a deambular sin objetivo, y el
+// enemigo quedaba fuera del alcance de golpe del jugador para siempre (el
+// propio jugador no puede pisar un vacío, ver PlayerManager collider).
+// Debe llamarse con r.mu tomado (igual que canStandAt).
+func (r *Room) stepEnemy(e *models.ActiveEnemy, dx, dy float64) {
+	nx, ny := e.X+dx, e.Y+dy
+	if !r.canStandAt(nx, ny) {
+		return
+	}
+	e.X, e.Y = nx, ny
 }
 
 // pickWanderLeg elige el siguiente tramo del paseo para algo que se pasea
@@ -581,16 +647,17 @@ func (r *Room) tickBossLocked(e *models.ActiveEnemy, dist, angle, speed float64)
 	// Durante el charge sigue avanzando en la dirección fijada al iniciarlo.
 	if now.Before(e.BusyUntil) {
 		if e.FSMState == "charge" {
-			e.X += e.ChargeVX
-			e.Y += e.ChargeVY
+			// Si el destino no es transitable, la embestida se frena contra ese
+			// borde en vez de seguir empujando al boss sobre un vacío/pared —
+			// sigue "ocupado" (BusyUntil) hasta que termine la animación.
+			r.stepEnemy(e, e.ChargeVX, e.ChargeVY)
 		}
 		return
 	}
 
 	if dist > bossThrowRange {
 		e.FSMState = "chase"
-		e.X += math.Cos(angle) * speed
-		e.Y += math.Sin(angle) * speed
+		r.stepEnemy(e, math.Cos(angle)*speed, math.Sin(angle)*speed)
 		return
 	}
 
@@ -800,7 +867,6 @@ func (r *Room) tickAI() {
 	//    - thrower/boss: cada uno persigue al jugador más cercano, SIN
 	//      exclusividad (pueden engancharse al mismo jugador en simultáneo).
 	enemyTargets := make(map[uuid.UUID]*Client)
-	const detectRange = 280.0
 
 	// 3a. Melee/fast — greedy 1:1.
 	type enemyPlayerPair struct {
@@ -815,7 +881,7 @@ func (r *Room) tickAI() {
 		}
 		for _, client := range eligibleClients {
 			dist := math.Sqrt(math.Pow(enemy.X-client.X, 2) + math.Pow(enemy.Y-client.Y, 2))
-			if dist < detectRange {
+			if dist < detectRangeFor(enemy.Type) {
 				pairs = append(pairs, enemyPlayerPair{enemy: enemy, client: client, dist: dist})
 			}
 		}
@@ -841,7 +907,7 @@ func (r *Room) tickAI() {
 			continue
 		}
 		var nearest *Client
-		nearestDist := detectRange
+		nearestDist := detectRangeFor(enemy.Type)
 		for _, client := range eligibleClients {
 			dist := math.Sqrt(math.Pow(enemy.X-client.X, 2) + math.Pow(enemy.Y-client.Y, 2))
 			if dist < nearestDist {
@@ -918,11 +984,9 @@ func (r *Room) tickAI() {
 				const throwRange = 350.0
 				const tooClose = 160.0
 				if dist > throwRange {
-					enemy.X += math.Cos(angle) * speed
-					enemy.Y += math.Sin(angle) * speed
+					r.stepEnemy(enemy, math.Cos(angle)*speed, math.Sin(angle)*speed)
 				} else if dist < tooClose {
-					enemy.X -= math.Cos(angle) * speed
-					enemy.Y -= math.Sin(angle) * speed
+					r.stepEnemy(enemy, -math.Cos(angle)*speed, -math.Sin(angle)*speed)
 				} else if now.Before(enemy.NextAttackAt) {
 					// Recargando: se mantiene a distancia en vez de disparar.
 					enemy.FSMState = "chase"
@@ -942,16 +1006,14 @@ func (r *Room) tickAI() {
 
 				switch {
 				case dist > attackRange:
-					enemy.X += math.Cos(angle) * speed
-					enemy.Y += math.Sin(angle) * speed
+					r.stepEnemy(enemy, math.Cos(angle)*speed, math.Sin(angle)*speed)
 
 				case now.Before(enemy.NextAttackAt):
 					// En rango pero recargando: NO ataca. Cede el turno para que otro
 					// melee/fast pueda entrar, y se aparta hasta la distancia de recuperación.
 					enemy.FSMState = "chase"
 					if dist < recoverRange {
-						enemy.X -= math.Cos(angle) * speed
-						enemy.Y -= math.Sin(angle) * speed
+						r.stepEnemy(enemy, -math.Cos(angle)*speed, -math.Sin(angle)*speed)
 					}
 
 				case needsAttackExclusivity(enemy.Type):
