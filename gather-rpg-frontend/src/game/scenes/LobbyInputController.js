@@ -111,8 +111,18 @@ export class LobbyInputController {
     scene.input.on('pointerdown', (pointer) => {
       if (pointer.leftButtonDown() && !scene.isTyping()) {
         scene.combatSystem?.handlePlayerCombo?.();
+        window.dispatchEvent(new CustomEvent('lobby-canvas-interact'));
       }
     });
+
+    // Avisa a la UI de React (MissionTracker) que el jugador volvió a jugar
+    // en el canvas, para que colapse paneles que puedan tapar el mapa.
+    this._onKeyDown = () => {
+      if (!scene.isTyping() && this._isCanvasFocused()) {
+        window.dispatchEvent(new CustomEvent('lobby-canvas-interact'));
+      }
+    };
+    scene.input.keyboard.on('keydown', this._onKeyDown);
   }
 
   _setupCanvasFocus() {
@@ -194,6 +204,10 @@ export class LobbyInputController {
     if (this._onPointerUp) {
       document.removeEventListener('pointerup', this._onPointerUp);
       this._onPointerUp = null;
+    }
+    if (this._onKeyDown && scene.input?.keyboard) {
+      scene.input.keyboard.off('keydown', this._onKeyDown);
+      this._onKeyDown = null;
     }
 
     const canvasEl = scene.game?.canvas;

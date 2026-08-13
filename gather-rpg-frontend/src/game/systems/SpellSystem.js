@@ -36,7 +36,31 @@ export default class SpellSystem {
     this.enemyPool     = enemyPool;
     this.inventory     = inventory;
     this.isCasting     = false;
-    this.currentSpell  = SPELL_TYPES.FIRE_RAIN; // Cambiar con drops futuros
+    // Si el jugador solo trae UN tipo de pergamino, se equipa solo — no tiene
+    // sentido obligarlo a cambiar con R/TAB para "elegir" entre una opción.
+    // Con 2+ tipos se mantiene el default (fire_rain) y el jugador cicla a mano.
+    this.currentSpell  = this._pickSoleSpellType() || SPELL_TYPES.FIRE_RAIN;
+
+    // Si el tipo activo se agota y solo queda un tipo con existencias, se
+    // auto-cambia a ese (mismo criterio de arriba, disparado por drops/loot).
+    this._onInventoryChanged = () => {
+      const sole = this._pickSoleSpellType();
+      if (sole && sole !== this.currentSpell && !this.inventory.hasSpellType(this.currentSpell)) {
+        this.currentSpell = sole;
+        this.scene.events.emit('spell-auto-equipped', sole);
+      }
+    };
+    this.scene.events.on('inventory-changed', this._onInventoryChanged, this);
+  }
+
+  destroy() {
+    this.scene.events.off('inventory-changed', this._onInventoryChanged, this);
+  }
+
+  // Devuelve el único tipo de hechizo con existencias, o null si hay 0 o 2+ tipos.
+  _pickSoleSpellType() {
+    const owned = Object.entries(this.inventory.spells || {}).filter(([, qty]) => qty > 0);
+    return owned.length === 1 ? owned[0][0] : null;
   }
 
   // ── API Pública ──────────────────────────────────────────────────────────
@@ -88,6 +112,10 @@ export default class SpellSystem {
     // 6. Desbloquear al terminar
     this.scene.time.delayedCall(1200, () => {
       this.isCasting = false;
+      // Recién ahora: si se llama mientras el 'special' sigue bloqueado, la
+      // animación de poción no alcanza a jugarse (playAnimation ignora keys
+      // sin prioridad mientras hay un lock activo — ver PlayerSprite).
+      playerCtrl._checkAutoManaPotion?.();
     });
   }
 

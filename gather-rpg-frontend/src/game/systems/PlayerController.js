@@ -1,6 +1,12 @@
 import ComboSystem from './ComboSystem.js';
 import { useGameStore } from '../../store/gameStore';
 
+// Auto-uso de consumibles: si el jugador lleva pociones, no debería tener que
+// pausar el combate para beberlas a mano. El maná se bebe apenas llega a 0; el
+// HP se bebe al caer por debajo de este % (evita esperar a estar casi muerto).
+const AUTO_HEAL_HP_PCT = 0.25;
+const AUTO_POTION_COOLDOWN_MS = 3000;
+
 /**
  * PlayerController — Controles simplificados (desktop + mobile-ready)
  *
@@ -10,14 +16,13 @@ import { useGameStore } from '../../store/gameStore';
  * │  ↑↓←→  = Mover     Virtual joystick                │
  * │  Z     = Combo      Botón A                         │
  * │  X     = Kick/Hold  Botón B (tap=kick, hold=strong) │
- * │  SPACE = Quick Slot Tap en Quick Slot del HUD       │
+ * │  C/SPACE = Hechizo  Tap en el slot del HUD          │
+ * │  V     = Arrojadizo Tap en el badge de dagas        │
  * └─────────────────────────────────────────────────────┘
  *
- * Quickslot:
- *   - El HUD muestra el ítem activo (spell o poción)
- *   - SPACE o click/tap en el slot = usar ítem activo
- *   - El HUD emite 'quickslot-swap' para intercambiar entre spell/poción
- *   - Si el slot está vacío, SPACE no hace nada (sin spam)
+ * Pociones (vida y maná): ya no tienen tecla ni slot — se beben solas cuando
+ * hacen falta (ver _checkAutoHealthPotion / _checkAutoManaPotion), así que el
+ * quick slot del HUD solo muestra/lanza el hechizo activo.
  */
 export default class PlayerController {
   /**
@@ -26,7 +31,7 @@ export default class PlayerController {
    * @param {HitboxSystem}   hitboxSystem
    * @param {ItemInventory}  itemInventory
    * @param {SpellSystem}    spellSystem
-   * @param {BeatEmUpHUD}    hud            — necesario para leer getActiveSlot()
+   * @param {BeatEmUpHUD}    hud
    */
   constructor(scene, player, hitboxSystem,
               itemInventory = null, spellSystem = null, hud = null) {
@@ -94,21 +99,7 @@ export default class PlayerController {
     // si no, dispara el hitbox del 'special' como golpe físico potente.
     scene.input.keyboard.on('keydown-C', () => {
       if (!this.isAlive || this.isKnockedBack) return;
-      if (this.hitboxSystem.isAttacking || this.spellSystem?.isCasting) return;
-
-      const activeSpell = this.spellSystem?.currentSpell || 'fire_rain';
-      const SPELL_MP_COST = {
-        fire_rain: 15,
-        wave:      25,
-        nova:      40,
-      };
-      const cost = SPELL_MP_COST[activeSpell] || 0;
-
-      if (this.itemInventory?.hasSpellType(activeSpell) && this.mp >= cost) {
-        this.spellSystem?.activateSpell();
-      } else {
-        this.hitboxSystem.startAttack('special');
-      }
+      this._castActiveSpellOrSpecial();
     });
 
     // ── R / TAB — Cambiar de hechizo activo ───────────────────────────────
@@ -153,18 +144,27 @@ export default class PlayerController {
       this._isBlocking = false;
     });
 
-    // ── SPACE — Usar Quick Slot ───────────────────────────────────────
+    // ── SPACE — alias de C (lanzar el hechizo activo) ──────────────────
     scene.input.keyboard.on('keydown-SPACE', () => {
       if (!this.isAlive || this.isKnockedBack) return;
-      if (this.hitboxSystem.isAttacking) return;
-      this._useQuickSlot();
+      this._castActiveSpellOrSpecial();
     });
 
-    // Escuchar el evento del HUD cuando el jugador hace click/tap en el slot
+    // Escuchar los eventos del HUD cuando el jugador hace click/tap en un slot
     scene.events.on('quickslot-use', () => {
       if (!this.isAlive || this.isKnockedBack) return;
-      if (this.hitboxSystem.isAttacking) return;
-      this._useQuickSlot();
+      this._castActiveSpellOrSpecial();
+    });
+    scene.events.on('quickslot-throw', () => {
+      if (!this.isAlive || this.isKnockedBack) return;
+      if (this.hitboxSystem.isAttacking || this.spellSystem?.isCasting) return;
+      this._launchProjectile();
+    });
+
+    // SpellSystem avisa cuando auto-equipa un pergamino distinto (porque el
+    // activo se agotó y solo queda un tipo con existencias) — reflejarlo en el HUD.
+    scene.events.on('spell-auto-equipped', (spellKey) => {
+      this.hud?.syncActiveSpell(spellKey);
     });
   }
 
@@ -179,21 +179,57 @@ export default class PlayerController {
     this.player.setDepth(this.player.y + 0.1);
   }
 
-  // ── Quick Slot ───────────────────────────────────────────────────────────
+  // ── Hechizo activo ──────────────────────────────────────────────────────
 
-  _useQuickSlot() {
-    // El HUD dice qué slot está activo
-    const slot = this.hud?.getActiveSlot() ?? 'spell';
+  // Compartido por la tecla C, SPACE y el tap en el quick slot del HUD:
+  // si el jugador tiene el pergamino activo y maná suficiente, lanza el
+  // hechizo; si no, cae a un golpe físico potente ('special').
+  _castActiveSpellOrSpecial() {
+    if (this.hitboxSystem.isAttacking || this.spellSystem?.isCasting) return;
 
-    if (slot === 'spell') {
-      const activeSpell = this.spellSystem?.currentSpell || 'fire_rain';
-      if (!this.itemInventory?.hasSpellType(activeSpell)) return;
+    const activeSpell = this.spellSystem?.currentSpell || 'fire_rain';
+    const SPELL_MP_COST = {
+      fire_rain: 15,
+      wave:      25,
+      nova:      40,
+    };
+    const cost = SPELL_MP_COST[activeSpell] || 0;
+
+    if (this.itemInventory?.hasSpellType(activeSpell) && this.mp >= cost) {
       this.spellSystem?.activateSpell();
-    } else if (slot === 'potion') {
-      this._usePotion();
-    } else if (slot === 'mana_potion') {
-      this._useManaPotion();
+    } else {
+      this.hitboxSystem.startAttack('special');
     }
+  }
+
+  // ── Auto-uso de consumibles ─────────────────────────────────────────────
+  // Si el HP cae por debajo del umbral y hay pociones de vida, se bebe una
+  // sola sin que el jugador tenga que pulsar el quick slot. Llamado desde
+  // takeDamage() tras cada golpe recibido.
+  _checkAutoHealthPotion() {
+    if (!this.isAlive) return;
+    if (this.hp <= 0 || this.hp / this.maxHp >= AUTO_HEAL_HP_PCT) return;
+    if (!this.itemInventory?.hasPotion()) return;
+
+    const now = this.scene.time.now;
+    if (now - (this._lastAutoPotionAt || 0) < AUTO_POTION_COOLDOWN_MS) return;
+    this._lastAutoPotionAt = now;
+
+    this._usePotion();
+  }
+
+  // Apenas el maná llega a 0, si hay pociones de maná se bebe una sola.
+  // Llamado desde SpellSystem tras cada gasto de maná.
+  _checkAutoManaPotion() {
+    if (!this.isAlive) return;
+    if (this.mp > 0) return;
+    if (!this.itemInventory?.hasManaPotion()) return;
+
+    const now = this.scene.time.now;
+    if (now - (this._lastAutoManaPotionAt || 0) < AUTO_POTION_COOLDOWN_MS) return;
+    this._lastAutoManaPotionAt = now;
+
+    this._useManaPotion();
   }
 
   // ── Poción ───────────────────────────────────────────────────────────────
@@ -337,11 +373,11 @@ export default class PlayerController {
     if (this._isBlocking) {
       const reduced = Math.ceil(amount * 0.30);
       this.hp -= reduced;
-      this.scene.events.emit('player-damaged', { 
-        hp: this.hp, 
-        maxHp: this.maxHp, 
-        mp: this.mp, 
-        maxMp: this.maxMp 
+      this.scene.events.emit('player-damaged', {
+        hp: this.hp,
+        maxHp: this.maxHp,
+        mp: this.mp,
+        maxMp: this.maxMp
       });
       // Feedback visual de bloqueo
       const flash = this.scene.add.circle(this.player.x, this.player.y - 10, 22, 0x88ddff, 0.7).setDepth(200);
@@ -349,16 +385,17 @@ export default class PlayerController {
         targets: flash, alpha: 0, scale: 2, duration: 200,
         onComplete: () => flash.destroy(),
       });
-      if (this.hp <= 0) this._onDeath();
+      if (this.hp <= 0) { this._onDeath(); return; }
+      this._checkAutoHealthPotion();
       return;
     }
 
     this.hp -= amount;
-    this.scene.events.emit('player-damaged', { 
-      hp: this.hp, 
-      maxHp: this.maxHp, 
-      mp: this.mp, 
-      maxMp: this.maxMp 
+    this.scene.events.emit('player-damaged', {
+      hp: this.hp,
+      maxHp: this.maxHp,
+      mp: this.mp,
+      maxMp: this.maxMp
     });
 
     if (this.hp <= 0) {
@@ -393,6 +430,9 @@ export default class PlayerController {
     this.player.playAnimation('hurt', 350);
     this.scene.time.delayedCall(350, () => {
       if (this.isAlive) this.player.playAnimation('idle');
+      // Recién ahora, para no perder la animación de poción contra el 'hurt'
+      // (que siempre puede interrumpir un lock — ver PlayerSprite.playAnimation).
+      this._checkAutoHealthPotion();
     });
   }
 

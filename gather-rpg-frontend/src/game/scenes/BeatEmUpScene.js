@@ -92,8 +92,7 @@ export default class BeatEmUpScene extends Phaser.Scene {
       this.playerCtrl.hp, this.playerCtrl.maxHp,
       this.playerCtrl.mp, this.playerCtrl.maxMp,
       this.itemInventory.spells,
-      this.itemInventory.potions,
-      this.itemInventory.manaPotions
+      this.itemInventory.throwingDaggers
     );
 
     // ── Overlap: ataque de enemigos → jugador ──
@@ -139,6 +138,10 @@ export default class BeatEmUpScene extends Phaser.Scene {
       if (this.comboHUD) {
         this.comboHUD.destroy();
         this.comboHUD = null;
+      }
+      if (this.spellSystem) {
+        this.spellSystem.destroy();
+        this.spellSystem = null;
       }
     });
 

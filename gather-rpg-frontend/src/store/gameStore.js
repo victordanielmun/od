@@ -124,6 +124,26 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
     setActiveScroll: (id) => set({ activeScrollId: id }),
     setActiveThrowable: (id) => set({ activeThrowableId: id }),
 
+    // Si el jugador solo tiene UN tipo de pergamino (o de arrojadizo) en el
+    // inventario, se equipa solo: no tiene sentido obligarlo a abrir el menú a
+    // "elegir" entre una sola opción. En cuanto aparece un segundo tipo, se deja
+    // de tocar activeScrollId/activeThrowableId — ahí sí manda la elección manual
+    // del jugador desde el inventario (SettingsMenu).
+    _autoEquipSoleItems: () => {
+        const { inventory, activeScrollId, activeThrowableId } = get();
+        const ownedScrolls = inventory.filter(inv => inv.item?.item_type === 'scroll' && inv.quantity > 0);
+        const ownedThrowables = inventory.filter(inv => inv.item?.item_type === 'throwable' && inv.quantity > 0);
+
+        const patch = {};
+        if (ownedScrolls.length === 1 && activeScrollId !== ownedScrolls[0].id) {
+            patch.activeScrollId = ownedScrolls[0].id;
+        }
+        if (ownedThrowables.length === 1 && activeThrowableId !== ownedThrowables[0].id) {
+            patch.activeThrowableId = ownedThrowables[0].id;
+        }
+        if (Object.keys(patch).length > 0) set(patch);
+    },
+
     // Chat State
     chatRequests: [], // Array of { requester_id, requester_name }
     activeChat: null, // { partner_id, partner_name, messages: [] }
@@ -1031,6 +1051,7 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
             const response = await api.get('/inventory');
             if (response.data) {
                 set({ inventory: response.data });
+                get()._autoEquipSoleItems();
             }
         } catch (err) {
             console.error("Failed to fetch inventory:", err);

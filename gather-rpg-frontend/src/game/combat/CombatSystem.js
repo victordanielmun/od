@@ -1,13 +1,20 @@
 import { useGameStore } from '../../store/gameStore';
 import { useNotificationStore } from '../../store/notificationStore';
 import { spawnDamageNumber } from '../systems/floatingText';
-import { ensureItemSprite } from '../systems/itemSprites';
+import { ensureItemSprite, itemSpriteKey } from '../systems/itemSprites';
 
 // Regen automático de maná del jugador (MP por segundo). Predicción local optimista:
 // el server regenera de verdad a este mismo ritmo (ver mpRegenPerSec en room.go) y
 // reconcilia por player-mp-update, así que esto solo evita que la barra local se vea
 // "congelada" entre esos mensajes (llegan ~1 vez por segundo).
 const MP_REGEN_PER_SEC = 2;
+
+// Auto-uso de consumibles: si el jugador lleva pociones, no debería tener que
+// pausar el combate para beberlas a mano. El maná se bebe apenas llega a 0; el HP
+// se bebe al caer por debajo de este % (evita esperar a estar casi muerto). Ambos
+// respetan el cooldown de 10s de su handler manual (_lastManaPotionTime /
+// _lastPotionTime) para no encadenar varias pociones de golpe.
+const AUTO_HEAL_HP_PCT = 0.25;
 
 // Hit-stop arcade: al recibir un golpe el jugador queda aturdido (no se mueve ni ataca)
 // este tiempo y recibe un pequeño empuje. 350ms = igual que el hurt del enemigo.
@@ -117,6 +124,7 @@ export class CombatSystem {
       if (typeof d.mp === 'number') this.playerMp = d.mp;
       if (typeof d.mp_max === 'number') this.playerMaxMp = d.mp_max;
       this.updateHpBar();
+      this._checkAutoManaPotion();
     };
     window.addEventListener('player-mp-update', this.onPlayerMP);
 
@@ -124,7 +132,7 @@ export class CombatSystem {
     this.setupHUD();
 
     // Scale resize listener to keep HP/MP bars at the bottom
-    this.onResize = () => this.updateHpBar();
+    this.onResize = () => { this.updateHpBar(); this._updateItemBadges(); };
     this.scene.scale.on('resize', this.onResize, this);
   }
 
@@ -141,6 +149,15 @@ export class CombatSystem {
     if (this.hpBar) this.hpBar.destroy();
     if (this.hpText) this.hpText.destroy();
     if (this.mpText) this.mpText.destroy();
+
+    this._unsubInventory?.();
+    this._unsubActiveScroll?.();
+    this._unsubActiveThrowable?.();
+    this._itemBadgeBg?.destroy();
+    this._scrollIcon?.destroy();
+    this._scrollCount?.destroy();
+    this._throwIcon?.destroy();
+    this._throwCount?.destroy();
   }
 
   setupHUD() {
@@ -148,6 +165,81 @@ export class CombatSystem {
     this.hpBar.setScrollFactor(0);
     this.hpBar.setDepth(200000);
     this.updateHpBar();
+
+    // Badges del pergamino y arrojadizo activos (ícono + cantidad): se ubican
+    // pegados a la barra de HP/MP, en el mismo rincón inferior-izquierdo, para
+    // no invadir el área de juego con más HUD.
+    this._itemBadgeBg = this.scene.add.graphics().setScrollFactor(0).setDepth(200000);
+    this._scrollIcon  = this.scene.add.image(0, 0, '__DEFAULT').setScrollFactor(0).setDepth(200001).setVisible(false);
+    this._scrollCount = this.scene.add.text(0, 0, '', {
+      fontSize: '11px', fontFamily: 'monospace', color: '#ffffff',
+      stroke: '#000000', strokeThickness: 3,
+    }).setScrollFactor(0).setDepth(200001).setOrigin(0, 0.5);
+    this._throwIcon  = this.scene.add.image(0, 0, '__DEFAULT').setScrollFactor(0).setDepth(200001).setVisible(false);
+    this._throwCount = this.scene.add.text(0, 0, '', {
+      fontSize: '11px', fontFamily: 'monospace', color: '#ffffff',
+      stroke: '#000000', strokeThickness: 3,
+    }).setScrollFactor(0).setDepth(200001).setOrigin(0, 0.5);
+
+    this._updateItemBadges();
+
+    // Refrescar los badges cuando cambie el inventario o el ítem activo
+    // (auto-equip, equipo manual desde SettingsMenu, consumo, drops...).
+    this._unsubInventory      = useGameStore.subscribe((state) => state.inventory, () => this._updateItemBadges());
+    this._unsubActiveScroll   = useGameStore.subscribe((state) => state.activeScrollId, () => this._updateItemBadges());
+    this._unsubActiveThrowable = useGameStore.subscribe((state) => state.activeThrowableId, () => this._updateItemBadges());
+  }
+
+  // Redibuja los badges de pergamino/arrojadizo activos (ícono + "xN") junto a
+  // la barra de HP/MP. Se llama al iniciar el HUD, al redimensionar, y cada vez
+  // que cambia el inventario o el ítem activo (ver suscripciones en setupHUD).
+  _updateItemBadges() {
+    if (!this._itemBadgeBg) return;
+
+    const scrollEntry = this._pickActiveItem('scroll');
+    const throwEntry  = this._pickActiveItem('throwable');
+
+    this._itemBadgeBg.clear();
+
+    const x = 20;
+    const screenHeight = this.scene.scale.height;
+    const bottomY = screenHeight - 46;
+    const barW = 120;
+    const badgeX = x + barW + 24; // a la derecha de la barra de HP/MP, mismo rincón
+    const rowH = 22;
+    const iconSize = 16;
+
+    const rows = [
+      { entry: scrollEntry, icon: this._scrollIcon, count: this._scrollCount, y: bottomY + 2 },
+      { entry: throwEntry,  icon: this._throwIcon,  count: this._throwCount,  y: bottomY + 2 + rowH },
+    ];
+
+    rows.forEach(({ entry, icon, count, y }) => {
+      if (!entry) {
+        icon.setVisible(false);
+        count.setText('');
+        return;
+      }
+
+      this._itemBadgeBg.fillStyle(0x000000, 0.6);
+      this._itemBadgeBg.fillRoundedRect(badgeX - 4, y - iconSize / 2 - 3, 54, iconSize + 6, 5);
+
+      const iconKey = entry.item?.icon_key;
+      const spriteKey = itemSpriteKey(iconKey);
+      icon.setPosition(badgeX + iconSize / 2, y);
+      icon.setDisplaySize(iconSize, iconSize);
+      icon.setVisible(true);
+      if (spriteKey && this.scene.textures.exists(spriteKey)) {
+        icon.setTexture(spriteKey);
+      } else if (iconKey) {
+        ensureItemSprite(this.scene, iconKey, (key) => {
+          if (icon.active) { icon.setTexture(key); icon.setDisplaySize(iconSize, iconSize); }
+        });
+      }
+
+      count.setPosition(badgeX + iconSize + 6, y);
+      count.setText(`x${entry.quantity}`);
+    });
   }
 
   update(delta) {
@@ -388,6 +480,7 @@ export class CombatSystem {
     if (typeof hp === 'number') this.playerHp = hp;
     if (typeof hp_max === 'number' && hp_max > 0) this.playerMaxHp = hp_max;
     this.updateHpBar();
+    this._checkAutoHealthPotion();
   }
 
   onPlayerDeath() {
@@ -571,6 +664,11 @@ export class CombatSystem {
 
     // Lanzar el efecto correspondiente (~250ms tras el inicio, al "soltar" el cast).
     this.scene.time.delayedCall(250, () => this._castSpell(spellType, profile));
+
+    // El auto-uso de poción de maná espera a que termine el lock del cast: si
+    // se bebe mientras el 'special'/'projectile' sigue bloqueado, playAnimation
+    // ignora la animación de poción (los locks solo los interrumpe hurt/die).
+    this.scene.time.delayedCall(800, () => this._checkAutoManaPotion());
   }
 
   // ── Hechizos (multijugador: daño server-autoritativo vía sendPlayerAttack) ──────
@@ -739,6 +837,9 @@ export class CombatSystem {
     }
     // Lanzar ancla en el sitio mientras dura la animación (ver isAttackLocked).
     this._attackLockUntil = this.scene.time.now + 500;
+    // Igual que en el hechizo: esperar a que el lock del 'projectile' termine
+    // antes de intentar la animación de poción (si no, playAnimation la ignora).
+    this.scene.time.delayedCall(500, () => this._checkAutoManaPotion());
 
     // Fallback siempre disponible: círculo de energía generado por código.
     if (!this.scene.textures.exists('energy-ball')) {
@@ -848,6 +949,30 @@ export class CombatSystem {
     if (now - (this._lastPotionTime || 0) < 10000) return;
     this._lastPotionTime = now;
 
+    this._consumeHealthPotion(itemEntry);
+  }
+
+  // Si el HP cae por debajo del umbral y hay pociones de vida disponibles, se bebe
+  // una sola —sin que el jugador tenga que pulsar Q—. Se llama tras cada
+  // actualización de HP autoritativa del servidor (_handlePlayerHP).
+  _checkAutoHealthPotion() {
+    if (!this.scene.player || this.isDead) return;
+    if (this.playerHp <= 0 || this.playerHp / this.playerMaxHp >= AUTO_HEAL_HP_PCT) return;
+
+    const inventory = useGameStore.getState().inventory || [];
+    const itemEntry = inventory.find(inv => inv.item?.item_type === 'health' && inv.quantity > 0);
+    if (!itemEntry) return;
+
+    const now = this.scene.time.now;
+    if (now - (this._lastPotionTime || 0) < 10000) return;
+    this._lastPotionTime = now;
+
+    this._consumeHealthPotion(itemEntry);
+  }
+
+  // Bebe la poción de vida ya resuelta (llamado tanto por Q manual como por
+  // _checkAutoHealthPotion). El caller ya validó cantidad/cooldown.
+  _consumeHealthPotion(itemEntry) {
     // Consume item
     useGameStore.getState().useItem(itemEntry.id);
     // La curación del HP de combate la aplica el servidor (manda player_hp).
@@ -900,6 +1025,30 @@ export class CombatSystem {
     if (now - (this._lastManaPotionTime || 0) < 10000) return;
     this._lastManaPotionTime = now;
 
+    this._consumeManaPotion(itemEntry);
+  }
+
+  // Apenas el maná llega a 0, si hay pociones de maná disponibles se bebe una
+  // sola sin que el jugador tenga que pulsar R. Se llama tras cada gasto/
+  // reconciliación de maná (spell, arrojadizo, dash, player-mp-update).
+  _checkAutoManaPotion() {
+    if (!this.scene.player || this.isDead) return;
+    if (this.playerMp > 0) return;
+
+    const inventory = useGameStore.getState().inventory || [];
+    const itemEntry = inventory.find(inv => inv.item?.item_type === 'mana' && inv.quantity > 0);
+    if (!itemEntry) return;
+
+    const now = this.scene.time.now;
+    if (now - (this._lastManaPotionTime || 0) < 10000) return;
+    this._lastManaPotionTime = now;
+
+    this._consumeManaPotion(itemEntry);
+  }
+
+  // Bebe la poción de maná ya resuelta (llamado tanto por R manual como por
+  // _checkAutoManaPotion). El caller ya validó cantidad/cooldown.
+  _consumeManaPotion(itemEntry) {
     // Consume item
     useGameStore.getState().useItem(itemEntry.id);
 
@@ -954,6 +1103,7 @@ export class CombatSystem {
     // el siguiente player-mp-update del servidor lo revertía).
     this.playerMp -= 15;
     this.updateHpBar();
+    this._checkAutoManaPotion();
     useGameStore.getState().sendSpendMana(15);
 
     let dx = 0;

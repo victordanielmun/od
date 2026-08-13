@@ -22,12 +22,28 @@ const MissionTracker = ({ mission }) => {
     });
   };
 
+  // Al volver a jugar en el canvas (mover, atacar, clic) colapsamos solo si
+  // estaba expandido, para que no tape el mapa mientras el jugador actúa.
+  useEffect(() => {
+    const handleCanvasInteract = () => {
+      setIsCollapsed(prev => {
+        if (prev) return prev;
+        localStorage.setItem('mission_tracker_collapsed', 'true');
+        return true;
+      });
+    };
+    window.addEventListener('lobby-canvas-interact', handleCanvasInteract);
+    return () => window.removeEventListener('lobby-canvas-interact', handleCanvasInteract);
+  }, []);
+
   if (!mission) return null;
 
   return (
-    <div className={`absolute z-50 transition-all duration-300 animate-in fade-in pointer-events-auto shadow-2xl bg-gray-900/80 border border-gray-700 rounded-xl backdrop-blur-md
+    <div className={`absolute z-50 transition-all duration-300 animate-in fade-in pointer-events-auto shadow-2xl border rounded-xl
       top-4 left-4 slide-in-from-top-4 md:w-64
-      ${isCollapsed ? 'p-2 w-auto max-md:max-w-[180px] md:p-3' : 'p-3 w-[calc(100vw-2rem)] md:w-64 md:p-4'}
+      ${isCollapsed
+        ? 'p-2 w-auto max-md:max-w-[180px] md:p-3 bg-gray-900/25 border-gray-700/30 backdrop-blur-sm hover:bg-gray-900/70'
+        : 'p-3 w-[calc(100vw-2rem)] md:w-64 md:p-4 bg-gray-900/90 border-gray-700 backdrop-blur-md'}
     `}>
       <div
         className="flex justify-between items-start select-none cursor-pointer"

@@ -1,25 +1,32 @@
 /**
- * BeatEmUpHUD — HUD de combate con Quick Slot interactivo
+ * BeatEmUpHUD — HUD de combate con Quick Slot de hechizo + badge de arrojadizos
+ *
+ * Las pociones (vida y maná) se beben solas cuando hacen falta (ver
+ * PlayerController._checkAutoHealthPotion / _checkAutoManaPotion), así que ya
+ * no ocupan slot ni tecla: este HUD solo muestra lo que el jugador SÍ elige
+ * activamente — el pergamino equipado y las dagas disponibles.
  *
  * Layout:
- *   TOP-LEFT  : Barra de HP
- *   BTM-RIGHT : Quick Slot equipado (clickeable / touch)
- *               + Slot secundario (cambiar ítem)
+ *   TOP-LEFT  : Barra de HP/MP
+ *   BTM-RIGHT : Slot de hechizo activo (clickeable / touch)
+ *               + Badge de arrojadizo (clickeable / touch)
  *
  * Controles resultantes:
  *   Flechas    → Movimiento
  *   Z          → Punch combo (Z→Z→Z = jab→cross→uppercut)
  *   X          → Kick / Strong (tap = kick, hold >400ms = strong)
- *   SPACE      → Usar Quick Slot (teclado)
- *   Click/Tap del slot → Usar Quick Slot (mouse / touch)
+ *   C / SPACE  → Lanzar el hechizo activo (teclado)
+ *   V          → Lanzar arrojadizo (teclado)
+ *   Click/Tap del slot de hechizo → lanzar hechizo
+ *   Click/Tap del badge de arrojadizo → lanzar arrojadizo
  *
  * Eventos emitidos:
- *   'quickslot-use'   → el jugador quiere usar el ítem activo
- *   'quickslot-swap'  → el jugador cambia entre spell y poción
+ *   'quickslot-use'    → el jugador quiere lanzar el hechizo activo
+ *   'quickslot-throw'  → el jugador quiere lanzar un arrojadizo
  *
  * Eventos escuchados:
- *   'player-damaged'     { hp, maxHp }
- *   'inventory-changed'  { spells, potions }
+ *   'player-damaged'     { hp, maxHp, mp, maxMp }
+ *   'inventory-changed'  { spells, throwingDaggers }
  */
 export default class BeatEmUpHUD {
   /**
@@ -32,12 +39,8 @@ export default class BeatEmUpHUD {
     this._mp      = 50;
     this._maxMp   = 50;
     this._spells  = { fire_rain: 0, wave: 0, nova: 0 };
-    this._potions = 0;
-    this._manaPotions = 0;
+    this._throwingDaggers = 0;
     this._activeSpell = 'fire_rain';
-
-    // 'spell' | 'potion' | 'mana_potion' — ítem activo en el quick slot
-    this._activeSlot = 'spell';
 
     this._buildHP();
     this._buildQuickSlot();
@@ -190,7 +193,7 @@ export default class BeatEmUpHUD {
       if (p) this._drawSlotBg(this._slotBg, p.ax, p.ay, p.SLOT_W, p.SLOT_H, true, false);
     });
 
-    // ── Slot secundario (pequeño, debajo) ──
+    // ── Badge de arrojadizo (pequeño, debajo — ya no es un slot swapeable) ──
     const sx = W - SLOT_W - PAD;
     const sy = H - 40 - PAD;
     const SW = SLOT_W;
@@ -198,18 +201,18 @@ export default class BeatEmUpHUD {
 
     this._secBg = this.scene.add.graphics().setDepth(600).setScrollFactor(0);
 
-    this._secIcon = this.scene.add.text(sx + 14, sy + SH / 2, '⚗', {
+    this._secIcon = this.scene.add.text(sx + 14, sy + SH / 2, '🗡', {
       fontSize:   '16px',
-      color:      '#ff88cc',
+      color:      '#66ddff',
       stroke:     '#000000',
       strokeThickness: 3,
       shadow: { offsetX: 1, offsetY: 1, color: '#000000', blur: 2, stroke: true, fill: true }
     }).setOrigin(0, 0.5).setDepth(602).setScrollFactor(0);
 
-    this._secLabel = this.scene.add.text(sx + 36, sy + SH / 2 - 8, 'POTION', {
+    this._secLabel = this.scene.add.text(sx + 36, sy + SH / 2 - 8, 'DAGGER', {
       fontSize:   '7px',
       fontFamily: '"Press Start 2P", monospace',
-      color:      '#ff88cc',
+      color:      '#66ddff',
       stroke:     '#000000',
       strokeThickness: 2,
     }).setOrigin(0, 0.5).setDepth(602).setScrollFactor(0);
@@ -222,18 +225,18 @@ export default class BeatEmUpHUD {
       strokeThickness: 3,
     }).setOrigin(1, 0).setDepth(603).setScrollFactor(0);
 
-    // Swap zone (toca el slot secundario para intercambiar)
-    this._swapZone = this.scene.add.zone(sx, sy, SW, SH)
+    // Zona interactiva: tocar el badge lanza un arrojadizo (igual que la tecla V).
+    this._throwZone = this.scene.add.zone(sx, sy, SW, SH)
       .setOrigin(0).setDepth(605).setScrollFactor(0).setInteractive({ useHandCursor: true });
 
-    this._swapZone.on('pointerdown', () => this._swapSlots());
-    
+    this._throwZone.on('pointerdown', () => this.scene.events.emit('quickslot-throw'));
+
     // Corregir closures usando this._slotPos
-    this._swapZone.on('pointerover', () => {
+    this._throwZone.on('pointerover', () => {
       const p = this._slotPos;
       if (p) this._drawSlotBg(this._secBg, p.sx, p.sy, p.SW, p.SH, false, true);
     });
-    this._swapZone.on('pointerout',  () => {
+    this._throwZone.on('pointerout',  () => {
       const p = this._slotPos;
       if (p) this._drawSlotBg(this._secBg, p.sx, p.sy, p.SW, p.SH, false, false);
     });
@@ -249,17 +252,9 @@ export default class BeatEmUpHUD {
   _drawSlotBg(gfx, x, y, w, h, isMain, hover = false) {
     gfx.clear();
     const alpha  = hover ? 0.90 : 0.75;
-    let border = hover ? 0xffffff : (isMain ? 0xF7C42D : 0x8b6d1b);
-    
-    if (isMain) {
-      if (this._activeSlot === 'mana_potion') border = 0x0088ff; // Mana Potion: azul
-      else if (this._activeSlot === 'potion') border = 0xE14B26; // Health Potion: coral
-    } else {
-      // Secondary slot indicates what comes next
-      if (this._activeSlot === 'spell') border = 0xE14B26; // next is health potion
-      else if (this._activeSlot === 'potion') border = 0x0088ff; // next is mana potion
-      else border = 0xF7C42D; // next is spell
-    }
+    // Slot principal (hechizo): dorado. Badge de arrojadizo: celeste, fijo — ya
+    // no hay nada que "intercambiar", solo muestran lo que está activo.
+    const border = hover ? 0xffffff : (isMain ? 0xF7C42D : 0x66ddff);
 
     // Glow effect (outer glow)
     if (isMain) {
@@ -318,38 +313,12 @@ export default class BeatEmUpHUD {
     }
   }
 
-  // ── Swap spell ↔ potion ↔ mana_potion ────────────────────────────────────
-
-  _swapSlots() {
-    if (this._activeSlot === 'spell') {
-      this._activeSlot = 'potion';
-    } else if (this._activeSlot === 'potion') {
-      this._activeSlot = 'mana_potion';
-    } else {
-      this._activeSlot = 'spell';
-    }
-    this.scene.events.emit('quickslot-swap', this._activeSlot);
-    this._refreshSlotUI();
-
-    // Feedback visual de swap
-    const p = this._slotPos;
-    this._drawSlotBg(this._slotBg, p.ax, p.ay, p.SLOT_W, p.SLOT_H, true);
-    this.scene.tweens.add({
-      targets: [this._slotIcon, this._slotLabel, this._slotCount],
-      scaleX: 0.8, scaleY: 0.8,
-      duration: 80,
-      ease: 'Power2',
-      yoyo: true,
-    });
-  }
+  // ── Refresco del HUD ──────────────────────────────────────────────────────
 
   _refreshSlotUI() {
-    let mainIcon, mainColor, mainLabel, mainCount;
-    let secIcon, secColor, secLabel, secCount;
-
     const spellsObj = typeof this._spells === 'object' ? this._spells : { fire_rain: this._spells || 0, wave: 0, nova: 0 };
     const activeSpellKey = this._activeSpell || 'fire_rain';
-    
+
     const spellMeta = {
       fire_rain: { icon: '🔥', label: 'FIRE RAIN', color: '#ff7722' },
       wave:      { icon: '🌊', label: 'WAVE',      color: '#33ccff' },
@@ -357,49 +326,21 @@ export default class BeatEmUpHUD {
     };
     const activeMeta = spellMeta[activeSpellKey] || { icon: '✦', label: 'SPELL', color: '#ffdd44' };
 
-    if (this._activeSlot === 'spell') {
-      mainIcon  = activeMeta.icon;
-      mainColor = activeMeta.color;
-      mainLabel = activeMeta.label;
-      mainCount = spellsObj[activeSpellKey] || 0;
-
-      secIcon   = '⚗';
-      secColor  = '#ff88cc';
-      secLabel  = 'POTION';
-      secCount  = this._potions;
-    } else if (this._activeSlot === 'potion') {
-      mainIcon  = '⚗';
-      mainColor = '#ff88cc';
-      mainLabel = 'POTION';
-      mainCount = this._potions;
-
-      secIcon   = '🧪';
-      secColor  = '#4488ff';
-      secLabel  = 'M-POTION';
-      secCount  = this._manaPotions;
-    } else {
-      mainIcon  = '🧪';
-      mainColor = '#4488ff';
-      mainLabel = 'M-POTION';
-      mainCount = this._manaPotions;
-
-      secIcon   = activeMeta.icon;
-      secColor  = activeMeta.color;
-      secLabel  = activeMeta.label;
-      secCount  = spellsObj[activeSpellKey] || 0;
-    }
+    const mainCount = spellsObj[activeSpellKey] || 0;
+    const secCount  = this._throwingDaggers || 0;
 
     const hasMain = mainCount > 0;
 
-    this._slotIcon.setText(mainIcon).setStyle({ color: mainColor });
-    this._slotLabel.setText(mainLabel).setStyle({ color: mainColor });
+    this._slotIcon.setText(activeMeta.icon).setStyle({ color: activeMeta.color });
+    this._slotLabel.setText(activeMeta.label).setStyle({ color: activeMeta.color });
     this._slotCount.setText(`x${mainCount}`);
     this._slotIcon.setAlpha(hasMain ? 1 : 0.35);
     this._slotCount.setAlpha(hasMain ? 1 : 0.35);
 
-    this._secIcon.setText(secIcon).setStyle({ color: secColor });
-    this._secLabel.setText(secLabel).setStyle({ color: secColor });
     this._secCount.setText(`x${secCount}`);
+    const hasSec = secCount > 0;
+    this._secIcon.setAlpha(hasSec ? 1 : 0.35);
+    this._secCount.setAlpha(hasSec ? 1 : 0.35);
 
     // Update border color of main and sec graphics slots
     const p = this._slotPos;
@@ -408,7 +349,7 @@ export default class BeatEmUpHUD {
       this._drawSlotBg(this._secBg, p.sx, p.sy, p.SW, p.SH, false);
     }
 
-    // Pulsar hint de SPACE si no hay ítem
+    // Pulsar hint de SPACE si no hay hechizo
     this._spaceHint.setAlpha(hasMain ? 0.6 : 0.25);
   }
 
@@ -433,32 +374,12 @@ export default class BeatEmUpHUD {
     this._drawMPBar(this._mp, this._maxMp);
     this._hpNumbers.setText(`${Math.max(0, Math.ceil(hp))}`);
     this._mpNumbers.setText(`${Math.max(0, Math.ceil(this._mp))}`);
-
-    // Si HP bajo y hay poción en slot → pulsar el slot para avisar
-    const pct = hp / maxHp;
-    if (pct < 0.3 && this._potions > 0) {
-      this._pulseWarning();
-    }
   }
 
-  _onInventoryChanged({ spells, potions, manaPotions }) {
-    this._spells  = spells;
-    this._potions = potions;
-    this._manaPotions = manaPotions ?? this._manaPotions;
+  _onInventoryChanged({ spells, throwingDaggers }) {
+    this._spells = spells;
+    this._throwingDaggers = throwingDaggers ?? this._throwingDaggers;
     this._refreshSlotUI();
-  }
-
-  _pulseWarning() {
-    // Pulso rojo en la barra de HP para indicar peligro
-    this.scene.tweens.add({
-      targets:  this._hpBar,
-      alpha:    0.4,
-      duration: 200,
-      ease:     'Power2',
-      yoyo:     true,
-      repeat:   2,
-      onComplete: () => this._hpBar.setAlpha(1),
-    });
   }
 
   // ── Responsividad / Ajuste de tamaño ─────────────────────────────────────
@@ -492,8 +413,8 @@ export default class BeatEmUpHUD {
     if (this._secIcon) this._secIcon.setPosition(sx + 14, sy + SH / 2);
     if (this._secLabel) this._secLabel.setPosition(sx + 36, sy + SH / 2 - 8);
     if (this._secCount) this._secCount.setPosition(sx + SW - 8, sy + 6);
-    if (this._swapZone) {
-      this._swapZone.setPosition(sx, sy);
+    if (this._throwZone) {
+      this._throwZone.setPosition(sx, sy);
     }
 
     // Guardar posiciones para redraws
@@ -505,11 +426,9 @@ export default class BeatEmUpHUD {
 
   // ── API Pública ──────────────────────────────────────────────────────────
 
-  getActiveSlot() { return this._activeSlot; }
-
-  syncState(hp, maxHp, mp, maxMp, spells, potions, manaPotions) {
+  syncState(hp, maxHp, mp, maxMp, spells, throwingDaggers) {
     this._onPlayerDamaged({ hp, maxHp, mp, maxMp });
-    this._onInventoryChanged({ spells, potions, manaPotions });
+    this._onInventoryChanged({ spells, throwingDaggers });
   }
 
   destroy() {
@@ -538,6 +457,6 @@ export default class BeatEmUpHUD {
     this._secIcon?.destroy();
     this._secLabel?.destroy();
     this._secCount?.destroy();
-    this._swapZone?.destroy();
+    this._throwZone?.destroy();
   }
 }
