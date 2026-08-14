@@ -2,6 +2,7 @@ import { useGameStore } from '../../store/gameStore';
 import { useNotificationStore } from '../../store/notificationStore';
 import { spawnDamageNumber } from '../systems/floatingText';
 import { ensureItemSprite, itemSpriteKey } from '../systems/itemSprites';
+import { playGameSfx } from '../audio/playGameSfx';
 
 // Regen automático de maná del jugador (MP por segundo). Predicción local optimista:
 // el server regenera de verdad a este mismo ritmo (ver mpRegenPerSec en room.go) y
@@ -350,6 +351,7 @@ export class CombatSystem {
     if (this.isDead || this.scene.isSpectating) return;
     if (this.playerAttackIFrames > 0) return;
     this.playerAttackIFrames = 800; // throttle local de reportes (el server también valida i-frames)
+    playGameSfx(this.scene, 'sfx_enemy_atack');
 
     // El daño/HP/muerte los decide el SERVIDOR. Solo reportamos el golpe con el
     // enemigo que conectó; el server aplica su daño y nos manda el HP (player_hp).
@@ -566,12 +568,14 @@ export class CombatSystem {
     if (this.scene.anims.exists(animKeyFull)) {
       this.scene.player.playAnimation(animKey, lockDuration);
     }
+    playGameSfx(this.scene, `sfx_${animKey}`);
 
     const nearestEnemy = this._findNearestEnemy(hitRange);
 
     if (nearestEnemy) {
       console.log(`[CombatSystem Combo] Hit enemy ${nearestEnemy.id} via combo ${animKey}`);
       useGameStore.getState().sendPlayerAttack(nearestEnemy.id, animKey);
+      playGameSfx(this.scene, 'sfx_player_atack');
 
       const hitEnemy = nearestEnemy.enemy;
       // Flinch en el frame del impacto (el server confirma después). El finisher
@@ -659,6 +663,7 @@ export class CombatSystem {
     if (this.scene.anims.exists(`char-${charId}-${profile.anim}`)) {
       this.scene.player.playAnimation(profile.anim, 800);
     }
+    playGameSfx(this.scene, 'sfx_skill');
     // Castear ancla en el sitio mientras dura la animación (ver isAttackLocked).
     this._attackLockUntil = this.scene.time.now + 800;
 
@@ -828,13 +833,16 @@ export class CombatSystem {
     this.playerMp = Math.max(0, this.playerMp - 10);
     this.updateHpBar();
     useGameStore.getState().sendSpendMana(10);
-    useGameStore.getState().useItem(itemEntry.id);
+    // silent: es un arrojadizo lanzado en combate, no un uso manual desde el
+    // inventario; la animación + sfx ya avisan, el toast solo interrumpe.
+    useGameStore.getState().useItem(itemEntry.id, { silent: true });
 
     const charId = this.scene.player.characterId || '1';
     const animKey = `char-${charId}-projectile`;
     if (this.scene.anims.exists(animKey)) {
       this.scene.player.playAnimation('projectile', 500);
     }
+    playGameSfx(this.scene, 'sfx_throw_knife');
     // Lanzar ancla en el sitio mientras dura la animación (ver isAttackLocked).
     this._attackLockUntil = this.scene.time.now + 500;
     // Igual que en el hechizo: esperar a que el lock del 'projectile' termine
@@ -983,6 +991,7 @@ export class CombatSystem {
     if (this.scene.anims.exists(animKey)) {
       this.scene.player.playAnimation('potion', 600);
     }
+    playGameSfx(this.scene, 'sfx_drink');
 
     for (let i = 0; i < 15; i++) {
       this.scene.time.delayedCall(i * 40, () => {
@@ -1043,20 +1052,23 @@ export class CombatSystem {
     if (now - (this._lastManaPotionTime || 0) < 10000) return;
     this._lastManaPotionTime = now;
 
-    this._consumeManaPotion(itemEntry);
+    this._consumeManaPotion(itemEntry, { silent: true });
   }
 
   // Bebe la poción de maná ya resuelta (llamado tanto por R manual como por
   // _checkAutoManaPotion). El caller ya validó cantidad/cooldown.
-  _consumeManaPotion(itemEntry) {
+  // silent: true cuando la dispara el auto-refill tras hechizo/lanzamiento (para no
+  // interrumpir el combate con un toast); false en el R manual, donde sí es feedback útil.
+  _consumeManaPotion(itemEntry, { silent = false } = {}) {
     // Consume item
-    useGameStore.getState().useItem(itemEntry.id);
+    useGameStore.getState().useItem(itemEntry.id, { silent });
 
     const charId = this.scene.player.characterId || '1';
     const animKey = `char-${charId}-potion`;
     if (this.scene.anims.exists(animKey)) {
       this.scene.player.playAnimation('potion', 600);
     }
+    playGameSfx(this.scene, 'sfx_drink');
 
     // Refill local optimista (feedback inmediato) por el EffectValue real de la poción;
     // el servidor reconcilia el valor autoritativo vía refreshMana → player_mp.

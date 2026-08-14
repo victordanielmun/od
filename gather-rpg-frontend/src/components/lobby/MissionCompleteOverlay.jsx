@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Trophy, Home, Play } from 'lucide-react';
+import { playSfx } from '../../utils/sfx';
 
 export const MissionCompleteOverlay = () => {
     const { t } = useTranslation();
@@ -9,6 +10,7 @@ export const MissionCompleteOverlay = () => {
 
     useEffect(() => {
         const handleMissionComplete = (e) => {
+            playSfx('level_win');
             setTitle(e.detail?.title || 'Misión');
             setIsVisible(true);
         };

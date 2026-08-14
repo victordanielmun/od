@@ -1115,7 +1115,10 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
         wsClient.send('refresh_mana', {});
     },
 
-    useItem: async (inventoryId) => {
+    // opts.silent: omite el toast de éxito ("¡Objeto usado!"). Se usa en combate
+    // (lanzar arrojadizo, auto-poción de maná tras hechizo/lanzamiento) donde la
+    // animación + sfx ya dan feedback y el toast solo interrumpe la acción.
+    useItem: async (inventoryId, opts = {}) => {
         try {
             const response = await api.post(`/inventory/use/${inventoryId}`);
             if (response.data.status === 'success') {
@@ -1125,7 +1128,9 @@ export const useGameStore = create(subscribeWithSelector((set, get) => ({
                 // depende del WS, así funciona aunque el backend no esté reiniciado).
                 get().refreshMana();
                 window.dispatchEvent(new CustomEvent('refresh-player-stats'));
-                useNotificationStore.getState().addNotification('success', response.data.message || '¡Objeto usado!');
+                if (!opts.silent) {
+                    useNotificationStore.getState().addNotification('success', response.data.message || '¡Objeto usado!');
+                }
                 return true;
             }
         } catch (err) {

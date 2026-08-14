@@ -140,6 +140,10 @@ export class NPCManager {
       interactionMode: def.interaction_mode || 'hybrid',
       voiceType: def.voice_type || 'male',
       defaultState: defState,
+      // Villagers/NPCs placed with initial state "dying" represent corpses
+      // (e.g. an ogre raid that killed them) — they render frozen mid-death
+      // and must not be talkable.
+      isDead: defState === 'dying',
       missionId: instance.mission_id,
       shopId: def.shop_id,
       roomId: instance.room_id,

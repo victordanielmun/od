@@ -48,6 +48,22 @@ export const AUDIO_KEYS = [
   ['bgm_fight_boss', '/music/FightBoss.mp3'],
   ['bgm_pixel_pantry', '/music/Pixel_Pantry_Jingle.mp3'],
   ['bgm_pixelated_haven', '/music/Pixelated_Haven.mp3'],
+  ['bgm_intensive_loop', '/music/Intensive-loop.mp3'],
+];
+
+// Combat/world sound effects — [cacheKey, path]. Reproducidos vía scene.sound
+// (ver playGameSfx.js), respetan el mismo masterVolume que la música.
+export const SFX_KEYS = [
+  ['sfx_combo1', '/effects/Player_combo_1.mp3'],
+  ['sfx_combo2', '/effects/Player_combo_2.mp3'],
+  ['sfx_combo3_finisher', '/effects/Player_combo_3.mp3'],
+  ['sfx_player_atack', '/effects/Player_Atack.mp3'],
+  ['sfx_throw_knife', '/effects/throw_knife.mp3'],
+  ['sfx_skill', '/effects/Skill.mp3'],
+  ['sfx_drink', '/effects/drink.mp3'],
+  ['sfx_enemy_atack', '/effects/Enemy_atack.mp3'],
+  ['sfx_enemy_die', '/effects/enemy_die.mp3'],
+  ['sfx_add_item', '/effects/add_item.mp3'],
 ];
 
 function createTileTextures(scene) {
@@ -134,6 +150,10 @@ export function loadDeferredLobbyAssets(scene, onComplete) {
   loadNPCSprites(scene);
 
   AUDIO_KEYS.forEach(([key, path]) => {
+    if (!scene.cache.audio.exists(key)) scene.load.audio(key, versioned(path));
+  });
+
+  SFX_KEYS.forEach(([key, path]) => {
     if (!scene.cache.audio.exists(key)) scene.load.audio(key, versioned(path));
   });
 

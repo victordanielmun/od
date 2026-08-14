@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import SettingsMenu from '../common/SettingsMenu';
 import { BlockUserModal } from '../common/BlockUserModal';
+import { playSfx } from '../../utils/sfx';
 
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -303,7 +304,10 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
 
                          {/* Pin Toggle */}
                         <button
-                            onClick={() => setIsPinned(!isPinned)}
+                            onClick={() => {
+                                playSfx('button_1');
+                                setIsPinned(!isPinned);
+                            }}
                             className={`p-1.5 border rounded-lg transition cursor-pointer ${isPinned ? 'text-black bg-gradient-to-r from-yellow-500 to-amber-500 border-yellow-300' : 'text-gray-400 border-white/10 hover:border-yellow-500 hover:text-yellow-400 bg-white/5'}`}
                             title={isPinned ? t('lobby.sidebar.unpin') : t('lobby.sidebar.pin')}
                         >
@@ -545,7 +549,7 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
                 </div>
                 {/* Footer (Controls) */}
                 <div className="p-4 bg-black/40 border-t border-white/10 shrink-0 relative z-10 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
-                    <button onClick={() => setShowSettings(true)} className="flex items-center gap-4 text-gray-400 hover:text-white w-full p-3 rounded-xl transition-all hover:bg-white/5 border border-transparent hover:border-white/10 mb-2 group shadow-sm cursor-pointer">
+                    <button onClick={() => { playSfx('menu_selection'); setShowSettings(true); }} className="flex items-center gap-4 text-gray-400 hover:text-white w-full p-3 rounded-xl transition-all hover:bg-white/5 border border-transparent hover:border-white/10 mb-2 group shadow-sm cursor-pointer">
                         <Settings size={20} className="group-hover:rotate-45 transition-transform" /> <span className="text-sm font-bold uppercase tracking-widest">{t('lobby.sidebar.settings')}</span>
                     </button>
                     <button onClick={handleLogout} className="flex items-center gap-4 text-red-400 hover:text-red-300 w-full p-3 rounded-xl transition-all hover:bg-red-500/10 border border-transparent hover:border-red-500/20 shadow-sm cursor-pointer">
@@ -556,7 +560,7 @@ export const Sidebar = ({ isOpen: initialOpen, toggle: initialToggle, rpgStats }
 
             {/* Settings Overlay */}
             {showSettings && (
-                <SettingsMenu initialTab="config" onClose={() => setShowSettings(false)} />
+                <SettingsMenu initialTab="config" onClose={() => { playSfx('close'); setShowSettings(false); }} />
             )}
 
             {/* Block User Modal (moderación) */}

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Skull, Eye, Home, RotateCcw } from 'lucide-react';
 import { useGameStore } from '../../store/gameStore';
 import { useAuthStore } from '../../store/authStore';
+import { playSfx } from '../../utils/sfx';
 
 export const DeathOverlay = () => {
     const { t } = useTranslation();
@@ -18,6 +19,7 @@ export const DeathOverlay = () => {
 
     useEffect(() => {
         const handlePlayerDead = () => {
+            playSfx('game_over');
             // Capturar snapshot en el momento del evento, excluyendo al propio jugador
             const { players, currentSceneKey, currentInviteCode } = useGameStore.getState();
             const myId = String(useAuthStore.getState().user?.id || '');

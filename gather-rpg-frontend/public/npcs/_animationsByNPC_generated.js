@@ -142,12 +142,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -294,12 +294,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -446,12 +446,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -598,12 +598,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -750,12 +750,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -902,12 +902,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -1054,12 +1054,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -1206,12 +1206,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -1358,12 +1358,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -1510,12 +1510,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -1662,12 +1662,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -1814,12 +1814,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -1966,12 +1966,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -2118,12 +2118,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0
@@ -2270,12 +2270,12 @@ export const animationsByNPC = {
     "dying": {
       "type": "body",
       "frames": [
-        "dying_0",
-        "dying_1",
-        "dying_2",
-        "dying_3",
+        "dying_5",
         "dying_4",
-        "dying_5"
+        "dying_3",
+        "dying_2",
+        "dying_1",
+        "dying_0"
       ],
       "frameRate": 8,
       "repeat": 0

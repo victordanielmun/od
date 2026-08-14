@@ -27,6 +27,7 @@ import { ChessMinigameHUD } from '../components/lobby/ChessMinigameHUD';
 import api from '../services/api';
 import { VirtualArcadeControls } from '../components/lobby/VirtualArcadeControls';
 import { useDeviceType } from '../hooks/useDeviceType';
+import { playSfx } from '../utils/sfx';
 
 // Cuánto permanece visible el letrero "Aventura Iniciada" antes de ocultarse solo.
 const MISSION_BANNER_DURATION_MS = 2000;
@@ -100,6 +101,12 @@ export const LobbyLayout = () => {
 
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [activeOverlay, setActiveOverlay] = useState(null); // 'missions', 'character', 'shop', 'route', null
+  // Cierre de overlay iniciado por el jugador (botón X, "salir", "entendido"...);
+  // los cierres automáticos por cambio de estado del store NO pasan por aquí.
+  const closeOverlay = () => {
+    playSfx('close');
+    setActiveOverlay(null);
+  };
   const [routeUrl, setRouteUrl] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [pendingChallengeId, setPendingChallengeId] = useState(null);
@@ -439,7 +446,13 @@ export const LobbyLayout = () => {
                 <span>Practice</span>
               </button>
               <button
-                onClick={() => setActiveOverlay(prev => prev === 'help' ? null : 'help')}
+                onClick={() => {
+                  if (activeOverlay === 'help') closeOverlay();
+                  else {
+                    playSfx('menu_selection');
+                    setActiveOverlay('help');
+                  }
+                }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/25 text-yellow-400 border border-yellow-500/20 transition-all text-xs font-bold hover:scale-105 cursor-pointer shadow-lg"
                 title={i18n.language?.startsWith('es') ? "Guía de Ayuda (H)" : "Help Guide (H)"}
               >
@@ -577,7 +590,7 @@ export const LobbyLayout = () => {
               minigameId={minigameData.minigameId}
               onClose={() => {
                 leaveChallenge();
-                setActiveOverlay(null);
+                closeOverlay();
                 setMinigameData(null);
               }}
             />
@@ -587,7 +600,7 @@ export const LobbyLayout = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    setActiveOverlay(null);
+                    closeOverlay();
                     setReadPopupText('');
                     setReadPopupTranslating(false);
                     readReqRef.current = '';
@@ -630,7 +643,7 @@ export const LobbyLayout = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setActiveOverlay(null);
+                  closeOverlay();
                   setReadPopupText('');
                   setReadPopupTranslating(false);
                   readReqRef.current = '';
@@ -677,7 +690,7 @@ export const LobbyLayout = () => {
               <button
                 onClick={() => {
                   leaveChallenge();
-                  setActiveOverlay(null);
+                  closeOverlay();
                   setMinigameData(null);
                 }}
                 className="bg-red-700 hover:bg-red-600 text-white w-full py-2.5 rounded-xl transition text-xs font-bold active:scale-95 cursor-pointer"
@@ -705,7 +718,7 @@ export const LobbyLayout = () => {
                   )}
                   {!activeChallengeId && (
                     <button
-                      onClick={() => setActiveOverlay(null)}
+                      onClick={closeOverlay}
                       className="text-gray-400 hover:text-white transition pointer-events-auto"
                     >
                       <X size={24} />
@@ -767,11 +780,11 @@ export const LobbyLayout = () => {
               </div>
             </div>
           ) : activeOverlay === 'help' ? (
-            <HelpOverlay onClose={() => setActiveOverlay(null)} />
+            <HelpOverlay onClose={closeOverlay} />
           ) : (
             <div className="bg-gray-800 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto relative shadow-2xl border border-gray-700 animate-fade-in">
               <button
-                onClick={() => setActiveOverlay(null)}
+                onClick={closeOverlay}
                 className="absolute top-4 right-4 text-gray-400 hover:text-white transition"
               >
                 <X size={24} />
@@ -783,7 +796,10 @@ export const LobbyLayout = () => {
                     <div className="flex justify-between items-center mb-6">
                       <h2 className="text-3xl text-white font-light">{t('lobby.overlays.mission_board')}</h2>
                       <button
-                        onClick={() => setIsRoomModalOpen(true)}
+                        onClick={() => {
+                          playSfx('menu_selection');
+                          setIsRoomModalOpen(true);
+                        }}
                         className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded shadow transition"
                       >
                         + {t('lobby.overlays.custom_room')}
@@ -796,7 +812,7 @@ export const LobbyLayout = () => {
                 {activeOverlay === 'character' && (
                   <div className="flex flex-col items-center">
                     <h2 className="text-3xl text-white font-light mb-6">{t('lobby.overlays.class_trainer')}</h2>
-                    <CharacterSelector onSelect={() => setActiveOverlay(null)} />
+                    <CharacterSelector onSelect={closeOverlay} />
                   </div>
                 )}
 
@@ -804,7 +820,7 @@ export const LobbyLayout = () => {
                   <NPCDialogue
                     npcData={npcData}
                     onClose={() => {
-                      setActiveOverlay(null);
+                      closeOverlay();
                       setNpcData(null);
                     }}
                   />
@@ -827,7 +843,10 @@ export const LobbyLayout = () => {
       {/* Modals (Z-Index 50) */}
       <CreateRoomModal
         isOpen={isRoomModalOpen}
-        onClose={() => setIsRoomModalOpen(false)}
+        onClose={() => {
+          playSfx('close');
+          setIsRoomModalOpen(false);
+        }}
       />
     </div>
   );

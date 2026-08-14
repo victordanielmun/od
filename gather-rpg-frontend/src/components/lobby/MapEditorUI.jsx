@@ -796,6 +796,7 @@ export const MapEditorUI = ({ gameRef }) => {
                     <option value="bgm_fight_boss">Fight Boss (Jefe Final)</option>
                     <option value="bgm_pixel_pantry">Pixel Pantry Jingle (Tienda)</option>
                     <option value="bgm_pixelated_haven">Pixelated Haven (Refugio)</option>
+                    <option value="bgm_intensive_loop">Intensive Loop (Acción Intensa)</option>
                   </select>
                 </div>
 
@@ -1325,7 +1326,7 @@ export const MapEditorUI = ({ gameRef }) => {
                     <option value="happy">Happy / Grateful (Row 3)</option>
                     <option value="sad">Sad (Row 4)</option>
                     <option value="walking">Walking (Row 5)</option>
-                    <option value="dying">Dying (Row 6)</option>
+                    <option value="dying">Dying / Muerto (Row 6, sin interacción)</option>
                   </select>
                 </div>
 

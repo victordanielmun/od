@@ -1,5 +1,6 @@
 import EnemySprite from '../entities/EnemySprite';
 import { useGameStore } from '../../store/gameStore';
+import { playGameSfx } from '../audio/playGameSfx';
 
 // El servidor emite un tick de IA cada 100ms por cada enemigo vivo de la sala.
 // Un sprite que lleve STALE_MS sin recibir su update ya no existe en el servidor.
@@ -110,6 +111,7 @@ export class EnemySystem {
     const sprite = this.activeEnemies.get(instance_id);
     if (sprite) {
       console.log(`[EnemySystem] enemy_died received → playing death + removing ${instance_id}`);
+      playGameSfx(this.scene, 'sfx_enemy_die');
       // NO updateHealth(0,100): esa función solo mata localmente si !serverDriven, y
       // en el mundo abierto todo enemigo es serverDriven — la llamada no hacía nada
       // (el enemigo se quedaba en su última pose hasta el destroy). playDeathAnimation

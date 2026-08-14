@@ -45,7 +45,19 @@ export class NPCSprite extends Phaser.GameObjects.Container {
     this.nameTag.setShadow(2, 2, 'rgba(0,0,0,0.8)', 2);
 
     this.add([this.sprite, this.nameTag]);
-    
+
+    // Tracks the key of the last one-shot (non-looping) animation that ran to
+    // completion, e.g. 'dying'. Driven by Phaser's own ANIMATION_COMPLETE
+    // event rather than inspecting sprite.anims.currentAnim/isPlaying, whose
+    // exact post-completion state isn't reliable enough to gate a replay
+    // guard on — this event is the one guarantee Phaser gives us.
+    this._finishedOneShotKey = null;
+    this.sprite.on('animationcomplete', (anim) => {
+      if (anim && anim.repeat === 0) {
+        this._finishedOneShotKey = anim.key;
+      }
+    });
+
     // Animación inicial
     this.playAnimation('idle-waiting');
   }
@@ -80,7 +92,17 @@ export class NPCSprite extends Phaser.GameObjects.Container {
     // Final safety check before playing
     const anim = this.scene.anims.get(key);
     if (anim && anim.frames && anim.frames.length > 0) {
-      if (this.currentAnim === key && this.sprite.anims.isPlaying) return;
+      // Once a clip is showing (still playing, or a one-shot like 'dying' that
+      // already ran to completion and is holding its last frame), don't
+      // re-trigger it. Callers like NPCManager.update() call playAnimation()
+      // with the same key every single frame; without this guard a one-shot
+      // clip (repeat: 0) gets restarted from frame 0 on every tick forever
+      // instead of freezing on its final frame, since Phaser's own
+      // `ignoreIfPlaying` check only suppresses replay while isPlaying is
+      // still true (it flips false the instant a one-shot clip completes).
+      const alreadyPlaying = this.currentAnim === key && this.sprite.anims.isPlaying;
+      const alreadyFinished = this.currentAnim === key && this._finishedOneShotKey === key;
+      if (alreadyPlaying || alreadyFinished) return;
       this.sprite.play(key, true);
       this.currentAnim = key;
     } else {

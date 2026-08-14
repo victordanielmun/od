@@ -67,12 +67,17 @@ function processWorld(id, filePath) {
     // Usamos el tamaño típico de un NPC (aprox 40-80px)
     const realFrames = atlas.frames.filter(f => f.frame.w > 10 && f.frame.h > 10);
     
-    // 2. Ordenar frames por Y (fila) y luego por X (columna)
-    // NOTA: Algunos atlas están ligeramente desalineados en Y, usamos una tolerancia de 20px
+    // 2. Ordenar frames por fila y luego por X (columna)
+    // Agrupamos por la base del sprite (y + h), no por el borde superior (y):
+    // filas como 'dying' cambian mucho de alto entre columnas (el personaje se
+    // va encogiendo/cayendo), así que su borde superior varía >20px dentro de
+    // la MISMA fila y rompía el agrupamiento — pero los pies quedan anclados
+    // a la misma línea base en las 6 columnas. Con y+h todas las filas (incluida
+    // 'dying') se agrupan de forma consistente.
     realFrames.sort((a, b) => {
-        const diffY = a.frame.y - b.frame.y;
-        if (Math.abs(diffY) > 20) return diffY; // Si la diferencia es grande, prima el eje Y
-        return a.frame.x - b.frame.x;           // Si están en la misma "fila", prima el eje X
+        const diffBase = (a.frame.y + a.frame.h) - (b.frame.y + b.frame.h);
+        if (Math.abs(diffBase) > 20) return diffBase; // Si la diferencia es grande, prima la fila
+        return a.frame.x - b.frame.x;                 // Si están en la misma "fila", prima el eje X
     });
 
     console.log(`  Found ${realFrames.length} real frames. Mapping to ${WORLD_ANIMATIONS.length} animations.`);

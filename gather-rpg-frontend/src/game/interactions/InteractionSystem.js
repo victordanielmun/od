@@ -2,6 +2,7 @@ import * as Phaser from 'phaser';
 import { useGameStore } from '../../store/gameStore';
 import api from '../../services/api';
 import i18n from '../../i18n';
+import { playGameSfx } from '../audio/playGameSfx';
 
 export class InteractionSystem {
   constructor(scene) {
@@ -65,6 +66,9 @@ export class InteractionSystem {
     // Check NPCs
     if (this.scene.npcs) {
       this.scene.npcs.forEach(npc => {
+        // Corpses (initial state "dying") are scenery, not talkable NPCs.
+        if (npc.npcData?.isDead) return;
+
         const dist = Phaser.Math.Distance.Between(
           this.scene.player.x, this.scene.player.y,
           npc.x, npc.y
@@ -152,7 +156,19 @@ export class InteractionSystem {
         // Skip portals hidden by a mission gate (missionIds set + player not on that
         // mission): no prompt and no teleport while invisible.
         const gatedHidden = build.visible === false || build.data?.get?.('missionGatedHidden');
-        if (dist < 90 && !foundBuild && !gatedHidden) {
+
+        // Skip portals the editor never got a destination for — treat them as
+        // scenery instead of surfacing a "no destination configured" prompt.
+        const portalType = build.data?.get('portalType') || 'map';
+        const targetMap = build.data?.get('targetMap');
+        const targetRoute = build.data?.get('targetRoute');
+        const targetX = build.data?.get('targetX');
+        const targetY = build.data?.get('targetY');
+        const hasDest = (portalType === 'map' && targetMap) ||
+          (portalType === 'route' && targetRoute) ||
+          (portalType === 'local' && targetX != null && targetY != null);
+
+        if (dist < 90 && !foundBuild && !gatedHidden && hasDest) {
           foundBuild = build;
         }
       });
@@ -195,22 +211,10 @@ export class InteractionSystem {
       } else if (foundPlayer) {
         msg = t('chat_with', { name: foundPlayer.name });
       } else if (foundBuild) {
-        const portalType = foundBuild.data?.get('portalType') || 'map';
-        const targetMap = foundBuild.data?.get('targetMap');
-        const targetRoute = foundBuild.data?.get('targetRoute');
-        const targetX = foundBuild.data?.get('targetX');
-        const targetY = foundBuild.data?.get('targetY');
+        // foundBuild is only ever set for portals with a configured destination
+        // (see checkInteractions' build search above), so no need to re-check here.
         const customText = foundBuild.data?.get('interactionText');
-
-        const hasDest = (portalType === 'map' && targetMap) ||
-          (portalType === 'route' && targetRoute) ||
-          (portalType === 'local' && targetX != null && targetY != null);
-
-        if (hasDest) {
-          msg = customText ? t('press_e_custom', { text: customText }) : t('enter');
-        } else {
-          msg = t('no_destination');
-        }
+        msg = customText ? t('press_e_custom', { text: customText }) : t('enter');
       } else if (foundMinigame) {
         const type = foundMinigame.data?.get('minigameType');
         const activeChallengeId = useGameStore.getState().activeChallengeId;
@@ -335,7 +339,8 @@ export class InteractionSystem {
       
       if (response.data) {
         this.scene.activePickups = this.scene.activePickups.filter(p => p !== pickupContainer);
-        
+        playGameSfx(this.scene, 'sfx_add_item');
+
         this.scene.tweens.add({
           targets: pickupContainer,
           y: pickupContainer.y - 50,
