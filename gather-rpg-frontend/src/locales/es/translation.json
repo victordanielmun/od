@@ -369,8 +369,18 @@
       "new_map": "Crear Nuevo Mapa",
       "prompt_key": "Ingresa la clave única de la escena (ej: 'login', 'forest'):",
       "search_placeholder": "Buscar mapas...",
+      "filter_all": "Todas",
+      "filter_public": "Públicas",
+      "filter_private": "Privadas",
+      "filter_world_all": "Todos los mundos",
+      "filter_world_unassigned": "Sin mundo asignado",
+      "sort_name_asc": "Nombre (A-Z)",
+      "sort_name_desc": "Nombre (Z-A)",
+      "sort_updated_desc": "Recientes primero",
+      "sort_updated_asc": "Antiguos primero",
       "table": {
         "key": "Mapa / Clave de Escena",
+        "world": "Mundo",
         "updated": "Última Actualización",
         "actions": "Acciones"
       },

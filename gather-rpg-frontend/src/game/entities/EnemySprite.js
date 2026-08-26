@@ -4,6 +4,7 @@ import { ENEMY_CONFIG } from '../config/EnemyConfig';
 import { BOSS_STATE_TO_ANIM, getBossScale } from '../config/BossConfig';
 import { spawnDamageNumber } from '../systems/floatingText';
 import { ensureItemSprite } from '../systems/itemSprites';
+import { playGameSfx } from '../audio/playGameSfx';
 
 // Estados posibles de la FSM
 const STATES = {
@@ -570,7 +571,7 @@ export default class EnemySprite extends NPCSprite {
             this._chargeHitDealt = true;
             this.scene.events.emit('enemy-attack', {
               enemy: this,
-              damage: Math.round((this.config?.damage ?? 10) * 2),
+              damage: Math.round((this.config?.damage ?? 10) * 1.35),
             });
           }
         }
@@ -780,8 +781,10 @@ export default class EnemySprite extends NPCSprite {
       });
     }
 
-    // Dirigir hacia la posición actual del jugador.
-    const speed = 320;
+    playGameSfx(scene, 'sfx_throw_knife');
+
+    // Dirigir hacia la posición actual del jugador (velocidad balanceada para esquivar con paso lateral).
+    const speed = 210;
     const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
     proj.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
     // Spin as it travels, in the horizontal direction of flight.
@@ -798,21 +801,22 @@ export default class EnemySprite extends NPCSprite {
   }
 
   // Habilidad AoE del boss (type=boss). Telegrafía un círculo de daño; tras una
-  // breve demora, si el jugador sigue dentro, recibe daño aumentado (puede esquivar).
+  // demora justa (1000ms), si el jugador sigue dentro, recibe daño aumentado (puede esquivar).
   _doSkill() {
     const myPlayerId = this.scene.playerManager?.myPlayerId;
     if (this.targetId && myPlayerId && this.targetId !== myPlayerId) return;
     if (!this.target || !this.target.active) return;
 
     const scene = this.scene;
-    const radius = 180;
+    playGameSfx(scene, 'sfx_skill');
+    const radius = 130; // Radio balanceado y legible
 
-    const gfx = scene.add.circle(this.x, this.y, radius, 0xff3344, 0.18).setDepth(this.depth - 1);
-    gfx.setStrokeStyle(3, 0xff3344, 0.85);
-    scene.tweens.add({ targets: gfx, alpha: 0, scale: 1.05, duration: 800, onComplete: () => gfx.destroy() });
+    const gfx = scene.add.circle(this.x, this.y, radius, 0xff3344, 0.22).setDepth(this.depth - 1);
+    gfx.setStrokeStyle(3, 0xff3344, 0.9);
+    scene.tweens.add({ targets: gfx, alpha: 0.05, scale: 1.08, duration: 1100, onComplete: () => gfx.destroy() });
 
-    const damage = Math.round((this.config?.damage ?? 10) * 1.5);
-    scene.time.delayedCall(500, () => {
+    const damage = Math.round((this.config?.damage ?? 10) * 1.35);
+    scene.time.delayedCall(1000, () => {
       if (!this.target || !this.target.active) return;
       const d = window.Phaser.Math.Distance.Between(this.x, this.y, this.target.x, this.target.y);
       if (d <= radius) {

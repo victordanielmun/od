@@ -349,6 +349,7 @@ export class CombatSystem {
 
   _handleEnemyAttack(data) {
     if (this.isDead || this.scene.isSpectating) return;
+    if (this.scene.isDashing) return; // Invulnerabilidad durante el Dash
     if (this.playerAttackIFrames > 0) return;
     this.playerAttackIFrames = 800; // throttle local de reportes (el server también valida i-frames)
     playGameSfx(this.scene, 'sfx_enemy_atack');

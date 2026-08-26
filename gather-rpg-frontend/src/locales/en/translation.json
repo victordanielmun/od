@@ -367,8 +367,18 @@
       "new_map": "Create New Map",
       "prompt_key": "Enter unique Scene Key (e.g., 'login', 'forest'):",
       "search_placeholder": "Search maps...",
+      "filter_all": "All",
+      "filter_public": "Public",
+      "filter_private": "Private",
+      "filter_world_all": "All worlds",
+      "filter_world_unassigned": "Not assigned to a world",
+      "sort_name_asc": "Name (A-Z)",
+      "sort_name_desc": "Name (Z-A)",
+      "sort_updated_desc": "Recently updated",
+      "sort_updated_asc": "Oldest first",
       "table": {
         "key": "Map / Scene Key",
+        "world": "World",
         "updated": "Last Updated",
         "actions": "Actions"
       },

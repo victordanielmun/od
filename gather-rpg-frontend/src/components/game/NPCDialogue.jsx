@@ -7,6 +7,7 @@ import ShopModal from '../common/ShopModal';
 import { KaraokeOverlay } from './KaraokeOverlay';
 import { useAuthStore } from '../../store/authStore';
 import { useGameStore } from '../../store/gameStore';
+import { useAudioStore } from '../../store/audioStore';
 import { ItemIcon } from '../common/ItemIcon';
 import { STATE_TO_ANIM, NPC_CONFIG } from '../../game/config/NPCConfig';
 
@@ -586,6 +587,9 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             // A cold HTMLAudioElement lets the OS output device sleep during silence and
             // drops the first ~1s on wake. The kept-alive AudioContext stays active, so a
             // decoded AudioBuffer starts sample-accurate with no clipped opening.
+            const { masterVolume, voiceVolume } = useAudioStore.getState();
+            const effectiveVoiceVol = Math.max(0, Math.min(1, (masterVolume ?? 1.0) * (voiceVolume ?? 0.8)));
+
             const ctx = getWarmAudioContext();
             if (ctx && arrayBuf) {
                 try {
@@ -596,7 +600,12 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                     stopWebAudioSource();
                     const source = ctx.createBufferSource();
                     source.buffer = decoded;
-                    source.connect(ctx.destination);
+
+                    const gainNode = ctx.createGain();
+                    gainNode.gain.value = effectiveVoiceVol;
+                    source.connect(gainNode);
+                    gainNode.connect(ctx.destination);
+
                     source.onended = () => {
                         if (audioSourceRef.current === source) {
                             audioSourceRef.current = null;
@@ -617,6 +626,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
             // --- Fallback path: HTMLAudioElement from a fully-buffered Blob URL ---
             const audio = new Audio();
             audio.preload = 'auto';
+            audio.volume = effectiveVoiceVol;
             audioRef.current = audio;
 
             let objectUrl = null;
@@ -649,6 +659,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
                 if ('speechSynthesis' in window) {
                     const utterance = new SpeechSynthesisUtterance(spokenText);
                     utterance.lang = language === 'es' ? 'es-ES' : 'en-US';
+                    utterance.volume = effectiveVoiceVol;
                     utterance.onend = () => {
                         console.log("[Performance] Frontend: Web Speech API playback complete");
                         setIsTtsPlaying(false);
@@ -849,9 +860,7 @@ export const NPCDialogue = ({ npcData, onClose }) => {
         console.log("[NPCDialogue] Accepting mission completion, returning to lobby...");
         window.dispatchEvent(new CustomEvent('lobby-change-map', {
             detail: { 
-                targetMap: 'lobby',
-                targetX: 0,
-                targetY: 0
+                targetMap: 'lobby'
             }
         }));
         onClose();

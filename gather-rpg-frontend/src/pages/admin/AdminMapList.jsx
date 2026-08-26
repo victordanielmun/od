@@ -1,17 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import { Map as MapIcon, Plus, Search, Edit2, Trash2, ArrowUpDown, Eye } from 'lucide-react';
+import { Map as MapIcon, Plus, Search, Edit2, Trash2, ArrowUpDown, Eye, Globe } from 'lucide-react';
 import { CreateMapModal } from '../../components/admin/CreateMapModal';
+
+// "pronoun_village" -> "Pronoun Village". Mejor que nada para mapas sin
+// mision propia (ej. lobby, castle); los que sí tienen mision usan su
+// `title` (ya pensado para verse bien), ver displayNameFor().
+const humanizeSceneKey = (key) =>
+    (key || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+const UNASSIGNED_WORLD = '__unassigned__';
 
 export const AdminMapList = () => {
     const { t } = useTranslation();
     const [maps, setMaps] = useState([]);
+    const [missionsByScene, setMissionsByScene] = useState({});
+    const [worlds, setWorlds] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [sortBy, setSortBy] = useState('name_asc');
     const [visibility, setVisibility] = useState('all');
+    const [worldFilter, setWorldFilter] = useState('all');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const navigate = useNavigate();
 
@@ -21,14 +32,39 @@ export const AdminMapList = () => {
 
     const loadMaps = async () => {
         try {
-            const res = await api.get('/admin/maps');
-            setMaps(res.data);
+            const [mapsRes, missionsRes, worldsRes] = await Promise.all([
+                api.get('/admin/maps'),
+                api.get('/admin/missions').catch(() => ({ data: [] })),
+                api.get('/admin/worlds').catch(() => ({ data: [] })),
+            ]);
+            setMaps(mapsRes.data);
+            // map_configs no tiene world_id propio -- se deriva de la mision
+            // que comparte su scene_key (missions.scene_key + missions.world_id).
+            const bySceneKey = {};
+            for (const m of missionsRes.data || []) {
+                bySceneKey[m.scene_key] = m;
+            }
+            setMissionsByScene(bySceneKey);
+            setWorlds(worldsRes.data || []);
         } catch (error) {
             console.error("Failed to load maps:", error);
         } finally {
             setLoading(false);
         }
     };
+
+    const worldNameById = useMemo(() => {
+        const out = {};
+        for (const w of worlds) out[w.id] = w.name;
+        return out;
+    }, [worlds]);
+
+    // Nombre creativo: el titulo de la mision si el mapa tiene una (ya
+    // pensado para verse bien, ej. "El examen final: vence a Gorgak"),
+    // si no, la scene_key humanizada (mapas de transito sin mision, como
+    // "lobby" o "castle").
+    const displayNameFor = (map) => missionsByScene[map.scene_key]?.title || humanizeSceneKey(map.scene_key);
+    const worldIdFor = (map) => missionsByScene[map.scene_key]?.world_id ?? null;
 
     const handleEdit = (sceneKey) => {
         navigate(`/lobby?edit_map=${sceneKey}`);
@@ -93,16 +129,25 @@ export const AdminMapList = () => {
     };
 
     const displayedMaps = maps
-        .filter(m => m.scene_key.toLowerCase().includes(search.toLowerCase()))
+        .filter(m => {
+            const q = search.toLowerCase();
+            return m.scene_key.toLowerCase().includes(q) || displayNameFor(m).toLowerCase().includes(q);
+        })
         .filter(m => visibility === 'all' || (visibility === 'public' ? m.is_public : !m.is_public))
+        .filter(m => {
+            if (worldFilter === 'all') return true;
+            const worldId = worldIdFor(m);
+            if (worldFilter === UNASSIGNED_WORLD) return worldId == null;
+            return String(worldId) === worldFilter;
+        })
         .slice() // avoid mutating state with sort
         .sort((a, b) => {
             switch (sortBy) {
-                case 'name_desc':    return b.scene_key.localeCompare(a.scene_key);
+                case 'name_desc':    return displayNameFor(b).localeCompare(displayNameFor(a));
                 case 'updated_desc': return new Date(b.updated_at) - new Date(a.updated_at);
                 case 'updated_asc':  return new Date(a.updated_at) - new Date(b.updated_at);
                 case 'name_asc':
-                default:             return a.scene_key.localeCompare(b.scene_key);
+                default:             return displayNameFor(a).localeCompare(displayNameFor(b));
             }
         });
 
@@ -150,6 +195,20 @@ export const AdminMapList = () => {
                         </select>
                     </div>
                     <div className="relative">
+                        <Globe className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
+                        <select
+                            value={worldFilter}
+                            onChange={(e) => setWorldFilter(e.target.value)}
+                            className="appearance-none bg-gray-950 border border-gray-700 rounded-lg pl-9 pr-8 py-2 text-sm text-gray-300 focus:border-blue-500 focus:outline-none cursor-pointer"
+                        >
+                            <option value="all">{t('admin.maps.filter_world_all') || 'Todos los mundos'}</option>
+                            <option value={UNASSIGNED_WORLD}>{t('admin.maps.filter_world_unassigned') || 'Sin mundo asignado'}</option>
+                            {worlds.map(w => (
+                                <option key={w.id} value={String(w.id)}>{w.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="relative">
                         <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
                         <select
                             value={sortBy}
@@ -169,25 +228,45 @@ export const AdminMapList = () => {
                         <thead>
                             <tr className="bg-gray-950 text-gray-400 text-xs uppercase tracking-wider">
                                 <th className="px-6 py-4 font-medium">Map / Scene Key</th>
+                                <th className="px-6 py-4 font-medium">{t('admin.maps.table.world') || 'Mundo'}</th>
                                 <th className="px-6 py-4 font-medium">Last Updated</th>
                                 <th className="px-6 py-4 font-medium text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-800">
                             {loading ? (
-                                <tr><td colSpan="3" className="px-6 py-8 text-center text-gray-500">Loading maps...</td></tr>
+                                <tr><td colSpan="4" className="px-6 py-8 text-center text-gray-500">Loading maps...</td></tr>
                             ) : displayedMaps.length === 0 ? (
-                                <tr><td colSpan="3" className="px-6 py-8 text-center text-gray-500">No maps found.</td></tr>
+                                <tr><td colSpan="4" className="px-6 py-8 text-center text-gray-500">No maps found.</td></tr>
                             ) : (
-                                displayedMaps.map((map) => (
+                                displayedMaps.map((map) => {
+                                    const name = displayNameFor(map);
+                                    const worldId = worldIdFor(map);
+                                    const worldName = worldId != null ? worldNameById[worldId] : null;
+                                    return (
                                     <tr key={map.id} className="hover:bg-gray-800/50 transition-colors group">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded bg-blue-900/30 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold">
-                                                    {map.scene_key.substring(0, 2).toUpperCase()}
+                                                <div className="w-10 h-10 rounded bg-blue-900/30 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold shrink-0">
+                                                    {name.substring(0, 2).toUpperCase()}
                                                 </div>
-                                                <span className="font-medium text-white">{map.scene_key}</span>
+                                                <div className="flex flex-col">
+                                                    <span className="font-medium text-white">{name}</span>
+                                                    <span className="text-xs text-gray-500">{map.scene_key}</span>
+                                                </div>
                                             </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {worldName ? (
+                                                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-300 bg-purple-900/30 border border-purple-500/30 px-2.5 py-1 rounded-full">
+                                                    <Globe size={12} />
+                                                    {worldName}
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs text-gray-500 italic">
+                                                    {t('admin.maps.filter_world_unassigned') || 'Sin mundo asignado'}
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 text-gray-400 text-sm">
                                             {new Date(map.updated_at).toLocaleDateString()}
@@ -208,7 +287,8 @@ export const AdminMapList = () => {
                                             </button>
                                         </td>
                                     </tr>
-                                ))
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>

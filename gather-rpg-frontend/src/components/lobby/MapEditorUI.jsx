@@ -294,11 +294,30 @@ export const MapEditorUI = ({ gameRef }) => {
           hpRegen: metadata.hpRegen || 0,
           cardFailHealPct: metadata.cardFailHealPct || 100,
         });
+      } else if (type === 'item') {
+        const pm = { itemId: metadata.itemId || '', quantity: metadata.quantity || 1 };
+        setPickupMeta(pm);
+        dispatchEditorCommand('setPickupMetadata', pm);
       }
 
-      // Switch to brush tool automatically after picking for convenience
-      setActiveTool('brush');
-      dispatchEditorCommand('setTool', 'brush');
+      // Estos tipos son instancias con estado propio en el backend (NPC,
+      // enemigo, item, portal, letrero) -- EditorController los deja
+      // "agarrados" para arrastrar en el mismo pointerdown (ver
+      // _movingTile en EditorController.js), y el arrastre solo funciona
+      // mientras la herramienta siga siendo 'inspector' durante todo el
+      // gesto. Si cambiamos a 'brush' aca (de forma sincrona, antes de que
+      // termine el pointerdown) el arrastre se rompe a mitad de camino:
+      // pointermove interpreta que hay que pintar con el brush en vez de
+      // mover el objeto, y se termina pintando un duplicado en el punto
+      // donde se suelta en vez de reubicar el original.
+      // Para las texturas simples (pared/piso/bosque/etc, sin estado propio)
+      // sí conviene el auto-cambio a brush: es el flujo de "gotero, ahora
+      // pinto mas de lo mismo".
+      const STATEFUL_TYPES = ['npc', 'enemy', 'item', 'build', 'exit', 'furniture', 'furniture2', 'furniture3'];
+      if (!STATEFUL_TYPES.includes(type)) {
+        setActiveTool('brush');
+        dispatchEditorCommand('setTool', 'brush');
+      }
     };
 
     const onControllerReady = () => {

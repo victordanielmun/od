@@ -20,9 +20,7 @@ export const BottomHUD = () => {
     const handleReturnToLobby = () => {
         window.dispatchEvent(new CustomEvent('lobby-change-map', {
             detail: { 
-                targetMap: 'lobby',
-                targetX: 0,
-                targetY: 0
+                targetMap: 'lobby'
             }
         }));
     };

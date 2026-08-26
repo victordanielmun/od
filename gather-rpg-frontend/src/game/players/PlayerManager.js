@@ -42,12 +42,18 @@ export class PlayerManager {
     }
 
     const urlParams = new URLSearchParams(window.location.search);
-    let startX = this.scene.initData?.spawnX != null ? Number(this.scene.initData.spawnX) : (urlParams.get('spawnX') ? Number(urlParams.get('spawnX')) : null);
-    let startY = this.scene.initData?.spawnY != null ? Number(this.scene.initData.spawnY) : (urlParams.get('spawnY') ? Number(urlParams.get('spawnY')) : null);
+    const parseCoord = (val) => {
+      if (val == null || val === '') return null;
+      const num = Number(val);
+      return (!isNaN(num) && num > 0) ? num : null;
+    };
 
-    if (startX == null || startY == null || isNaN(startX) || isNaN(startY)) {
-      startX = this.scene.mapDefaultSpawnX ?? 1000;
-      startY = this.scene.mapDefaultSpawnY ?? 350;
+    let startX = this.scene.initData?.spawnX != null ? parseCoord(this.scene.initData.spawnX) : parseCoord(urlParams.get('spawnX'));
+    let startY = this.scene.initData?.spawnY != null ? parseCoord(this.scene.initData.spawnY) : parseCoord(urlParams.get('spawnY'));
+
+    if (startX == null || startY == null) {
+      startX = (this.scene.mapDefaultSpawnX != null && this.scene.mapDefaultSpawnX > 0) ? this.scene.mapDefaultSpawnX : 1000;
+      startY = (this.scene.mapDefaultSpawnY != null && this.scene.mapDefaultSpawnY > 0) ? this.scene.mapDefaultSpawnY : 350;
     }
 
     const GRID = this.scene.GRID_SIZE || 100;

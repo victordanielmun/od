@@ -97,8 +97,15 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
     const handleMapJoinApproved = (e) => {
       const { room_id, scene_key, type, invite_code, x, y } = e.detail;
       const transition = pendingTransitionRef.current || {};
-      const spawnX = x !== undefined ? x : transition.x;
-      const spawnY = y !== undefined ? y : transition.y;
+      const validCoord = (c) => {
+        if (c == null || c === '') return null;
+        const num = Number(c);
+        return (!isNaN(num) && num > 0) ? num : null;
+      };
+      const rawX = x !== undefined ? x : transition.x;
+      const rawY = y !== undefined ? y : transition.y;
+      const spawnX = validCoord(rawX);
+      const spawnY = validCoord(rawY);
 
       if (transition.map && transition.map !== scene_key) {
         console.warn('[LobbyGameCanvas] Approval for unexpected map:', scene_key, 'expected:', transition.map);
@@ -227,8 +234,13 @@ export const LobbyGameCanvas = forwardRef((props, ref) => {
       try {
         const params = new URLSearchParams(window.location.search);
         const mapKey = params.get('map') || params.get('edit_map');
-        const spX = params.get('spawnX');
-        const spY = params.get('spawnY');
+        const parseCoord = (v) => {
+          if (!v) return null;
+          const n = Number(v);
+          return (!isNaN(n) && n > 0) ? n : null;
+        };
+        const spX = parseCoord(params.get('spawnX'));
+        const spY = parseCoord(params.get('spawnY'));
 
         if (mapKey && mapKey !== 'lobby') {
           console.log(`[LobbyGameCanvas] URL Map detected: ${mapKey}. Requesting map join...`);

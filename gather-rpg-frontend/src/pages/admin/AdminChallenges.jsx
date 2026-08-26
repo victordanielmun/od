@@ -132,6 +132,13 @@ export const AdminChallenges = () => {
     const [search, setSearch] = useState('');
     const [selectedType, setSelectedType] = useState('all');
     const [selectedDifficulty, setSelectedDifficulty] = useState('all');
+    const [selectedTag, setSelectedTag] = useState('all');
+    // ── Paginación ───────────────────────────────────────────────────────────
+    // Con 600+ retos, pintar todas las cards de golpe en el DOM es lo que hace
+    // la pantalla pesada. Se pagina en el cliente (los datos ya llegan todos del
+    // backend) para no tener que tocar /admin/challenges.
+    const PAGE_SIZE = 24;
+    const [currentPage, setCurrentPage] = useState(1);
     // ── Mundos ───────────────────────────────────────────────────────────────
     // Un reto "pertenece" al examen de un mundo si lleva su exam_tag. Los tags
     // temáticos del mundo (food, animals…) son transversales: los comparten
@@ -419,14 +426,22 @@ export const AdminChallenges = () => {
         setFormData({ ...formData, tags: next.join(', ') });
     };
 
+    // Catálogo de tags para el filtro: se deriva de los retos ya cargados, no
+    // hay endpoint aparte. Con 90+ tags un <select> nativo (buscable con teclado)
+    // es más práctico que chips.
+    const allTags = [...new Set(challenges.flatMap(c => c.tags || []))].sort();
+
     const filteredChallenges = challenges.filter(c => {
-        const matchesSearch =
-            c.question.toLowerCase().includes(search.toLowerCase()) ||
-            (c.question_es && c.question_es.toLowerCase().includes(search.toLowerCase())) ||
-            (c.explanation_es && c.explanation_es.toLowerCase().includes(search.toLowerCase()));
+        const q = search.toLowerCase();
+        const matchesSearch = q === '' ||
+            c.question.toLowerCase().includes(q) ||
+            (c.question_es && c.question_es.toLowerCase().includes(q)) ||
+            (c.explanation_es && c.explanation_es.toLowerCase().includes(q)) ||
+            (c.tags || []).some(tag => tag.toLowerCase().includes(q));
 
         const matchesType = selectedType === 'all' || c.type === selectedType;
         const matchesDifficulty = selectedDifficulty === 'all' || c.difficulty === selectedDifficulty;
+        const matchesTag = selectedTag === 'all' || (c.tags || []).includes(selectedTag);
 
         // Filtro por mundo: 'none' = retos que no están en el examen de ningún mundo.
         let matchesWorld = true;
@@ -437,8 +452,18 @@ export const AdminChallenges = () => {
             matchesWorld = !!w && !!w.exam_tag && (c.tags || []).includes(w.exam_tag);
         }
 
-        return matchesSearch && matchesType && matchesDifficulty && matchesWorld;
+        return matchesSearch && matchesType && matchesDifficulty && matchesTag && matchesWorld;
     });
+
+    // Volver a la página 1 cada vez que cambia algún filtro — si no, se puede
+    // quedar viendo una página vacía tras acotar los resultados.
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [search, selectedType, selectedDifficulty, selectedTag, selectedWorld]);
+
+    const pageCount = Math.max(1, Math.ceil(filteredChallenges.length / PAGE_SIZE));
+    const safePage = Math.min(currentPage, pageCount);
+    const pagedChallenges = filteredChallenges.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
     // ── Acciones masivas ─────────────────────────────────────────────────────
 
@@ -704,6 +729,19 @@ export const AdminChallenges = () => {
                         <option value="advanced">Avanzado</option>
                     </select>
 
+                    {allTags.length > 0 && (
+                        <select
+                            value={selectedTag}
+                            onChange={e => setSelectedTag(e.target.value)}
+                            className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none w-full md:w-44"
+                        >
+                            <option value="all">Todos los Tags</option>
+                            {allTags.map(tag => (
+                                <option key={tag} value={tag}>{tag}</option>
+                            ))}
+                        </select>
+                    )}
+
                     {/* Filtro por mundo: sirve para ver qué hay ya en un examen. */}
                     {worlds.length > 0 && (
                         <select
@@ -735,7 +773,7 @@ export const AdminChallenges = () => {
                             onChange={toggleSelectAllVisible}
                             className="w-4 h-4 accent-yellow-500"
                         />
-                        Seleccionar los {filteredChallenges.length} visibles
+                        Seleccionar los {filteredChallenges.length} encontrados (todas las páginas)
                     </label>
 
                     <span className={`text-sm shrink-0 ${selectedIds.length ? 'text-yellow-400 font-bold' : 'text-gray-600'}`}>
@@ -794,8 +832,9 @@ export const AdminChallenges = () => {
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400"></div>
                 </div>
             ) : (
+                <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {filteredChallenges.map(challenge => (
+                    {pagedChallenges.map(challenge => (
                         <ChallengeCard
                             key={challenge.id}
                             challenge={challenge}
@@ -813,6 +852,34 @@ export const AdminChallenges = () => {
                         </div>
                     )}
                 </div>
+
+                {filteredChallenges.length > 0 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3">
+                        <span className="text-xs text-gray-500">
+                            Mostrando {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filteredChallenges.length)} de {filteredChallenges.length}
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={safePage <= 1}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-800 border border-gray-700 text-gray-300 hover:border-yellow-500/50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                            >
+                                Anterior
+                            </button>
+                            <span className="text-xs text-gray-400 px-2">
+                                Página {safePage} de {pageCount}
+                            </span>
+                            <button
+                                onClick={() => setCurrentPage(p => Math.min(pageCount, p + 1))}
+                                disabled={safePage >= pageCount}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-800 border border-gray-700 text-gray-300 hover:border-yellow-500/50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                            >
+                                Siguiente
+                            </button>
+                        </div>
+                    </div>
+                )}
+                </>
             )}
 
             {/* Form Modal */}
