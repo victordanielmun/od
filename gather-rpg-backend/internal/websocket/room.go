@@ -613,12 +613,12 @@ func (r *Room) startAILoop() {
 func (r *Room) tickBossLocked(e *models.ActiveEnemy, dist, angle, speed float64) {
 	const bossMeleeRange = 120.0
 	const bossThrowRange = 420.0
-	const chargeCooldown = 5 * time.Second
-	const skillTelegraph = 900 * time.Millisecond
-	const bossSkillManaCost = 30
+	const chargeCooldown = 10 * time.Second
+	const skillTelegraph = 1300 * time.Millisecond
+	const bossSkillManaCost = 40
 
 	const chargeDuration = 600 * time.Millisecond
-	const chargeSpeed = 45.0 // px/tick — embestida rápida
+	const chargeSpeed = 40.0 // px/tick — embestida balanceada
 
 	now := time.Now()
 
