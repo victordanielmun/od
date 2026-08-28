@@ -1,6 +1,12 @@
+import os
 import psycopg2
+
 conn = psycopg2.connect(
-    host='18.221.199.221', port=5433, user='postgres', password='postgres', dbname='gather_rpg'
+    host=os.getenv('DB_HOST', '127.0.0.1'),
+    port=int(os.getenv('DB_PORT', '5433')),
+    user=os.getenv('DB_USER', 'postgres'),
+    password=os.getenv('DB_PASSWORD', ''),
+    dbname=os.getenv('DB_NAME', 'gather_rpg')
 )
 cur = conn.cursor()
 cur.execute("UPDATE player_stats SET hp_current = hp_max WHERE hp_current = 0;")

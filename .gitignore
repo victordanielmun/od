@@ -3,6 +3,9 @@
 *.exe~
 *.dll
 *.pem
+*.key
+*.cert
+*.crt
 *.so
 *.dylib
 gather-rpg-backend/main
@@ -27,12 +30,17 @@ dist/
 dist-ssr/
 *.local
 
-# Environment variables
+# Environment variables and secrets
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+*.env
+*.env.*
+!.env.example
+!.env.*.example
+!gather-rpg-frontend/.env.production
+
+# Debug and temporary local directories
+.dbg/
 
 # Logs
 *.log
@@ -55,6 +63,3 @@ backups/
 # OS
 .DS_Store
 Thumbs.db
-.grepai/.env.ec2
-od3.pem
-od2.pem
