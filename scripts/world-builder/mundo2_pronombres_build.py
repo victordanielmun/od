@@ -28,9 +28,11 @@ clones = [
 # Letreros nuevos (sintaxis segura para InfoMarkdown: solo #/##/###, **negrita**,
 # *cursiva* y parrafos sueltos -- sin listas, tablas ni citas; ver
 # ANALISIS_LETRERO_CLOCK_TOWER.md sobre por que esas construcciones no sirven
-# aqui). Posicion elegida lejos de todos los NPCs del mapa fuente; verificar
-# visualmente en el editor -- el frame 'sprite1' es un placeholder, la
-# interaccion de lectura funciona igual sin importar el sprite decorativo.
+# aqui). Posicion elegida lejos de todos los NPCs del mapa fuente. Tipo
+# 'furniture' (atlas store-furniture) frame 'sprite63' -- un letrero de
+# madera con poste, el mismo que ya usa un letrero real en clock_tower en
+# produccion. NO usar 'furniture3' (atlas furniture/spritesheet.png) --
+# sus frames son objetos de interior/mazmorra (ver README.md, punto 2.5).
 SIGNS = {
     "pronoun_village": (450, 250,
         "# Pronombres personales\n\n"
@@ -79,8 +81,8 @@ for src, dst in clones:
     if dst in SIGNS:
         x, y, text = SIGNS[dst]
         wallsData = json.loads(wallsJson)
-        wallsData.setdefault("furniture3", []).append({
-            "x": x, "y": y, "frame": "sprite1",
+        wallsData.setdefault("furniture", []).append({
+            "x": x, "y": y, "frame": "sprite63",
             "minigameType": "read", "minigameId": "", "readText": text,
         })
         wallsJson = json.dumps(wallsData)

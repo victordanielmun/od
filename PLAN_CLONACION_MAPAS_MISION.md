@@ -284,6 +284,15 @@ dimensionarlo aparte (¿cuántas preguntas por tag? ¿mismo formato que las
 - [x] *(Aparte, no bloqueaba lo anterior)* Reparado `mundo_1`: `combate_town_2`/`combat_town_boss` enlazados, `is_final` en el boss, `challenge_tags` corregidos a inglés — `pool-health` pasó de 0 a 51 preguntas normales
 - [x] Fase final: mundo `mundo_2` creado (id=2), 5 misiones publicadas (`world_id=2`+`status='active'`), `combate_pronoun_boss` marcado `is_final`, `pool-health` en verde (20 normales + 10 examen)
 
-**Mundo 2: Pronombres quedó completo y publicado.** Próximo mundo: copiar
-`scripts/world-builder/` a una carpeta nueva, cambiar `scene_key`s/tema/
-contenido, y repetir `build` → `validate` → `publish`.
+**Mundo 2: Pronombres quedó completo y publicado — 6 mapas, no 5.**
+Corrección importante encontrada después de la primera pasada: el patrón
+real de World 1 es **3 NPC + 2 combate + 1 jefe = 6 misiones**
+(`the_village`/`the_village_2`/`clock_tower` + `combate_town_1` +
+`combate_town_2` + `combat_town_boss`) — el primer build de Mundo 2 solo
+clonó 1 mapa de combate, no 2. Se completó con `combate_pronoun_2`
+(clon de `combate_town_2`: 9 Ogre Warrior + 4 Ogre, sin pickups). **Usar 6
+mapas como default para el próximo mundo**, no 5 — dos combates antes del
+jefe da una repetición más de las Ninja Cards del tema antes del examen.
+
+Próximo mundo: copiar `scripts/world-builder/` a una carpeta nueva, cambiar
+`scene_key`s/tema/contenido, y repetir `build` → `validate` → `publish`.
